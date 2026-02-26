@@ -1,4 +1,5 @@
 import { Box, Database, Globe, ShieldAlert } from "lucide-react";
+import { useCanvasStore } from "@/stores/canvas-store";
 
 const DFD_ELEMENTS = [
 	{
@@ -91,6 +92,10 @@ function PaletteItem({
 			onDragStart={(e) => {
 				e.dataTransfer.setData("application/threatforge-element", JSON.stringify({ type }));
 				e.dataTransfer.effectAllowed = "copy";
+				useCanvasStore.getState().setDraggedType(type);
+			}}
+			onDragEnd={() => {
+				useCanvasStore.getState().setDraggedType(null);
 			}}
 		>
 			<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-secondary">

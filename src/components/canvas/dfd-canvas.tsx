@@ -79,26 +79,24 @@ export function DfdCanvas() {
 		(event: React.DragEvent) => {
 			event.preventDefault();
 
-			const rawData = event.dataTransfer.getData("application/threatforge-element");
-			if (!rawData) return;
+			// Read type from Zustand store — workaround for WKWebView dataTransfer issues
+			// where getData() returns empty for custom MIME types during drop events
+			const draggedType = useCanvasStore.getState().draggedType;
+			if (!draggedType) return;
 
-			try {
-				const parsed = JSON.parse(rawData) as { type: string };
+			// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
+			const position = screenToFlowPosition({
+				x: event.clientX,
+				y: event.clientY,
+			});
 
-				// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
-				const position = screenToFlowPosition({
-					x: event.clientX,
-					y: event.clientY,
-				});
-
-				if (parsed.type === "trust_boundary") {
-					addTrustBoundary("New Boundary", position);
-				} else {
-					addElement(parsed.type as ElementType, position);
-				}
-			} catch {
-				// Ignore invalid drag data
+			if (draggedType === "trust_boundary") {
+				addTrustBoundary("New Boundary", position);
+			} else {
+				addElement(draggedType as ElementType, position);
 			}
+
+			useCanvasStore.getState().setDraggedType(null);
 		},
 		[addElement, addTrustBoundary, screenToFlowPosition],
 	);

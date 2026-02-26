@@ -35,10 +35,16 @@ interface CanvasState {
 	edges: DfdEdge[];
 	viewport: Viewport;
 
+	/** Element type currently being dragged from palette (workaround for WKWebView dataTransfer issues) */
+	draggedType: string | null;
+
 	// ReactFlow change handlers
 	onNodesChange: OnNodesChange<DfdNode>;
 	onEdgesChange: OnEdgesChange<DfdEdge>;
 	setViewport: (viewport: Viewport) => void;
+
+	// Drag state
+	setDraggedType: (type: string | null) => void;
 
 	// Canvas actions
 	addElement: (type: ElementType, position: { x: number; y: number }) => void;
@@ -145,6 +151,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	nodes: [],
 	edges: [],
 	viewport: { x: 0, y: 0, zoom: 1 },
+	draggedType: null,
 
 	onNodesChange: (changes) => {
 		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
@@ -194,6 +201,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	},
 
 	setViewport: (viewport) => set({ viewport }),
+	setDraggedType: (type) => set({ draggedType: type }),
 
 	addElement: (type, position) => {
 		const id = generateElementId(type);
