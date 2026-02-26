@@ -1,6 +1,6 @@
-import { Shield } from "lucide-react";
+import { FolderOpen, Shield } from "lucide-react";
+import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
-import type { ThreatModel } from "@/types/threat-model";
 import { DfdCanvas } from "./dfd-canvas";
 
 export function Canvas() {
@@ -13,33 +13,8 @@ export function Canvas() {
 	return <DfdCanvas />;
 }
 
-function createEmptyModel(): ThreatModel {
-	const today = new Date().toISOString().split("T")[0];
-	return {
-		version: "1.0",
-		metadata: {
-			title: "Untitled Threat Model",
-			author: "",
-			created: today,
-			modified: today,
-			description: "",
-		},
-		elements: [],
-		data_flows: [],
-		trust_boundaries: [],
-		threats: [],
-		diagrams: [
-			{
-				id: "main-dfd",
-				name: "Level 0 DFD",
-				layout_file: ".threatforge/layouts/main-dfd.json",
-			},
-		],
-	};
-}
-
 function EmptyCanvas() {
-	const setModel = useModelStore((s) => s.setModel);
+	const { newModel, openModel } = useFileOperations();
 
 	return (
 		<div className="flex h-full flex-col items-center justify-center gap-4 bg-background">
@@ -56,9 +31,17 @@ function EmptyCanvas() {
 				<button
 					type="button"
 					className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-					onClick={() => setModel(createEmptyModel(), null)}
+					onClick={() => void newModel()}
 				>
 					New Model
+				</button>
+				<button
+					type="button"
+					className="flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
+					onClick={() => void openModel()}
+				>
+					<FolderOpen className="h-4 w-4" />
+					Open Existing
 				</button>
 			</div>
 		</div>
