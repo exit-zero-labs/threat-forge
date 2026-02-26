@@ -102,3 +102,81 @@ Branch: `feat/foundation-scaffold`
 - Tauri window increased to 1280x800 (from 800x600) with 900x600 minimum
 - CSP tightened from `null` to proper policy
 - App identifier changed to `com.exitzerolabs.threatforge`
+
+---
+
+## 2026-02-26 — Session 2: ReactFlow Canvas
+
+Branch: `feat/reactflow-canvas`
+
+### Plan
+
+**Architecture: Store ↔ Canvas sync**
+- [x] Create `canvas-store.ts` — manages ReactFlow nodes/edges, viewport, derived from model-store
+- [x] Conversion functions: model elements → ReactFlow nodes, data flows → ReactFlow edges
+- [x] Bidirectional sync: canvas changes propagate to model-store, model changes update canvas
+
+**Custom DFD Node Types**
+- [x] `ProcessNode` — rounded rectangle with name + icon (DFD process)
+- [x] `DataStoreNode` — parallel-line style rectangle (DFD data store)
+- [x] `ExternalEntityNode` — squared rectangle (DFD external entity)
+- [x] Shared node styling: selected state, hover state, handles for connections
+- [x] Register custom node types with ReactFlow
+
+**Custom Edge Type**
+- [x] `DataFlowEdge` — labeled edge with protocol and data info
+- [x] Edge labels showing protocol (e.g., "HTTPS/TLS")
+- [x] Animated edge style for authenticated flows
+
+**Trust Boundaries**
+- [x] Trust boundary rendered as ReactFlow group node
+- [x] Visual: dashed border, label, contains child elements
+- [x] Update palette to include trust boundary creation
+
+**Canvas Integration**
+- [x] Replace canvas placeholder with ReactFlow canvas (`DfdCanvas` component)
+- [x] `ReactFlowProvider` wrapper in app layout
+- [x] Canvas background (dots pattern)
+- [x] Minimap for navigation
+- [x] Canvas controls (zoom in/out/fit)
+
+**Palette → Canvas drag-drop**
+- [x] Handle drop events on canvas to create new elements
+- [x] Auto-generate element IDs from type + counter
+- [x] Place element at drop position
+- [x] Mark model dirty after any canvas change
+
+**Selection + Properties sync**
+- [x] Node click → update selectedElementId in model-store
+- [x] Right panel properties tab shows selected element (wired via existing right-panel component)
+- [x] Click canvas background → deselect
+
+**Edge Creation**
+- [x] Connect two nodes by dragging from handle to handle
+- [x] Create DataFlow in model-store on connection
+- [x] Auto-generate flow IDs
+
+**Testing**
+- [x] Canvas store tests: 8 tests (sync, add element, add flow, add boundary, parent assignment, dirty tracking, ID counter reset)
+
+**Validation**
+- [x] Validate: `npx biome check .` passes — 31 files, 0 errors
+- [x] Validate: `npx vitest --run` passes — 19 tests in 3 files
+- [x] Validate: `npx tsc --noEmit` passes — no type errors
+- [x] Validate: `cargo test` passes — 13 tests
+- [ ] Validate: can drop elements from palette onto canvas (needs manual check)
+- [ ] Validate: can connect elements with data flow edges (needs manual check)
+- [ ] Validate: selecting node shows properties in right panel (needs manual check)
+- [ ] Validate: trust boundaries render as groups (needs manual check)
+
+### Notes
+
+- `src/app.tsx` was missing from the merged PR — recreated as thin wrapper around `AppLayout`
+- ReactFlow v12 `Node<T>` / `Edge<T>` generics require `T` to satisfy `Record<string, unknown>` — solved by using `type` with index signatures instead of `interface` for `DfdNodeData` / `DfdEdgeData`
+- Node components use inline prop types `{ data: DfdNodeData; selected?: boolean }` instead of `NodeProps<T>` to avoid generic constraint mismatch with `NodeTypes`
+- Edge component casts `data` from `EdgeProps` to `DfdEdgeData` since `EdgeTypes` has same constraint issue
+- `applyNodeChanges` / `applyEdgeChanges` return generic `Node[]` / `Edge[]` — cast to `DfdNode[]` / `DfdEdge[]`
+- Biome-ignore on useEffect dependency: `model` intentionally in deps to trigger re-sync when model changes
+- Trust boundaries insert at beginning of nodes array so they render behind element nodes
+- Palette now uses `type` prop directly instead of deriving from label string conversion
+- Delete key (Delete/Backspace) removes selected nodes + connected edges from both canvas and model store

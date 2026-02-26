@@ -1,23 +1,32 @@
-import { Box, Database, Globe } from "lucide-react";
+import { Box, Database, Globe, ShieldAlert } from "lucide-react";
 
 const DFD_ELEMENTS = [
 	{
-		type: "process" as const,
+		type: "process",
 		label: "Process",
 		icon: Box,
 		description: "A processing step or function",
 	},
 	{
-		type: "data_store" as const,
+		type: "data_store",
 		label: "Data Store",
 		icon: Database,
 		description: "A place where data is stored",
 	},
 	{
-		type: "external_entity" as const,
+		type: "external_entity",
 		label: "External Entity",
 		icon: Globe,
 		description: "An actor outside the system",
+	},
+] as const;
+
+const BOUNDARY_ELEMENTS = [
+	{
+		type: "trust_boundary",
+		label: "Trust Boundary",
+		icon: ShieldAlert,
+		description: "A security trust zone boundary",
 	},
 ] as const;
 
@@ -35,6 +44,7 @@ export function ComponentPalette() {
 					{DFD_ELEMENTS.map((element) => (
 						<PaletteItem
 							key={element.type}
+							type={element.type}
 							icon={element.icon}
 							label={element.label}
 							description={element.description}
@@ -46,9 +56,17 @@ export function ComponentPalette() {
 					<h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 						Boundaries
 					</h3>
-					<p className="text-xs text-muted-foreground">
-						Trust boundaries will be added in the next sprint.
-					</p>
+					<div className="flex flex-col gap-1">
+						{BOUNDARY_ELEMENTS.map((element) => (
+							<PaletteItem
+								key={element.type}
+								type={element.type}
+								icon={element.icon}
+								label={element.label}
+								description={element.description}
+							/>
+						))}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -58,10 +76,12 @@ export function ComponentPalette() {
 function PaletteItem({
 	icon: Icon,
 	label,
+	type,
 	description,
 }: {
 	icon: React.ComponentType<{ className?: string }>;
 	label: string;
+	type: string;
 	description: string;
 }) {
 	return (
@@ -69,10 +89,7 @@ function PaletteItem({
 			className="flex cursor-grab items-center gap-3 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-border hover:bg-accent"
 			draggable
 			onDragStart={(e) => {
-				e.dataTransfer.setData(
-					"application/threatforge-element",
-					JSON.stringify({ type: label.toLowerCase().replace(" ", "_") }),
-				);
+				e.dataTransfer.setData("application/threatforge-element", JSON.stringify({ type }));
 				e.dataTransfer.effectAllowed = "copy";
 			}}
 		>

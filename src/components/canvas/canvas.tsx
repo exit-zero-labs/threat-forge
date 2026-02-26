@@ -1,6 +1,7 @@
 import { Shield } from "lucide-react";
 import { useModelStore } from "@/stores/model-store";
 import type { ThreatModel } from "@/types/threat-model";
+import { DfdCanvas } from "./dfd-canvas";
 
 export function Canvas() {
 	const model = useModelStore((s) => s.model);
@@ -9,13 +10,7 @@ export function Canvas() {
 		return <EmptyCanvas />;
 	}
 
-	return (
-		<div className="flex h-full items-center justify-center bg-background">
-			<p className="text-sm text-muted-foreground">
-				ReactFlow canvas will be integrated in the next sprint.
-			</p>
-		</div>
-	);
+	return <DfdCanvas />;
 }
 
 function createEmptyModel(): ThreatModel {
