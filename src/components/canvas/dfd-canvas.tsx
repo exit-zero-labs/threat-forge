@@ -5,6 +5,7 @@ import {
 	Controls,
 	MiniMap,
 	ReactFlow,
+	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect } from "react";
@@ -50,6 +51,7 @@ export function DfdCanvas() {
 	const deleteSelected = useCanvasStore((s) => s.deleteSelected);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
+	const { screenToFlowPosition } = useReactFlow();
 
 	// Sync canvas from model when it changes (new model loaded, file opened).
 	// `model` is intentionally in deps — syncFromModel reads from model-store internally,
@@ -83,12 +85,11 @@ export function DfdCanvas() {
 			try {
 				const parsed = JSON.parse(rawData) as { type: string };
 
-				// Get canvas-relative position
-				const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-				const position = {
-					x: event.clientX - reactFlowBounds.left,
-					y: event.clientY - reactFlowBounds.top,
-				};
+				// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
+				const position = screenToFlowPosition({
+					x: event.clientX,
+					y: event.clientY,
+				});
 
 				if (parsed.type === "trust_boundary") {
 					addTrustBoundary("New Boundary", position);
@@ -99,7 +100,7 @@ export function DfdCanvas() {
 				// Ignore invalid drag data
 			}
 		},
-		[addElement, addTrustBoundary],
+		[addElement, addTrustBoundary, screenToFlowPosition],
 	);
 
 	const onKeyDown = useCallback(
