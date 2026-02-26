@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/*
+ * ThreatForge Design Tokens
+ *
+ * Brand colors from Exit Zero Labs palette:
+ * - Zero:   #0A0F1E (deep navy, backgrounds)
+ * - Dusk:   #1E293B (secondary surfaces)
+ * - Signal: #00D97E (success/accent)
+ * - Ember:  #F97316 (warning/action)
+ * - Canvas: #FAFAF8 (light backgrounds)
+ * - Mist:   #94A3B8 (muted text)
+ *
+ * Fonts: Source Sans 3 (body), JetBrains Mono (code)
+ */
+
+@theme {
+	/* Colors — shadcn/ui compatible CSS variables */
+	--color-background: oklch(0.145 0 0);
+	--color-foreground: oklch(0.985 0 0);
+	--color-card: oklch(0.145 0 0);
+	--color-card-foreground: oklch(0.985 0 0);
+	--color-popover: oklch(0.145 0 0);
+	--color-popover-foreground: oklch(0.985 0 0);
+	--color-primary: oklch(0.985 0 0);
+	--color-primary-foreground: oklch(0.205 0 0);
+	--color-secondary: oklch(0.269 0 0);
+	--color-secondary-foreground: oklch(0.985 0 0);
+	--color-muted: oklch(0.269 0 0);
+	--color-muted-foreground: oklch(0.708 0 0);
+	--color-accent: oklch(0.269 0 0);
+	--color-accent-foreground: oklch(0.985 0 0);
+	--color-destructive: oklch(0.396 0.141 25.723);
+	--color-destructive-foreground: oklch(0.637 0.237 25.331);
+	--color-border: oklch(0.269 0 0);
+	--color-input: oklch(0.269 0 0);
+	--color-ring: oklch(0.556 0 0);
+	--color-chart-1: oklch(0.488 0.243 264.376);
+	--color-chart-2: oklch(0.696 0.17 162.48);
+	--color-chart-3: oklch(0.769 0.188 70.08);
+	--color-chart-4: oklch(0.627 0.265 303.9);
+	--color-chart-5: oklch(0.645 0.246 16.439);
+
+	/* ThreatForge brand accents */
+	--color-tf-zero: #0a0f1e;
+	--color-tf-dusk: #1e293b;
+	--color-tf-signal: #00d97e;
+	--color-tf-ember: #f97316;
+	--color-tf-canvas: #fafaf8;
+	--color-tf-mist: #94a3b8;
+
+	/* Sidebar — for shadcn sidebar component */
+	--color-sidebar: oklch(0.145 0 0);
+	--color-sidebar-foreground: oklch(0.985 0 0);
+	--color-sidebar-primary: oklch(0.488 0.243 264.376);
+	--color-sidebar-primary-foreground: oklch(0.985 0 0);
+	--color-sidebar-accent: oklch(0.269 0 0);
+	--color-sidebar-accent-foreground: oklch(0.985 0 0);
+	--color-sidebar-border: oklch(0.269 0 0);
+	--color-sidebar-ring: oklch(0.556 0 0);
+
+	--radius-lg: 0.5rem;
+	--radius-md: calc(var(--radius-lg) - 2px);
+	--radius-sm: calc(var(--radius-lg) - 4px);
+
+	--font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+	--font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/*
+ * Base styles — dark mode by default (desktop app)
+ */
+@layer base {
+	* {
+		@apply border-border;
+	}
+
+	body {
+		@apply bg-background text-foreground;
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	/* Prevent text selection on UI elements (desktop app feel) */
+	button,
+	[role="button"],
+	label,
+	nav {
+		user-select: none;
+	}
+
+	/* Prevent overscroll bounce (desktop app feel) */
+	html,
+	body {
+		overscroll-behavior: none;
+		overflow: hidden;
+		height: 100%;
+		width: 100%;
+		margin: 0;
+		padding: 0;
+	}
+
+	#root {
+		height: 100%;
+		width: 100%;
+	}
+}
