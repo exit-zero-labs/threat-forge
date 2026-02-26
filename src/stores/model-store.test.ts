@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import type { ThreatModel } from "@/types/threat-model";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Threat, ThreatModel } from "@/types/threat-model";
 import { useModelStore } from "./model-store";
+
+vi.mock("@tauri-apps/api/core", () => ({
+	invoke: vi.fn(),
+}));
 
 const mockModel: ThreatModel = {
 	version: "1.0",
@@ -33,6 +37,15 @@ const mockModel: ThreatModel = {
 	],
 };
 
+const mockThreat: Threat = {
+	id: "threat-1",
+	title: "SQL Injection",
+	category: "Tampering",
+	element: "web-app",
+	severity: "high",
+	description: "Malicious SQL in input",
+};
+
 describe("useModelStore", () => {
 	beforeEach(() => {
 		useModelStore.setState({
@@ -41,6 +54,7 @@ describe("useModelStore", () => {
 			isDirty: false,
 			selectedElementId: null,
 			selectedThreatId: null,
+			isAnalyzing: false,
 		});
 	});
 
@@ -88,5 +102,63 @@ describe("useModelStore", () => {
 		useModelStore.getState().setModel(mockModel, "/new/path.yaml");
 		expect(useModelStore.getState().selectedElementId).toBeNull();
 		expect(useModelStore.getState().selectedThreatId).toBeNull();
+	});
+
+	it("adds a single threat", () => {
+		useModelStore.getState().setModel(mockModel, null);
+		useModelStore.getState().addThreat(mockThreat);
+		const state = useModelStore.getState();
+		expect(state.model?.threats).toHaveLength(1);
+		expect(state.model?.threats[0].title).toBe("SQL Injection");
+		expect(state.isDirty).toBe(true);
+	});
+
+	it("adds multiple threats at once", () => {
+		useModelStore.getState().setModel(mockModel, null);
+		const threats: Threat[] = [mockThreat, { ...mockThreat, id: "threat-2", title: "XSS Attack" }];
+		useModelStore.getState().addThreats(threats);
+		expect(useModelStore.getState().model?.threats).toHaveLength(2);
+	});
+
+	it("does not mark dirty when adding zero threats", () => {
+		useModelStore.getState().setModel(mockModel, null);
+		useModelStore.getState().addThreats([]);
+		expect(useModelStore.getState().isDirty).toBe(false);
+	});
+
+	it("updates a threat", () => {
+		const modelWithThreat = { ...mockModel, threats: [mockThreat] };
+		useModelStore.getState().setModel(modelWithThreat, null);
+		useModelStore.getState().updateThreat("threat-1", { severity: "critical" });
+		const updated = useModelStore.getState().model?.threats[0];
+		expect(updated?.severity).toBe("critical");
+		expect(updated?.title).toBe("SQL Injection");
+		expect(useModelStore.getState().isDirty).toBe(true);
+	});
+
+	it("deletes a threat", () => {
+		const modelWithThreat = { ...mockModel, threats: [mockThreat] };
+		useModelStore.getState().setModel(modelWithThreat, null);
+		useModelStore.getState().deleteThreat("threat-1");
+		expect(useModelStore.getState().model?.threats).toHaveLength(0);
+		expect(useModelStore.getState().isDirty).toBe(true);
+	});
+
+	it("clears selectedThreatId when the selected threat is deleted", () => {
+		const modelWithThreat = { ...mockModel, threats: [mockThreat] };
+		useModelStore.getState().setModel(modelWithThreat, null);
+		useModelStore.getState().setSelectedThreat("threat-1");
+		useModelStore.getState().deleteThreat("threat-1");
+		expect(useModelStore.getState().selectedThreatId).toBeNull();
+	});
+
+	it("updates an element", () => {
+		useModelStore.getState().setModel(mockModel, null);
+		useModelStore.getState().updateElement("web-app", { name: "Updated App", trust_zone: "dmz" });
+		const element = useModelStore.getState().model?.elements[0];
+		expect(element?.name).toBe("Updated App");
+		expect(element?.trust_zone).toBe("dmz");
+		expect(element?.type).toBe("process");
+		expect(useModelStore.getState().isDirty).toBe(true);
 	});
 });

@@ -180,3 +180,64 @@ Branch: `feat/reactflow-canvas`
 - Trust boundaries insert at beginning of nodes array so they render behind element nodes
 - Palette now uses `type` prop directly instead of deriving from label string conversion
 - Delete key (Delete/Backspace) removes selected nodes + connected edges from both canvas and model store
+
+---
+
+## 2026-02-26 — Session 3: STRIDE Engine + Threat Management
+
+Branch: `feat/stride-engine`
+
+### Plan
+
+**Rust STRIDE Engine**
+- [x] Implement STRIDE rule engine in `src-tauri/src/stride/mod.rs`
+  - [x] Define `ThreatRule` struct with hardcoded rules
+  - [x] Rules per element type: Process (S,T,R,ID,DoS,EoP), DataStore (T,ID,DoS), ExternalEntity (S,R)
+  - [x] Rules per data flow: context-aware (cross-boundary severity boost)
+  - [x] `analyze()` method: given a ThreatModel, return Vec<Threat> suggestions
+  - [x] Deduplication: skip threats already in the model (match on element+category)
+  - [x] Unit tests: 9 tests (per-element-type counts, total count, dedup, titles, cross-boundary boost)
+
+**Tauri Command**
+- [x] Create `src-tauri/src/commands/stride_commands.rs` with `analyze_stride` command
+- [x] Register command in `lib.rs`
+- [x] Wire up in `commands/mod.rs`
+
+**Frontend: Model Store + Threat CRUD**
+- [x] Add `addThreat`, `addThreats`, `updateThreat`, `deleteThreat` actions to model-store
+- [x] Add `updateElement` action for property editing
+- [x] Add `analyzeThreats` action that calls Tauri IPC `analyze_stride`
+- [x] Add `isAnalyzing` state for loading indicator
+- [x] Unit tests: 7 new tests (add, add-bulk, add-zero, update, delete, delete-clears-selection, updateElement)
+
+**Frontend: Threat Analysis Panel**
+- [x] Rewrite ThreatsTab: clickable threat cards, "Analyze" button, empty state with CTA
+- [x] Threat detail editing: inline edit for title, severity, category, description, mitigation
+- [x] Threat-to-element linking: click threat → navigate to linked element in properties
+- [x] Element-to-threat filtering: toggle to show only threats for selected element
+- [x] Mitigation tracking: status select + description textarea
+
+**Frontend: Element Properties Editing**
+- [x] Rewrite PropertiesTab: editable fields for name, trust zone, description, technologies
+- [x] Changes propagate to model-store (`updateElement`) and canvas-store (node label + trust zone sync)
+- [x] Related threats section: shows threats linked to the selected element with clickable links
+
+**Validation**
+- [x] Validate: `npx biome check .` passes — 33 files, 0 errors
+- [x] Validate: `npx vitest --run` passes — 26 tests in 3 files
+- [x] Validate: `npx tsc --noEmit` passes — no type errors
+- [x] Validate: `cargo test` passes — 22 tests
+- [x] Validate: `cargo clippy` passes — clean (1 expected dead_code warning)
+- [ ] Validate: STRIDE analysis produces threats when clicking Analyze (needs manual check)
+- [ ] Validate: threat editing inline form works (needs manual check)
+- [ ] Validate: element property editing syncs to canvas (needs manual check)
+
+### Notes
+
+- STRIDE engine has 14 rules: 6 for Process (S,T,R,ID,DoS,EoP), 3 for DataStore (T,ID,DoS), 2 for ExternalEntity (S,R), 3 for DataFlow (T,ID,DoS)
+- Cross-boundary severity boosting: flows crossing trust boundaries get bumped (Medium→High, Low→Medium)
+- Deduplication uses (element_id, category) key pair to avoid duplicate threats
+- ThreatsTab and PropertiesTab extracted to separate component files from right-panel.tsx
+- PropertiesTab syncs name/trustZone changes directly to canvas-store nodes for immediate visual feedback
+- Biome-ignore on FieldGroup label: `children` always contains a form control but Biome can't verify through the prop
+- `invoke` from `@tauri-apps/api/core` is mocked in tests via `vi.mock`

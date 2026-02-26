@@ -5,7 +5,8 @@ mod models;
 mod stride;
 
 use commands::{
-    create_new_model, open_layout, open_threat_model, save_layout, save_threat_model,
+    analyze_stride, create_new_model, open_layout, open_threat_model, save_layout,
+    save_threat_model,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -18,6 +19,7 @@ pub fn run() {
             save_threat_model,
             open_layout,
             save_layout,
+            analyze_stride,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
