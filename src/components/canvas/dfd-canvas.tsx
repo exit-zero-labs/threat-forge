@@ -51,15 +51,30 @@ export function DfdCanvas() {
 	const deleteSelected = useCanvasStore((s) => s.deleteSelected);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
-	const { screenToFlowPosition } = useReactFlow();
+	const {
+		screenToFlowPosition,
+		setViewport: setReactFlowViewport,
+		fitView: fitViewFn,
+	} = useReactFlow();
 
 	// Sync canvas from model when it changes (new model loaded, file opened).
 	// `model` is intentionally in deps — syncFromModel reads from model-store internally,
 	// but we need the effect to re-run when the model reference changes.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: model triggers re-sync
 	useEffect(() => {
+		const hadPendingLayout = useCanvasStore.getState().pendingLayout != null;
 		syncFromModel();
-	}, [syncFromModel, model]);
+
+		// After nodes are set, restore saved viewport or fit to new content
+		requestAnimationFrame(() => {
+			if (hadPendingLayout) {
+				const { viewport } = useCanvasStore.getState();
+				setReactFlowViewport(viewport);
+			} else {
+				fitViewFn();
+			}
+		});
+	}, [syncFromModel, model, setReactFlowViewport, fitViewFn]);
 
 	const onConnect = useCallback(
 		(connection: Connection) => {

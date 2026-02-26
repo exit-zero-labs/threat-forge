@@ -1,7 +1,13 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { create } from "zustand";
-import type { DataFlow, Element, ElementType, TrustBoundary } from "@/types/threat-model";
+import type {
+	DataFlow,
+	DiagramLayout,
+	Element,
+	ElementType,
+	TrustBoundary,
+} from "@/types/threat-model";
 import { useModelStore } from "./model-store";
 
 /** ReactFlow node data payload for DFD elements.
@@ -38,6 +44,9 @@ interface CanvasState {
 	/** Element type currently being dragged from palette (workaround for WKWebView dataTransfer issues) */
 	draggedType: string | null;
 
+	/** Layout to apply on next syncFromModel (set before loading a model) */
+	pendingLayout: DiagramLayout | null;
+
 	// ReactFlow change handlers
 	onNodesChange: OnNodesChange<DfdNode>;
 	onEdgesChange: OnEdgesChange<DfdEdge>;
@@ -45,6 +54,7 @@ interface CanvasState {
 
 	// Drag state
 	setDraggedType: (type: string | null) => void;
+	setPendingLayout: (layout: DiagramLayout | null) => void;
 
 	// Canvas actions
 	addElement: (type: ElementType, position: { x: number; y: number }) => void;
@@ -152,6 +162,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	edges: [],
 	viewport: { x: 0, y: 0, zoom: 1 },
 	draggedType: null,
+	pendingLayout: null,
 
 	onNodesChange: (changes) => {
 		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
@@ -202,6 +213,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 	setViewport: (viewport) => set({ viewport }),
 	setDraggedType: (type) => set({ draggedType: type }),
+	setPendingLayout: (layout) => set({ pendingLayout: layout }),
 
 	addElement: (type, position) => {
 		const id = generateElementId(type);
@@ -348,9 +360,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	syncFromModel: () => {
 		const model = useModelStore.getState().model;
 		if (!model) {
-			set({ nodes: [], edges: [] });
+			set({ nodes: [], edges: [], pendingLayout: null });
 			return;
 		}
+
+		// Consume pending layout (set before loading a model via setPendingLayout)
+		const layout = get().pendingLayout;
+		const layoutPositions = layout ? new Map(layout.nodes.map((n) => [n.id, n])) : null;
 
 		// Reset counters based on existing IDs
 		const maxElementNum = model.elements.reduce((max, e) => {
@@ -369,13 +385,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		flowCounter = maxFlowNum;
 		boundaryCounter = maxBoundaryNum;
 
-		// Keep existing positions for nodes that still exist
+		// Keep existing positions for nodes that still exist (used when model changes in-place)
 		const existingPositions = new Map(get().nodes.map((n) => [n.id, n.position]));
+
+		// Position priority: saved layout > existing canvas positions > default grid
+		function resolvePosition(
+			id: string,
+			defaultPos: { x: number; y: number },
+		): { x: number; y: number } {
+			const saved = layoutPositions?.get(id);
+			if (saved) return { x: saved.x, y: saved.y };
+			return existingPositions.get(id) ?? defaultPos;
+		}
 
 		// Convert trust boundaries to group nodes
 		const boundaryNodes: DfdNode[] = model.trust_boundaries.map((b, i) => {
-			const pos = existingPositions.get(b.id) ?? { x: 50 + i * 450, y: 50 };
-			return boundaryToNode(b, pos);
+			const pos = resolvePosition(b.id, { x: 50 + i * 450, y: 50 });
+			const node = boundaryToNode(b, pos);
+			// Restore saved dimensions for boundaries
+			const saved = layoutPositions?.get(b.id);
+			if (saved?.width != null && saved?.height != null) {
+				node.style = { ...node.style, width: saved.width, height: saved.height };
+			}
+			return node;
 		});
 
 		// Build a set of elements that belong to boundaries
@@ -388,10 +420,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		// Convert elements to nodes
 		const elementNodes: DfdNode[] = model.elements.map((e, i) => {
-			const pos = existingPositions.get(e.id) ?? {
+			const pos = resolvePosition(e.id, {
 				x: 100 + (i % 4) * 250,
 				y: 100 + Math.floor(i / 4) * 200,
-			};
+			});
 			const node = elementToNode(e, pos);
 
 			// Parent to boundary if contained
@@ -408,6 +440,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const edges: DfdEdge[] = model.data_flows.map(flowToEdge);
 
 		// Boundaries first (rendered behind), then elements
-		set({ nodes: [...boundaryNodes, ...elementNodes], edges });
+		set({
+			nodes: [...boundaryNodes, ...elementNodes],
+			edges,
+			pendingLayout: null,
+			...(layout ? { viewport: layout.viewport } : {}),
+		});
 	},
 }));
