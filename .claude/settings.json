@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [ -n \"$FILE_PATH\" ]; then case \"$FILE_PATH\" in *.ts|*.tsx|*.js|*.jsx|*.json) npx biome check --write \"$FILE_PATH\" 2>/dev/null || true ;; esac; fi",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [ -n \"$FILE_PATH\" ]; then case \"$FILE_PATH\" in *.env*|*credentials*|*secret*) echo \"Blocked: cannot write to sensitive file $FILE_PATH\" >&2; exit 2 ;; esac; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Reminder: Run npx biome check --write . and cargo clippy before committing.'"
+          }
+        ]
+      }
+    ]
+  }
+}

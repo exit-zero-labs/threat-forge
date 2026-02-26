@@ -1,0 +1,74 @@
+name: Bug Report
+description: Report a bug in ThreatForge
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill out the sections below so we can reproduce and fix it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+      placeholder: "When I click 'Save', the app freezes instead of writing the YAML file."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Open ThreatForge
+        2. Create a new threat model
+        3. Add an element to the canvas
+        4. Click Save
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS
+        - Windows
+        - Linux (Ubuntu/Debian)
+        - Linux (Fedora/RHEL)
+        - Linux (Arch)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ThreatForge Version
+      description: Found in Settings or the app title bar.
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Output / Logs
+      description: Paste any error messages or console output. This will be formatted as code automatically.
+      render: shell
+
+  - type: textarea
+    id: yaml
+    attributes:
+      label: Threat Model File
+      description: If the bug is related to file loading/saving, paste the relevant YAML (redact sensitive content).
+      render: yaml
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Screenshots, screen recordings, or anything else that helps.
