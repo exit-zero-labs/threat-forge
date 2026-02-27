@@ -1,7 +1,17 @@
-import { FilePlus, FolderOpen, LayoutPanelLeft, PanelRight, Save, Shield } from "lucide-react";
+import {
+	FilePlus,
+	FolderOpen,
+	LayoutPanelLeft,
+	Palette,
+	PanelRight,
+	Save,
+	Shield,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
+import { ThemePicker } from "../panels/theme-picker";
 
 export function TopMenuBar() {
 	const isDirty = useModelStore((s) => s.isDirty);
@@ -14,6 +24,25 @@ export function TopMenuBar() {
 	const displayTitle = isDirty ? `${title} *` : title;
 	const isMac = navigator.platform.includes("Mac");
 	const modKey = isMac ? "\u2318" : "Ctrl+";
+
+	const [themePickerOpen, setThemePickerOpen] = useState(false);
+	const themePickerRef = useRef<HTMLDivElement>(null);
+
+	const closeThemePicker = useCallback(() => setThemePickerOpen(false), []);
+
+	// Close theme picker when clicking outside
+	useEffect(() => {
+		if (!themePickerOpen) return;
+
+		const handleClickOutside = (event: MouseEvent) => {
+			if (themePickerRef.current && !themePickerRef.current.contains(event.target as Node)) {
+				setThemePickerOpen(false);
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => document.removeEventListener("mousedown", handleClickOutside);
+	}, [themePickerOpen]);
 
 	return (
 		<header className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3">
@@ -48,6 +77,14 @@ export function TopMenuBar() {
 
 			{/* View toggles */}
 			<div className="flex items-center gap-1">
+				<div ref={themePickerRef} className="relative">
+					<MenuButton
+						icon={<Palette className="h-4 w-4" />}
+						tooltip="Theme"
+						onClick={() => setThemePickerOpen((prev) => !prev)}
+					/>
+					{themePickerOpen && <ThemePicker onClose={closeThemePicker} />}
+				</div>
 				<MenuButton
 					icon={<LayoutPanelLeft className="h-4 w-4" />}
 					tooltip="Toggle component palette"

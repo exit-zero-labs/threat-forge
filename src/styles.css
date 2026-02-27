@@ -12,10 +12,14 @@
  * - Mist:   #94A3B8 (muted text)
  *
  * Fonts: Source Sans 3 (body), JetBrains Mono (code)
+ *
+ * Theme tokens are defined in @theme as defaults (dark/Midnight).
+ * At runtime, src/lib/themes/apply-theme.ts overrides --color-* variables
+ * on document.documentElement to switch themes.
  */
 
 @theme {
-	/* Colors — shadcn/ui compatible CSS variables */
+	/* Colors — shadcn/ui compatible CSS variables (dark/Midnight defaults) */
 	--color-background: oklch(0.145 0 0);
 	--color-foreground: oklch(0.985 0 0);
 	--color-card: oklch(0.145 0 0);
@@ -41,7 +45,7 @@
 	--color-chart-4: oklch(0.627 0.265 303.9);
 	--color-chart-5: oklch(0.645 0.246 16.439);
 
-	/* ThreatForge brand accents */
+	/* ThreatForge brand accents — constant across all themes */
 	--color-tf-zero: #0a0f1e;
 	--color-tf-dusk: #1e293b;
 	--color-tf-signal: #00d97e;
@@ -65,6 +69,46 @@
 
 	--font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
 	--font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/*
+ * Light mode CSS-only fallback — applied when .light class is on <html>.
+ * At runtime these are typically overridden by inline styles from applyTheme(),
+ * but this provides a non-JS light mode baseline.
+ */
+html.light {
+	--color-background: oklch(1 0 0);
+	--color-foreground: oklch(0.145 0 0);
+	--color-card: oklch(1 0 0);
+	--color-card-foreground: oklch(0.145 0 0);
+	--color-popover: oklch(1 0 0);
+	--color-popover-foreground: oklch(0.145 0 0);
+	--color-primary: oklch(0.205 0 0);
+	--color-primary-foreground: oklch(0.985 0 0);
+	--color-secondary: oklch(0.965 0 0);
+	--color-secondary-foreground: oklch(0.205 0 0);
+	--color-muted: oklch(0.965 0 0);
+	--color-muted-foreground: oklch(0.45 0 0);
+	--color-accent: oklch(0.965 0 0);
+	--color-accent-foreground: oklch(0.205 0 0);
+	--color-destructive: oklch(0.577 0.245 27.325);
+	--color-destructive-foreground: oklch(0.577 0.245 27.325);
+	--color-border: oklch(0.922 0 0);
+	--color-input: oklch(0.922 0 0);
+	--color-ring: oklch(0.708 0 0);
+	--color-chart-1: oklch(0.488 0.243 264.376);
+	--color-chart-2: oklch(0.6 0.2 160);
+	--color-chart-3: oklch(0.65 0.2 70);
+	--color-chart-4: oklch(0.55 0.25 303.9);
+	--color-chart-5: oklch(0.55 0.25 16.439);
+	--color-sidebar: oklch(0.985 0 0);
+	--color-sidebar-foreground: oklch(0.145 0 0);
+	--color-sidebar-primary: oklch(0.488 0.243 264.376);
+	--color-sidebar-primary-foreground: oklch(0.985 0 0);
+	--color-sidebar-accent: oklch(0.965 0 0);
+	--color-sidebar-accent-foreground: oklch(0.205 0 0);
+	--color-sidebar-border: oklch(0.922 0 0);
+	--color-sidebar-ring: oklch(0.708 0 0);
 }
 
 /*
