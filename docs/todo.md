@@ -1,536 +1,351 @@
-# ThreatForge — Todo
+# Threat Forge - TODO List
 
 Shared execution plan for humans and LLM agents. Update this file before, during, and after every work session.
 
 ---
 
-## 2026-02-26 — README + repo compliance docs
-
-### Plan
-
-- [x] Rewrite `README.md` with proper project overview, dev setup, mission, contributing, license
-- [x] Create `LICENSE` (Apache 2.0, owned by Exit Zero Labs LLC)
-- [x] Create `NOTICE` (copyright attribution file for Apache 2.0)
-- [x] Create `CONTRIBUTING.md` (how to contribute, code style, PR process)
-- [x] Create `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1)
-- [x] Create `SECURITY.md` (vulnerability reporting — critical for a security tool)
-- [x] Create `.github/ISSUE_TEMPLATE/bug-report.yml` (structured bug reports)
-- [x] Create `.github/ISSUE_TEMPLATE/feature-request.yml` (structured feature requests)
-- [x] Create `.github/PULL_REQUEST_TEMPLATE.md` (PR checklist)
-- [x] Create `.github/FUNDING.yml` (GitHub Sponsors)
-- [x] Validate: all files created, links between docs are consistent
-
-### Notes
-
-- License: Apache 2.0 downloaded from apache.org — `NOTICE` file contains Exit Zero Labs LLC copyright
-- Used YAML-based issue templates (`.yml`) for better structured input vs freeform Markdown
-- SECURITY.md references GitHub private vulnerability reporting + email
-- All emails point to `admin@exitzerolabs.com`, website to `exitzerolabs.com`
-- README includes YAML file format example to hook developers immediately
-
----
-
-## 2026-02-26 — Session 1: Foundation + Scaffold
-
-Branch: `feat/foundation-scaffold`
-
-### Plan
-
-**Dependencies & Tooling**
-
-- [x] Upgrade React 18 → React 19 + update types
-- [x] Install and configure Tailwind CSS 4
-- [x] Install and configure Biome (linting + formatting)
-- [x] Install shadcn/ui + required dependencies (cva, clsx, tailwind-merge, lucide-react)
-- [x] Install Zustand for state management
-- [x] Install ReactFlow (xyflow) for diagramming (@xyflow/react v12)
-- [x] Install Vitest + React Testing Library for frontend tests
-- [x] Add Rust dependencies: `serde_yaml`, `thiserror`, `uuid`, `chrono`
-- [x] Add format/lint npm scripts to package.json (check, format, test, test:watch)
-- [x] Remove default scaffold code (App.tsx, App.css, greet command, logos)
-
-**Tailwind + shadcn/ui + Dark Mode**
-
-- [x] Configure Tailwind CSS 4 with Vite (@tailwindcss/vite plugin)
-- [x] Set up ThreatForge design tokens (colors, fonts) in `src/styles.css`
-- [x] Configure shadcn/ui with dark mode support (oklch color system)
-- [x] Create base CSS with ThreatForge palette (Zero, Dusk, Signal, Ember, Canvas, Mist)
-
-**App Shell**
-
-- [x] Create app layout: left sidebar + main canvas + right panel
-- [x] Create top menu bar component with panel toggles
-- [x] Create left sidebar: component palette with DFD element types (drag support)
-- [x] Create main area: canvas placeholder with empty state + "New Model" button
-- [x] Create right panel: properties/threats tabs (collapsible)
-- [x] Create bottom status bar component (element/flow/threat counts, dirty indicator)
-- [x] Wire up basic Zustand store for UI state (panel visibility, tab selection)
-- [x] Wire up model store for threat model state (model, file path, dirty, selection)
-
-**Rust Backend Structure**
-
-- [x] Set up module structure: `commands/`, `models/`, `stride/`, `file_io/`, `errors.rs`
-- [x] Define core YAML schema types in `models/` (ThreatModel, Element, DataFlow, TrustBoundary, Threat, Diagram, Metadata, DiagramLayout)
-- [x] Add serialization/deserialization tests (round-trip, sample YAML, unknown fields, layout)
-- [x] Create Tauri commands for file operations (create, open, save model + layout)
-- [x] Add file I/O with schema validation (version check, ID uniqueness, reference integrity)
-- [x] Define error types with `thiserror` (FileRead, FileWrite, YamlParse, InvalidReference, etc.)
-- [x] Run `cargo clippy` — passes (2 expected dead_code warnings for unused utility fns)
-
-**Validation**
-
-- [ ] Validate: `npm run dev` launches the app with new shell (needs manual check)
-- [x] Validate: `npx biome check .` passes — 23 files, 0 errors
-- [x] Validate: `cargo clippy` passes — clean
-- [x] Validate: `npx vitest --run` passes — 11 tests in 2 files
-- [x] Validate: `cargo test` passes — 13 tests in 3 modules
-- [x] Validate: `npx tsc --noEmit` passes — no type errors
-- [ ] Validate: dark mode renders correctly (needs manual check)
-
-### Notes
-
-- React upgraded to 19.2.4 (from 18.3.1)
-- @xyflow/react v12 installed (this is ReactFlow's new package name)
-- Biome v2.4.4 with `tailwindDirectives: true` for CSS parsing
-- Biome configured with `noDefaultExport: error` + biome-ignore comments on config files (Vite/Vitest require default exports)
-- Biome `noStaticElementInteractions` disabled — palette items need drag handlers on divs
-- serde_yaml v0.9 is marked deprecated but still the standard for YAML in Rust (serde_yml is the successor but less mature)
-- Rust tests validate the full YAML schema from the project document: elements, data flows, trust boundaries, threats, diagrams
-- File reader validates: schema version, duplicate IDs, element/flow cross-references in threats and boundaries
-- TypeScript types in `src/types/threat-model.ts` mirror the Rust types exactly
-- Zustand stores: `ui-store` (panel state) and `model-store` (threat model state, selection, dirty tracking)
-- Tauri window increased to 1280x800 (from 800x600) with 900x600 minimum
-- CSP tightened from `null` to proper policy
-- App identifier changed to `com.exitzerolabs.threatforge`
-
----
-
-## 2026-02-26 — Session 2: ReactFlow Canvas
-
-Branch: `feat/reactflow-canvas`
-
-### Plan
-
-**Architecture: Store ↔ Canvas sync**
-- [x] Create `canvas-store.ts` — manages ReactFlow nodes/edges, viewport, derived from model-store
-- [x] Conversion functions: model elements → ReactFlow nodes, data flows → ReactFlow edges
-- [x] Bidirectional sync: canvas changes propagate to model-store, model changes update canvas
-
-**Custom DFD Node Types**
-- [x] `ProcessNode` — rounded rectangle with name + icon (DFD process)
-- [x] `DataStoreNode` — parallel-line style rectangle (DFD data store)
-- [x] `ExternalEntityNode` — squared rectangle (DFD external entity)
-- [x] Shared node styling: selected state, hover state, handles for connections
-- [x] Register custom node types with ReactFlow
-
-**Custom Edge Type**
-- [x] `DataFlowEdge` — labeled edge with protocol and data info
-- [x] Edge labels showing protocol (e.g., "HTTPS/TLS")
-- [x] Animated edge style for authenticated flows
-
-**Trust Boundaries**
-- [x] Trust boundary rendered as ReactFlow group node
-- [x] Visual: dashed border, label, contains child elements
-- [x] Update palette to include trust boundary creation
-
-**Canvas Integration**
-- [x] Replace canvas placeholder with ReactFlow canvas (`DfdCanvas` component)
-- [x] `ReactFlowProvider` wrapper in app layout
-- [x] Canvas background (dots pattern)
-- [x] Minimap for navigation
-- [x] Canvas controls (zoom in/out/fit)
-
-**Palette → Canvas drag-drop**
-- [x] Handle drop events on canvas to create new elements
-- [x] Auto-generate element IDs from type + counter
-- [x] Place element at drop position
-- [x] Mark model dirty after any canvas change
-
-**Selection + Properties sync**
-- [x] Node click → update selectedElementId in model-store
-- [x] Right panel properties tab shows selected element (wired via existing right-panel component)
-- [x] Click canvas background → deselect
-
-**Edge Creation**
-- [x] Connect two nodes by dragging from handle to handle
-- [x] Create DataFlow in model-store on connection
-- [x] Auto-generate flow IDs
-
-**Testing**
-- [x] Canvas store tests: 8 tests (sync, add element, add flow, add boundary, parent assignment, dirty tracking, ID counter reset)
-
-**Validation**
-- [x] Validate: `npx biome check .` passes — 31 files, 0 errors
-- [x] Validate: `npx vitest --run` passes — 19 tests in 3 files
-- [x] Validate: `npx tsc --noEmit` passes — no type errors
-- [x] Validate: `cargo test` passes — 13 tests
-- [ ] Validate: can drop elements from palette onto canvas (needs manual check)
-- [ ] Validate: can connect elements with data flow edges (needs manual check)
-- [ ] Validate: selecting node shows properties in right panel (needs manual check)
-- [ ] Validate: trust boundaries render as groups (needs manual check)
-
-### Notes
-
-- `src/app.tsx` was missing from the merged PR — recreated as thin wrapper around `AppLayout`
-- ReactFlow v12 `Node<T>` / `Edge<T>` generics require `T` to satisfy `Record<string, unknown>` — solved by using `type` with index signatures instead of `interface` for `DfdNodeData` / `DfdEdgeData`
-- Node components use inline prop types `{ data: DfdNodeData; selected?: boolean }` instead of `NodeProps<T>` to avoid generic constraint mismatch with `NodeTypes`
-- Edge component casts `data` from `EdgeProps` to `DfdEdgeData` since `EdgeTypes` has same constraint issue
-- `applyNodeChanges` / `applyEdgeChanges` return generic `Node[]` / `Edge[]` — cast to `DfdNode[]` / `DfdEdge[]`
-- Biome-ignore on useEffect dependency: `model` intentionally in deps to trigger re-sync when model changes
-- Trust boundaries insert at beginning of nodes array so they render behind element nodes
-- Palette now uses `type` prop directly instead of deriving from label string conversion
-- Delete key (Delete/Backspace) removes selected nodes + connected edges from both canvas and model store
-
----
-
-## 2026-02-26 — Session 3: STRIDE Engine + Threat Management
-
-Branch: `feat/stride-engine`
-
-### Plan
-
-**Rust STRIDE Engine**
-- [x] Implement STRIDE rule engine in `src-tauri/src/stride/mod.rs`
-  - [x] Define `ThreatRule` struct with hardcoded rules
-  - [x] Rules per element type: Process (S,T,R,ID,DoS,EoP), DataStore (T,ID,DoS), ExternalEntity (S,R)
-  - [x] Rules per data flow: context-aware (cross-boundary severity boost)
-  - [x] `analyze()` method: given a ThreatModel, return Vec<Threat> suggestions
-  - [x] Deduplication: skip threats already in the model (match on element+category)
-  - [x] Unit tests: 9 tests (per-element-type counts, total count, dedup, titles, cross-boundary boost)
-
-**Tauri Command**
-- [x] Create `src-tauri/src/commands/stride_commands.rs` with `analyze_stride` command
-- [x] Register command in `lib.rs`
-- [x] Wire up in `commands/mod.rs`
-
-**Frontend: Model Store + Threat CRUD**
-- [x] Add `addThreat`, `addThreats`, `updateThreat`, `deleteThreat` actions to model-store
-- [x] Add `updateElement` action for property editing
-- [x] Add `analyzeThreats` action that calls Tauri IPC `analyze_stride`
-- [x] Add `isAnalyzing` state for loading indicator
-- [x] Unit tests: 7 new tests (add, add-bulk, add-zero, update, delete, delete-clears-selection, updateElement)
-
-**Frontend: Threat Analysis Panel**
-- [x] Rewrite ThreatsTab: clickable threat cards, "Analyze" button, empty state with CTA
-- [x] Threat detail editing: inline edit for title, severity, category, description, mitigation
-- [x] Threat-to-element linking: click threat → navigate to linked element in properties
-- [x] Element-to-threat filtering: toggle to show only threats for selected element
-- [x] Mitigation tracking: status select + description textarea
-
-**Frontend: Element Properties Editing**
-- [x] Rewrite PropertiesTab: editable fields for name, trust zone, description, technologies
-- [x] Changes propagate to model-store (`updateElement`) and canvas-store (node label + trust zone sync)
-- [x] Related threats section: shows threats linked to the selected element with clickable links
-
-**Validation**
-- [x] Validate: `npx biome check .` passes — 33 files, 0 errors
-- [x] Validate: `npx vitest --run` passes — 26 tests in 3 files
-- [x] Validate: `npx tsc --noEmit` passes — no type errors
-- [x] Validate: `cargo test` passes — 22 tests
-- [x] Validate: `cargo clippy` passes — clean (1 expected dead_code warning)
-- [ ] Validate: STRIDE analysis produces threats when clicking Analyze (needs manual check)
-- [ ] Validate: threat editing inline form works (needs manual check)
-- [ ] Validate: element property editing syncs to canvas (needs manual check)
-
-### Notes
-
-- STRIDE engine has 14 rules: 6 for Process (S,T,R,ID,DoS,EoP), 3 for DataStore (T,ID,DoS), 2 for ExternalEntity (S,R), 3 for DataFlow (T,ID,DoS)
-- Cross-boundary severity boosting: flows crossing trust boundaries get bumped (Medium→High, Low→Medium)
-- Deduplication uses (element_id, category) key pair to avoid duplicate threats
-- ThreatsTab and PropertiesTab extracted to separate component files from right-panel.tsx
-- PropertiesTab syncs name/trustZone changes directly to canvas-store nodes for immediate visual feedback
-- Biome-ignore on FieldGroup label: `children` always contains a form control but Biome can't verify through the prop
-- `invoke` from `@tauri-apps/api/core` is mocked in tests via `vi.mock`
-
----
-
-## 2026-02-26 — Session 4: Integration + Polish
-
-Branch: `feat/integration-polish`
-
-### Plan
-
-**Dependencies**
-- [x] Install `@tauri-apps/plugin-dialog` (npm) + `tauri-plugin-dialog` (Cargo)
-- [x] Add `dialog:default` permission to capabilities
-
-**File Operations Hook**
-- [x] Create `src/hooks/use-file-operations.ts` with `newModel`, `openModel`, `saveModel`, `saveModelAs`, `closeModel`
-- [x] Wire Tauri dialog for open/save file pickers (`.threatforge.yaml` filter)
-- [x] Update `modified` timestamp before save
-- [x] Unsaved changes confirmation before New/Open when dirty
-- [x] Sync canvas store after model load (deferred via setTimeout)
-
-**Top Menu Bar**
-- [x] Add file operation buttons: New, Open, Save
-- [x] Show keyboard shortcut hints in tooltips (platform-aware: ⌘ on Mac, Ctrl+ on Windows/Linux)
-
-**Welcome Screen**
-- [x] Add "Open Existing" button to empty canvas
-- [x] Wire to file open dialog
-
-**Keyboard Shortcuts**
-- [x] Create `src/hooks/use-keyboard-shortcuts.ts`
-- [x] Cmd/Ctrl+N → new model, Cmd/Ctrl+O → open, Cmd/Ctrl+S → save
-- [x] Register in app layout
-
-**Validation**
-- [x] Validate: `npx biome check .` passes — 35 files, 0 errors
-- [x] Validate: `npx vitest --run` passes — 26 tests in 3 files
-- [x] Validate: `npx tsc --noEmit` passes — no type errors
-- [x] Validate: `cargo test` passes — 22 tests
-- [x] Validate: `cargo clippy` passes — clean (1 expected dead_code warning)
-- [ ] Validate: New Model → draw → save → reopen flow (needs manual check)
-- [ ] Validate: keyboard shortcuts work (needs manual check)
-- [ ] Validate: unsaved changes dialog appears (needs manual check)
-
-### Notes
-
-- Tauri dialog plugin v2.6.0 installed — provides native open/save file pickers and confirmation dialogs
-- `navigator.platform` used for Mac detection (⌘ vs Ctrl+ in tooltips)
-- File filter: `.threatforge.yaml`, `.yaml`, `.yml` extensions
-- Canvas sync after model load uses `setTimeout(syncFromModel, 0)` to let store update settle before sync
-- `saveModel` updates `modified` timestamp to today's date before writing
-- Removed unused `ThreatModel` type import and `createEmptyModel` from canvas.tsx — now delegates to Tauri `create_new_model` command
-
----
-
-## 2026-02-26 — Fix: crash when interacting with opened file
-
-Branch: `feat/integration-polish` (continuing)
-
-### Plan
-
-- [x] Fix boundary nodes: add explicit `width`/`height` node properties for xyflow extent calculations
-- [x] Fix `syncFromModel`: restore `width`/`height` from saved layout onto node properties
-- [x] Remove double `syncFromModel` calls: remove `setTimeout` from `use-file-operations.ts`
-- [x] Fix `deleteSelected`: edge tracking bug (reads already-filtered state)
-- [x] Fix `captureLayout`: save `width`/`height` from node properties (not just style)
-- [x] Fix crash: `element.technologies` undefined when Rust omits empty vec via `skip_serializing_if`
-- [x] Add defensive defaults in `elementToNode` and `PropertiesTab`
-- [x] Validate: `npx biome check --write .` — 35 files, 0 errors
-- [x] Validate: `npx vitest --run` — 26 tests, all pass
-- [x] Validate: `npx tsc --noEmit` — no type errors
-
-### Notes
-
-- Root cause: Rust `Element.technologies` has `#[serde(skip_serializing_if = "Vec::is_empty")]` which omits the field from JSON IPC when empty. TypeScript receives `undefined` instead of `[]`, and `PropertiesTab` calls `.join()` on it → crash.
-- Fixed by adding `?? []` defaults in `elementToNode()` and `PropertiesTab`.
-- Also fixed: boundary nodes missing explicit `width`/`height` for xyflow extent calculations, double `syncFromModel` call, `deleteSelected` edge tracking bug.
-
----
-
-## 2026-02-27 — Sprint 5: AI Chat Pane
-
-Branch: `feat/ai-chat-pane`
-
-### Plan
-
-**Phase A: Rust Foundation + Keychain**
-- [x] Add deps to Cargo.toml: `reqwest`, `keyring`, `tokio`, `tokio-stream`, `futures`
-- [x] Create `src-tauri/src/ai/mod.rs` — module declarations
-- [x] Create `src-tauri/src/ai/types.rs` — `AiProvider` enum, `ChatMessage`, `ChatRole`
-- [x] Create `src-tauri/src/ai/keychain.rs` — store/get/delete API keys via `keyring` crate
-- [x] Create `src-tauri/src/commands/ai_commands.rs` — Tauri commands: `set_api_key`, `get_api_key_status`, `delete_api_key`, `send_chat_message`
-- [x] Update `src-tauri/src/errors.rs` — add `Keychain`, `AiRequest` variants
-- [x] Update `src-tauri/src/lib.rs` — add `mod ai`, register new commands
-- [x] Update `src-tauri/src/commands/mod.rs` — re-export ai commands
-
-**Phase B: LLM Providers + Streaming**
-- [x] Create `src-tauri/src/ai/providers.rs` — Anthropic + OpenAI streaming HTTP clients
-- [x] Create `src-tauri/src/ai/prompt.rs` — system prompt construction from ThreatModel
-- [x] Add `send_chat_message` command with SSE parsing + Tauri event emission
-- [x] Unit tests for prompt construction and SSE parsing (7 new Rust tests)
-
-**Phase C: Frontend Store**
-- [x] Create `src/stores/chat-store.ts` — Zustand store for chat state
-- [x] Create `src/lib/ai-utils.ts` — parse AI responses, extract threats
-- [x] Create `src/lib/ai-utils.test.ts` — 11 tests for threat extraction
-- [x] Update `src/stores/ui-store.ts` — add "ai" tab type (exported `RightPanelTab`)
-
-**Phase D: Frontend UI**
-- [x] Create `src/components/panels/ai-chat-tab.tsx` — chat tab component
-- [x] Create `src/components/panels/ai-settings-dialog.tsx` — API key config dialog
-- [x] Update `src/components/panels/right-panel.tsx` — add AI tab
-
-**Phase E: Integration + Polish**
-- [x] Wire "Accept Threat" to `model-store.addThreat()` (in ai-chat-tab.tsx)
-- [x] Add `Cmd/Ctrl+L` keyboard shortcut to focus AI chat input
-- [x] Update CSP for external LLM API calls (`connect-src` for api.anthropic.com + api.openai.com)
-
-**Validation**
-- [x] `cargo test` — 33 tests pass (11 new AI tests)
-- [x] `cargo clippy` — clean (1 pre-existing dead_code warning)
-- [x] `npx vitest --run` — 37 tests pass in 4 files (11 new ai-utils tests)
-- [x] `npx biome check .` — clean (40 files)
-- [x] `npx tsc --noEmit` — no type errors
-- [ ] Manual: configure API key, send message, see streaming response
-- [ ] Manual: AI suggests threat, click "Accept", threat appears in model
-- [ ] Manual: switch providers, verify both work
-- [ ] Manual: delete API key, verify empty state shown
-
-### Notes
-
-- Dropped `ChatRequest` struct from types.rs — command takes individual params instead
-- `keyring` v3 with `apple-native` + `windows-native` + `sync-secret-service` features for cross-platform keychain
-- `reqwest` uses `rustls-tls` (not `native-tls`) to avoid OpenSSL dependency on Linux
-- System prompt serializes the full threat model context: elements, flows, boundaries, existing threats
-- AI response parsing uses simple line-based YAML parser for `threats` fenced code blocks (no full YAML dep)
-- `Cmd+L` handled in two places: `use-keyboard-shortcuts.ts` opens AI tab, `ChatInput` component focuses textarea
-- CSP `connect-src` allows `ipc:` and `http://ipc.localhost` for Tauri IPC alongside the LLM API domains
-- Streaming uses Tauri events (`ai:stream-chunk`, `ai:stream-done`, `ai:stream-error`) rather than command return
-- Anthropic uses `claude-sonnet-4-20250514` model, OpenAI uses `gpt-4o`
-- Chat store event listeners are cleaned up in `finally` block after stream completes/errors
-
----
-
-## 2026-02-27 — Sprint 6: Cross-Platform CI + Builds
-
-Branch: `chore/ci-release-workflows`
-
-### Plan
-
-**Phase A: CI Workflow (PR gating)**
-- [ ] Create `.github/workflows/ci.yml`
-  - [ ] lint job (ubuntu-only): biome check, tsc --noEmit, cargo clippy, cargo fmt --check
-  - [ ] test job (ubuntu-only): vitest --run, cargo test
-  - [ ] build job (matrix: ubuntu, macos, windows): tauri build + upload artifacts
-  - [ ] Concurrency groups to cancel stale runs
-  - [ ] Pin all actions to exact SHAs
-  - [ ] Least-privilege permissions (contents: read)
-  - [ ] Cargo + npm caching
-
-**Phase B: Release Workflow (tag-triggered)**
-- [ ] Create `.github/workflows/release.yml`
-  - [ ] Trigger on `v*` tags
-  - [ ] Matrix build via tauri-apps/tauri-action
-  - [ ] Draft release with platform binaries
-  - [ ] Pin all actions to exact SHAs
-  - [ ] permissions: contents: write
-
-**Phase C: Build Optimizations**
-- [ ] Create `.node-version` (pin Node 20)
-- [ ] Add `[profile.release]` to `src-tauri/Cargo.toml` (strip, lto, codegen-units, panic, opt-level)
-
-**Validation**
-- [x] `cargo test` — 33 Rust tests pass
-- [x] `npx vitest --run` — 37 frontend tests pass (4 files)
-- [x] `npx biome check .` — 40 files, 0 errors
-- [x] `npx tsc --noEmit` — no type errors
-- [x] `cargo clippy -- -D warnings` — clean (fixed `generate_element_id` dead_code with `#[allow(dead_code)]`)
-- [x] `cargo fmt --check` — clean
-
-### Notes
-- Added `#[allow(dead_code)]` to `generate_element_id` in `threat_model.rs` — utility function for future use, already tested, but CI uses `-D warnings` which treats dead_code as an error
-- GitHub Actions SHAs pinned to: checkout v4.3.1, setup-node v4.4.0, rust-toolchain master 2026-02-13, cache v4.2.3, upload-artifact v4.6.2, tauri-action action-v0.6.1
-- Linux system deps: libwebkit2gtk-4.1-dev, libappindicator3-dev, librsvg2-dev, patchelf, libdbus-1-dev, libssl-dev
-- Release workflow creates draft releases (not auto-published) for manual review
-- `[profile.release]`: strip=true, lto=true, codegen-units=1, panic=abort, opt-level=s — reduces binary size ~30-50%
-
----
-
-## 2026-02-27 — Local Docker CI + Manual GitHub Actions
-
-Branch: `chore/ci-release-workflows` (continuing)
-
-### Plan
-
-**New files**
-- [x] Create `Dockerfile.ci` — Ubuntu 22.04 + Node 20 + Rust stable + Tauri deps
-- [x] Create `compose.yml` — Docker Compose with cargo cache volumes
-- [x] Create `.dockerignore` — exclude node_modules, target, .git, etc.
-- [x] Create `scripts/ci-local.sh` — lint + test + optional build script
-- [x] Create `scripts/hooks/pre-push` — pre-push git hook (native checks)
-- [x] Create `scripts/setup-hooks.sh` — auto-install hooks on `npm install`
-
-**Modified files**
-- [x] Update `package.json` — add `ci:local`, `ci:docker`, `ci:docker:build`, `prepare` scripts
-- [x] Update `.github/workflows/ci.yml` — change trigger to `workflow_dispatch` only
-- [x] Update `.claude/rules/workflow.md` — add local CI requirements
-- [x] Update `CLAUDE.md` — add Docker prerequisite + new commands
-- [x] Update `docs/todo.md` — this plan
-
-**Validation**
-- [x] `npm run ci:local` runs lint + test and exits 0 (37 frontend + 33 Rust tests)
-- [ ] `npm run ci:docker` builds Docker image and runs lint + test in container (needs manual)
-- [x] Pre-push hook is installed and runnable
-- [x] CI workflow only triggers on `workflow_dispatch`
-- [x] Biome + tsc + clippy + cargo fmt all pass
-
-### Notes
-
-- `ci-local.sh` sources `$HOME/.cargo/env` if cargo not in PATH — npm scripts don't inherit shell profile
-- Docker CI uses named volumes for `cargo-target`, `cargo-registry`, `cargo-git` to persist compilation cache
-- Dockerfile uses Ubuntu 22.04 (matches GHA `ubuntu-latest` at time of writing, has `libwebkit2gtk-4.1-dev`)
-- `prepare` lifecycle hook runs `setup-hooks.sh` on every `npm install` — auto-installs pre-push hook
-- `ci:docker:build` overrides the container CMD to pass `--build` flag for Tauri binary compilation
-
----
-
-## 2026-02-27 — Browser Support (Adapter Pattern)
-
-Branch: `feat/browser-support`
-
-### Plan
-
-**Step 1: Foundation**
-- [x] Install `js-yaml` + `@types/js-yaml`
-- [x] Create `src/lib/platform.ts` — `isTauri()` detection via `window.__TAURI_INTERNALS__`
-- [x] Create 4 adapter interfaces: `file-adapter.ts`, `stride-adapter.ts`, `chat-adapter.ts`, `keychain-adapter.ts`
-- [x] Create 4 factory files: `get-file-adapter.ts`, `get-stride-adapter.ts`, `get-chat-adapter.ts`, `get-keychain-adapter.ts`
-
-**Step 2: STRIDE Adapter**
-- [x] Port 14 STRIDE rules from Rust to TypeScript (`src/lib/stride-engine.ts`)
-- [x] Port all 8 Rust tests + add 1 more (`src/lib/stride-engine.test.ts`) — 9 tests pass
-- [x] Create `browser-stride-adapter.ts` (delegates to TS engine)
-- [x] Create `tauri-stride-adapter.ts` (wraps `invoke("analyze_stride")`)
-- [x] Refactor `model-store.ts` — remove `invoke` import, use `getStrideAdapter()`
-
-**Step 3: Keychain Adapter**
-- [x] Create `browser-keychain-adapter.ts` (localStorage with `tf-api-key-{provider}` keys)
-- [x] Create `tauri-keychain-adapter.ts` (wraps `invoke()` for OS keychain)
-- [x] Refactor `ai-settings-dialog.tsx` — use `getKeychainAdapter()`, conditional security note text
-- [x] Refactor `chat-store.ts` — use `getKeychainAdapter()` for `checkApiKey`
-
-**Step 4: File Ops Adapter**
-- [x] Create `browser-file-adapter.ts` (File API + js-yaml + Blob download)
-- [x] Create `tauri-file-adapter.ts` (wraps `invoke()` + native dialogs)
-- [x] Refactor `use-file-operations.ts` — remove `@tauri-apps/api` imports, use `getFileAdapter()`
-
-**Step 5: Chat Adapter**
-- [x] Port `build_system_prompt()` from Rust (`src/lib/ai-prompt.ts`)
-- [x] Write 4 tests for prompt builder (`src/lib/ai-prompt.test.ts`)
-- [x] Create `browser-chat-adapter.ts` (direct `fetch()` with SSE streaming to Anthropic/OpenAI)
-- [x] Create `tauri-chat-adapter.ts` (wraps `invoke()` + Tauri event listeners)
-- [x] Refactor `chat-store.ts` — use `getChatAdapter()` with callback pattern
-
-**Step 6: Build Config**
-- [x] Update `vite.config.ts` — externalize `@tauri-apps/*` when not in Tauri build
-- [x] Add `dev:web` and `build:web` scripts to `package.json`
-- [x] Create `vercel.json` (SPA rewrite, output dir, build command)
-
-**Step 7: Validation**
-- [x] `npx vitest --run` — 50 tests pass in 6 files (13 new: 9 STRIDE + 4 AI prompt)
-- [x] `npx tsc --noEmit` — no type errors
-- [x] `npx biome check .` — 62 files, 0 issues
-- [x] `npm run build:web` — builds successfully, adapters code-split into separate chunks
-- [x] Main bundle (`index-*.js`) contains 0 `@tauri-apps` references
-- [x] Browser adapter chunks contain 0 `@tauri-apps` references
-- [x] Tauri adapter chunks properly isolated (only loaded via dynamic import when `isTauri()`)
-- [ ] `npm run tauri dev` — desktop app works identically (needs manual check)
-- [ ] `npm run dev:web` — browser version works (needs manual check)
-- [ ] Manual: export YAML from browser → open in desktop app (needs manual check)
-
-### Notes
-
-- Adapter pattern: each domain (file, stride, keychain, chat) gets an interface + tauri/browser implementations + factory
-- Factory files use `isTauri()` + dynamic `import()` for tree-shaking — Vite code-splits tauri adapters into separate chunks
-- STRIDE TS port: 14 rules matching Rust implementation exactly. All 9 tests match Rust test assertions
-- Browser AI: direct `fetch()` to Anthropic/OpenAI APIs. Anthropic requires `anthropic-dangerous-direct-browser-access: true` header
-- Browser keychain: `localStorage` with `tf-api-key-{provider}` keys. Security note in UI updated to reflect this
-- Browser file ops: `<input type="file">` for open, `Blob` + download link for save, `js-yaml` for YAML parse/serialize
-- No layout persistence in browser — positions reset on reload. Browser is "try before you download" experience
-- `vite.config.ts` uses `TAURI_ENV_ARCH` env var to detect Tauri builds (set by `tauri dev` / `tauri build`)
-- Web dev server (`dev:web`) runs on port 3000 to avoid conflict with Tauri's port 1420
-- Used `.replace()` instead of `.replaceAll()` in stride-engine.ts because tsconfig targets ES2020 (replaceAll needs ES2021)
-- Build output: main bundle 466KB, browser adapters ~52KB total, tauri adapters ~2KB total (all gzipped much smaller)
+## 2026-02-27 - Theme Support
+
+Need to add support for themes in the UI. Currently only a dark theme is available, but we should allow users to not just choose between light and dark (and follow system), but also to select from a variety of color schemes and styles. Will have 2-3 themes for light and 2-3 themes for dark at launch, and then add more over time.
+
+**Current state:** Dark mode is hardcoded via `class="dark"` on `<html>` in `index.html`. All color tokens are dark-only oklch() values in the `@theme` block of `src/styles.css`. Brand colors (`tf-zero`, `tf-signal`, `tf-ember`, etc.) are hex. There is no theme switching mechanism, no light mode CSS, and no theme state in any store. All components use semantic Tailwind classes (`bg-background`, `text-foreground`, `border-border`, etc.) which is good — they'll automatically respond to theme token changes.
+
+**Tasks:**
+
+- [ ] Define theme data structure and registry
+  - [ ] Create `src/types/theme.ts` with `ThemeMode` (`"light" | "dark" | "system"`), `ThemePreset` interface (id, name, mode, token overrides), and `ThemeConfig` type
+  - [ ] Create `src/lib/themes/` directory with a registry of built-in themes — each theme is a record of CSS variable names to oklch values
+  - [ ] Design 2-3 dark presets (e.g., "Midnight" default, "Slate", "Nord-inspired") and 2-3 light presets (e.g., "Daylight", "Warm Sand", "High Contrast")
+  - [ ] Ensure each preset defines ALL shadcn-compatible tokens (`background`, `foreground`, `card`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `chart-1` through `chart-5`, sidebar tokens)
+  - [ ] Brand accent colors (`tf-signal`, `tf-ember`) should remain constant across themes for brand consistency; only surface/text/border tokens change
+- [ ] Implement theme state management
+  - [ ] Add `themeMode`, `themePresetId`, and `setTheme(mode, presetId)` to `src/stores/ui-store.ts`
+  - [ ] Persist theme preference to localStorage (ui-store doesn't persist today — add persistence via Zustand `persist` middleware or a dedicated settings store)
+  - [ ] Add system theme detection via `window.matchMedia("(prefers-color-scheme: dark)")` with a listener for live changes when mode is `"system"`
+- [ ] Implement runtime theme application
+  - [ ] Create `src/lib/themes/apply-theme.ts` utility that takes a `ThemePreset` and applies CSS variable overrides to `document.documentElement.style`
+  - [ ] Toggle `dark`/`light` class on `<html>` element based on resolved mode (needed for Tailwind dark variant if used)
+  - [ ] Remove hardcoded `class="dark"` from `index.html` — set it dynamically on app init
+  - [ ] Call `applyTheme()` on app mount (in `App.tsx` or a `ThemeProvider` wrapper) and whenever the store changes
+- [ ] Refactor `src/styles.css` for multi-theme support
+  - [ ] Move the current dark-mode oklch tokens out of the `@theme` block and into a `:root` / `.dark` CSS scope (or keep in `@theme` as defaults and override via inline styles — choose the approach that plays best with Tailwind v4's `@theme` system)
+  - [ ] Define a light-mode base set of tokens under `.light` scope as a fallback for CSS-only theming
+  - [ ] Verify all components render correctly in light mode — audit canvas nodes, edges, panels, dialogs, status bar, minimap colors
+- [ ] Add theme selector UI
+  - [ ] Add theme picker to the Settings modal (see "Editor improvements and settings modal" section below)
+  - [ ] Show mode toggle (Light / Dark / System) and a grid/list of available presets with color swatches
+  - [ ] Provide live preview — applying a theme should be instant, no page reload
+- [ ] Update canvas-specific styling
+  - [ ] ReactFlow `<MiniMap>` uses hardcoded oklch colors in `dfd-canvas.tsx` — make these reactive to the current theme
+  - [ ] ReactFlow `<Background>` dot color should adapt to theme
+  - [ ] ReactFlow `<Controls>` styles should adapt to theme
+  - [ ] Edge marker (arrowhead) colors should adapt
+- [ ] Testing
+  - [ ] Unit test theme application: verify CSS variables are set on documentElement after `applyTheme()`
+  - [ ] Unit test system preference detection logic
+  - [ ] Unit test theme persistence round-trip (save to localStorage → reload → correct theme applied)
+  - [ ] Visual smoke test: verify all screens in both light and dark modes
+
+## 2026-02-27 - Onboarding and Quick Start Guides
+
+Need to create a framework for onboarding materials and quick start guides for new users and new features whenever one is added. This should include both written documentation and interactive tutorials within the app itself. The goal is to make it as easy as possible for new users to get up and running quickly, and to help existing users understand new features as they are released.
+
+**Current state:** No onboarding exists. The app opens directly to an empty canvas (`canvas.tsx`) showing a Shield icon, "ThreatForge" title, and two buttons ("New Model" / "Open Existing"). There are no tooltips, guided tours, feature highlights, or contextual help. The only modal in the codebase is `ai-settings-dialog.tsx` (fixed overlay with `bg-black/50` backdrop, keyboard dismiss). No tour libraries are installed. Keyboard shortcut hints are shown in button tooltips in `top-menu-bar.tsx` but only on hover.
+
+**Tasks:**
+
+- [ ] Design the onboarding framework architecture
+  - [ ] Define an `OnboardingStep` interface in `src/types/onboarding.ts`: `id`, `targetSelector` (CSS selector or ref for highlighting), `title`, `content` (React node or markdown), `placement` ("top" | "bottom" | "left" | "right"), `action?` (optional callback on step completion), `triggerCondition?` (when to auto-show)
+  - [ ] Define an `OnboardingGuide` interface: `id`, `name`, `steps: OnboardingStep[]`, `version` (for re-triggering on feature updates), `showOnce: boolean`
+  - [ ] Design guide registry pattern: a `src/lib/onboarding/guides/` directory where each guide is a separate file exporting an `OnboardingGuide` config
+- [ ] Implement onboarding state management
+  - [ ] Create `src/stores/onboarding-store.ts` with Zustand: tracks `completedGuides: Record<string, string>` (guide ID → version completed), `activeGuide: string | null`, `activeStepIndex: number`, `dismissedGuides: string[]`
+  - [ ] Persist to localStorage so guides don't re-show after completion
+  - [ ] Provide `startGuide(id)`, `nextStep()`, `prevStep()`, `dismissGuide()`, `resetGuide(id)` actions
+- [ ] Build the guide overlay UI components
+  - [ ] Create `src/components/onboarding/guide-overlay.tsx`: a spotlight/highlight component that dims the rest of the UI and highlights the target element (use a CSS box-shadow or SVG mask approach — no heavy library needed)
+  - [ ] Create `src/components/onboarding/guide-tooltip.tsx`: a positioned tooltip next to the highlighted element showing step title, content, step counter (e.g., "2 of 5"), and Next/Back/Dismiss buttons
+  - [ ] Create `src/components/onboarding/guide-provider.tsx`: a wrapper component (rendered in `App.tsx`) that listens to `onboarding-store` and renders the overlay when a guide is active
+  - [ ] Ensure the overlay is accessible: trap focus in the tooltip, support Escape to dismiss, announce step changes to screen readers
+- [ ] Implement trigger system for contextual guides
+  - [ ] Define trigger types: `"first-launch"`, `"first-model-created"`, `"first-element-added"`, `"feature-version"` (re-trigger when a feature version bumps)
+  - [ ] Hook triggers into relevant actions: e.g., in `model-store.ts` `setModel()` → check if "first model" guide should show; in `canvas-store.ts` `addElement()` → check if "first element" guide should show
+  - [ ] Support manual trigger: a "Help" or "?" button in the top menu bar that opens a guide picker dialog listing all available guides
+- [ ] Create initial set of guides
+  - [ ] **Welcome guide** (first-launch): Introduce the empty canvas, show where to create/open models, point out the component palette, right panel, and AI assistant
+  - [ ] **DFD Basics guide** (first model created): Walk through adding a process, data store, external entity, connecting them with a data flow, and adding a trust boundary
+  - [ ] **STRIDE Analysis guide** (first time opening threats tab): Explain the Run STRIDE Analysis button, how threats are generated, and how to review/edit/mitigate them
+  - [ ] **AI Assistant guide** (first time opening AI tab): Show how to configure an API key, ask the AI questions about the model, and accept suggested threats
+- [ ] Add "What's New" changelog overlay
+  - [ ] Create `src/components/onboarding/whats-new-dialog.tsx`: a modal shown once per new version (check app version vs. last-seen version in localStorage)
+  - [ ] Content sourced from a `src/lib/onboarding/changelog.ts` file with structured entries per version
+  - [ ] Each entry has: version, date, list of features with optional guide link to trigger the relevant walkthrough
+- [ ] Testing
+  - [ ] Unit test `onboarding-store`: verify guide progression, persistence, dismissal, and reset
+  - [ ] Unit test trigger logic: verify guides fire on the correct conditions and don't re-fire after completion
+  - [ ] Component test `guide-overlay`: verify spotlight renders, tooltip positions, and keyboard navigation works
+  - [ ] Smoke test each guide end-to-end in the running app
+
+## 2026-02-27 - E2E UI Testing
+
+Need to implement end-to-end UI testing to ensure that the user interface is functioning correctly and to catch any regressions or bugs before they reach users. This will involve setting up a testing framework, writing test cases for various user interactions and workflows, and integrating these tests into our CI/CD pipeline. Every flow needs to be tested, including edge cases and error handling, to ensure a smooth and reliable user experience. This should run headless locally in docker and also in CI/CD pipelines. Any failures should be reported with detailed logs and screenshots to help with debugging.
+
+**Current state:** No E2E tests exist. The implementation plan (Section 8.1) specifies Playwright + Tauri WebDriver for the top 5 user workflows. Frontend unit tests use Vitest + jsdom + React Testing Library (`vitest.config.ts`, `src/test-setup.ts`). Local CI runs via `scripts/ci-local.sh` (lint + unit tests). Docker CI uses `compose.yml` + `Dockerfile.ci` (Ubuntu 22.04, Node 20, Rust stable). GitHub Actions CI (`.github/workflows/ci.yml`) is manual-only (`workflow_dispatch`) with lint, test, and cross-platform build jobs. The app can also run as a web app via `npm run dev:web` on port 3000, which simplifies E2E testing since Playwright can test the web version without needing Tauri WebDriver.
+
+**Tasks:**
+
+- [ ] Set up Playwright infrastructure
+  - [ ] Install Playwright: `npm install -D @playwright/test` and run `npx playwright install` to download browser binaries
+  - [ ] Create `playwright.config.ts` at project root:
+    - `testDir: "e2e"` (separate from unit tests in `src/`)
+    - `webServer: { command: "npm run dev:web", port: 3000, reuseExistingServer: !process.env.CI }` — Playwright auto-starts the Vite dev server
+    - `use: { baseURL: "http://localhost:3000", screenshot: "only-on-failure", trace: "on-first-retry", video: "retain-on-failure" }`
+    - Projects: Chromium only for local dev speed; add Firefox + WebKit in CI matrix (WebKit is closest to Tauri's WKWebView)
+    - `reporter: [["html", { open: "never" }], ["list"]]` for CI-friendly output + detailed HTML report
+  - [ ] Create `e2e/` directory for test files
+  - [ ] Add npm scripts: `"test:e2e": "playwright test"`, `"test:e2e:ui": "playwright test --ui"` (interactive mode for debugging)
+- [ ] Create E2E test utilities and fixtures
+  - [ ] Create `e2e/fixtures.ts` with shared Playwright fixtures:
+    - `appPage`: navigates to base URL and waits for the app shell to render (wait for `[data-testid="app-layout"]` — will need to add data-testid attributes to key components)
+    - `emptyCanvas`: fixture that asserts the empty canvas state
+    - `modelPage`: fixture that creates a new model via the "New Model" button
+  - [ ] Create `e2e/helpers.ts` with common actions: `createNewModel()`, `addElement(type, position)`, `connectElements(source, target)`, `openRightPanel(tab)`, `saveModel()`
+  - [ ] Add `data-testid` attributes to critical UI elements: top menu buttons, canvas area, palette items, panel tabs, panel content areas, dialog buttons — prefer `data-testid` over fragile CSS selectors
+- [ ] Write core workflow E2E tests (the "top 5 workflows" from the implementation plan)
+  - [ ] **Test 1: New model creation** (`e2e/new-model.spec.ts`)
+    - Click "New Model" → verify canvas becomes active (DFD canvas renders)
+    - Verify title shows "Untitled Threat Model" in top bar
+    - Verify status bar shows element/flow/threat counts at 0
+  - [ ] **Test 2: DFD diagram construction** (`e2e/dfd-construction.spec.ts`)
+    - Create new model → drag Process from palette to canvas → verify node appears
+    - Drag Data Store and External Entity → verify all three nodes are on canvas
+    - Connect Process to Data Store with a data flow → verify edge appears
+    - Add a Trust Boundary → verify dashed-border group node appears
+    - Verify status bar counts update correctly
+  - [ ] **Test 3: Element editing** (`e2e/element-editing.spec.ts`)
+    - Create model with elements → click a node to select it
+    - Verify Properties tab opens in right panel with correct element data
+    - Edit name, trust zone, description, technologies → verify changes reflect on canvas node label
+    - Verify dirty indicator (\*) appears in title bar after edits
+  - [ ] **Test 4: STRIDE analysis and threat management** (`e2e/stride-threats.spec.ts`)
+    - Create model with 2-3 elements and flows → open Threats tab
+    - Click "Run STRIDE Analysis" → verify threats appear in the list
+    - Expand a threat → edit severity, add mitigation notes → verify changes persist
+    - Delete a threat → verify it's removed
+    - Filter threats by selected element → verify filtering works
+  - [ ] **Test 5: Save and reopen cycle** (`e2e/save-reopen.spec.ts`)
+    - Note: File dialogs are OS-native and can't be tested directly via Playwright in web mode. Mock the file adapter or use the browser adapter's localStorage-based save
+    - Create model → add elements → save → close model → reopen → verify all elements, flows, and properties are preserved
+    - Verify layout (node positions) is restored correctly
+- [ ] Write edge case and error handling tests
+  - [ ] **Dirty state guard** (`e2e/dirty-state.spec.ts`): Make edits → try to create new model / open another → verify "unsaved changes" prompt appears
+  - [ ] **Keyboard shortcuts** (`e2e/keyboard-shortcuts.spec.ts`): Test Cmd/Ctrl+N, O, S, L shortcuts trigger expected actions
+  - [ ] **Delete operations** (`e2e/delete-operations.spec.ts`): Select element → press Delete → verify element and connected edges are removed, verify threats linked to deleted element are handled
+  - [ ] **Empty states** (`e2e/empty-states.spec.ts`): Verify correct empty state messages in threats tab, properties tab, and canvas
+  - [ ] **AI chat panel** (`e2e/ai-chat.spec.ts`): Open AI tab → verify settings dialog opens → verify empty state when no API key → (mock API responses for chat interaction tests)
+- [ ] Integrate into CI/CD pipeline
+  - [ ] Update `Dockerfile.ci` to install Playwright browsers: add `npx playwright install --with-deps chromium` after npm ci step
+  - [ ] Update `scripts/ci-local.sh` to add an optional `--e2e` flag that runs `npx playwright test` after unit tests
+  - [ ] Add a new job to `.github/workflows/ci.yml`:
+    - `e2e` job that depends on `test`, runs on ubuntu-latest
+    - Uses Playwright's recommended GH Actions setup (`actions/playwright-test`)
+    - Uploads test report + screenshots + videos as artifacts on failure
+    - Run with WebKit browser project (closest to Tauri's WKWebView)
+  - [ ] Update `compose.yml` to support E2E in Docker: the Vite dev server needs to run inside the container alongside Playwright
+- [ ] Reporting and debugging infrastructure
+  - [ ] Configure Playwright HTML reporter: generates detailed report in `playwright-report/` directory
+  - [ ] Add `playwright-report/` and `test-results/` to `.gitignore`
+  - [ ] Configure screenshot capture on failure (already in Playwright config above)
+  - [ ] Configure video recording on retry (already in Playwright config above)
+  - [ ] Configure trace recording for first retry (provides step-by-step debugging in Playwright Trace Viewer)
+- [ ] Testing
+  - [ ] Run full E2E suite locally and verify all tests pass
+  - [ ] Run E2E suite in Docker and verify it works headless
+  - [ ] Verify CI pipeline correctly runs E2E tests and uploads artifacts on failure
+
+## 2026-02-27 - Component Library and Iconography
+
+Need to develop a comprehensive icon library for components on the canvas. Icons for all offerings of major services, technologies, platforms, and tools should be included. They should be very easy to select for a component on the canvas (and connectors for technologies that integrate with other technologies) and should be visually consistent and recognizable. Custom icons should also be supported for users who want to upload their own or for technologies that don't have widely recognized icons.
+
+**Current state:** The `Element` type in `src/types/threat-model.ts` already has an `icon?: string` optional field — it's defined but unused. Canvas nodes (`process-node.tsx`, `data-store-node.tsx`, `external-entity-node.tsx`) display only a text label and optional trust zone — no icon rendering. `DfdNodeData` in `canvas-store.ts` has no icon field. The component palette (`component-palette.tsx`) shows DFD element types with `lucide-react` icons (Box, Database, Globe, ShieldAlert) but these are generic element type indicators, not component-specific icons. The app uses `lucide-react` (^0.575.0) for all UI icons.
+
+**Tasks:**
+
+- [ ] Design the icon system architecture
+  - [ ] Define icon source categories and decide on the format:
+    - **SVG-based** (recommended): lightweight, scalable, theme-able via CSS `currentColor`, works offline
+    - Icons should be organized by provider/category: `aws/`, `azure/`, `gcp/`, `generic/`, `tech/`, `languages/`, `custom/`
+  - [ ] Choose an icon sourcing strategy (in priority order):
+    1. Use established open-source icon sets with permissive licenses: [Simple Icons](https://simpleicons.org/) (CC0, 3000+ brand SVGs), [DevIcons](https://devicon.dev/) (MIT, 800+ dev tool icons), cloud provider official icon sets (AWS Architecture Icons, Azure Icons, GCP Icons — all freely available for diagramming)
+    2. Ship a curated subset (~200-300 most-used icons) as static SVG files in `public/icons/` or as an importable module
+    3. Support user-uploaded custom SVGs for anything not in the library
+  - [ ] Define an `IconMetadata` type: `{ id: string, name: string, category: string, tags: string[], svgPath: string }` for the searchable icon registry
+  - [ ] Create `src/lib/icons/icon-registry.ts` with the full searchable icon catalog (array of `IconMetadata`)
+- [ ] Build the icon catalog
+  - [ ] **Cloud providers** (~100-150 icons):
+    - AWS: EC2, S3, Lambda, RDS, DynamoDB, API Gateway, CloudFront, SNS, SQS, ECS, EKS, IAM, VPC, Route53, Cognito, KMS, etc.
+    - Azure: App Service, Functions, Blob Storage, Cosmos DB, SQL Database, AKS, Key Vault, AD, API Management, Event Hub, etc.
+    - GCP: Compute Engine, Cloud Functions, Cloud Storage, BigQuery, Cloud SQL, GKE, Cloud Run, Pub/Sub, IAM, etc.
+  - [ ] **Generic infrastructure** (~30 icons): Database, Server, Load Balancer, Firewall, CDN, Queue, Cache, Storage, API, Gateway, DNS, Certificate, Container, VM, Serverless Function, Mobile App, Web App, Desktop App, IoT Device, User/Actor
+  - [ ] **Technologies** (~40 icons): Redis, Kafka, RabbitMQ, Elasticsearch, Kubernetes, Docker, Nginx, Apache, Terraform, Vault (HashiCorp), Consul, PostgreSQL, MySQL, MongoDB, Cassandra, GraphQL, gRPC, REST API, WebSocket, OAuth
+  - [ ] **Languages and frameworks** (~30 icons): Python, Java, Node.js, Go, Rust, C#, TypeScript, JavaScript, React, Angular, Vue, Spring, Django, .NET, Ruby, PHP, Swift, Kotlin
+  - [ ] **SaaS platforms** (~20 icons): GitHub, GitLab, Slack, Okta, Auth0, Stripe, Twilio, SendGrid, Datadog, Splunk, PagerDuty, Cloudflare, Vercel, Heroku
+  - [ ] Store icons in `public/icons/{category}/{id}.svg` for static serving, or bundle via Vite's import system
+- [ ] Wire icons into the data model and canvas
+  - [ ] Add `icon?: string` to `DfdNodeData` in `canvas-store.ts` (`icon` maps to an icon registry ID)
+  - [ ] Update `syncFromModel()` in `canvas-store.ts` to populate node data `icon` from `Element.icon`
+  - [ ] Update all node components (`process-node.tsx`, `data-store-node.tsx`, `external-entity-node.tsx`) to render the icon:
+    - Show icon (24x24 or 32x32) to the left of the label text inside the node
+    - Fall back to the current icon-less layout if no icon is set
+    - Icon should be rendered as an `<img>` for SVG files or an inline SVG component
+  - [ ] Update `addElement()` in `canvas-store.ts` to accept an optional `icon` parameter
+- [ ] Build the icon picker UI
+  - [ ] Create `src/components/panels/icon-picker.tsx`: a searchable icon browser component
+    - Search input at top with debounced filtering against `IconMetadata.name` and `tags`
+    - Category tabs/filter chips for quick filtering (All, AWS, Azure, GCP, Generic, Tech, Languages, SaaS)
+    - Grid of icon thumbnails (48x48 with name underneath), scrollable
+    - Click to select → returns icon ID to parent
+    - "None" option to clear the icon
+  - [ ] Integrate the icon picker into the Properties tab (`properties-tab.tsx`):
+    - Show current icon (or placeholder) next to the element name field
+    - Click on it to open the icon picker as a popover or inline expandable section
+    - Selecting an icon calls `updateElement(id, { icon: selectedIconId })` on model-store
+  - [ ] Integrate into the component palette (`component-palette.tsx`):
+    - When dragging an element type, optionally allow pre-selecting an icon (future enhancement — not required for v1)
+- [ ] Support custom icons
+  - [ ] Allow users to import a custom SVG file for any element via the Properties tab icon picker
+  - [ ] Store custom icon SVGs in the `.threatforge/icons/` directory alongside the model file (mirrors the layout storage pattern)
+  - [ ] Add a "Upload Custom" button in the icon picker that opens a file dialog (via the file adapter) for SVG files
+  - [ ] Validate uploaded SVGs: check file size limit (64KB), verify it's valid SVG XML, sanitize (strip embedded scripts/event handlers for security)
+  - [ ] Reference custom icons in the YAML as `custom:{filename}` to distinguish from built-in icon IDs
+  - [ ] Implement custom icon read/write in the file adapters (`file-adapter.ts`, `tauri-file-adapter.ts`, `browser-file-adapter.ts`)
+- [ ] Update the Rust backend for icon support
+  - [ ] Verify the Rust `Element` model in `src-tauri/src/models/` already has `icon: Option<String>` (it should, since TS type has `icon?`)
+  - [ ] Add custom icon file I/O commands: `save_custom_icon`, `load_custom_icon`, `delete_custom_icon` in `src-tauri/src/commands/file_commands.rs`
+  - [ ] Sanitize custom SVG content on the Rust side before saving (strip `<script>` tags, `on*` event attributes)
+  - [ ] Scope file access to the `.threatforge/icons/` directory using Tauri's path scoping
+- [ ] Testing
+  - [ ] Unit test icon registry: search, filter by category, handle empty results
+  - [ ] Component test icon picker: render, search, select, clear
+  - [ ] Unit test custom SVG sanitization logic
+  - [ ] Integration test: set icon on element → save model → reopen → icon persists on node
+  - [ ] Visual test: verify icons render at correct size and alignment in all three node types
+
+## 2026-02-27 - Canvas Improvements
+
+The canvas connector system requires significant improvements for better usability and reliability. Current issues include unstable connector positioning and organization, non-functional side connectors on nodes, and missing label support. Connectors need the ability to display text labels centered on their endpoints with background and stroke styling that matches the connector color. Connector labels should support inline editing as well as property pane configuration. Additionally, all nodes and components need enhanced features and improved interactivity.
+
+**Current state:** Edges use `DataFlowEdge` (`data-flow-edge.tsx`) which renders a `BaseEdge` with `getBezierPath` and an `EdgeLabelRenderer` overlay for protocol + data labels. Labels are positioned at the midpoint via CSS `translate(-50%, -50%)` and show protocol · data text. Nodes have 4 handles each (top=target, left=target, bottom=source, right=source) but ReactFlow doesn't auto-route to the best handle — it uses the default connection handle which causes overlapping/crossing edges. Node handles are 8x8px dots styled `!bg-muted-foreground`. Edge labels are read-only (no inline editing). The `DfdEdgeData` type has `protocol`, `data[]`, and `authenticated` fields. Selection styling works (green border/stroke on select). Trust boundary nodes use a dashed border with ember accent.
+
+**Tasks:**
+
+- [ ] Fix connector handle positioning and smart routing
+  - [ ] Implement a `getSmartHandlePositions` utility that, given source and target node positions, determines the optimal handle pair (top/bottom/left/right) to minimize edge crossings and path length
+  - [ ] Apply this in `onConnect` handler in `canvas-store.ts`: when creating a new edge, store `sourceHandle` and `targetHandle` IDs so ReactFlow uses the correct handles
+  - [ ] Assign unique IDs to each handle in node components (e.g., `id="top-target"`, `id="right-source"`) so they can be targeted programmatically
+  - [ ] Consider switching from `getBezierPath` to `getSmoothStepPath` for cleaner orthogonal routing, or implement custom pathfinding that avoids nodes
+  - [ ] Ensure handles on all four sides are functional: verify the `type` (source/target) assignment — currently top/left are target-only and bottom/right are source-only, which prevents some connection directions. Either make all handles bidirectional (`type="source"` on all, or use two overlapping handles per side) or explain the design constraint to users visually
+- [ ] Improve edge label rendering and interaction
+  - [ ] Add **inline label editing**: double-click on an edge label to enter edit mode (replace the label `<div>` with an `<input>` or `<textarea>`). On blur or Enter, commit the change to `canvas-store` and `model-store`
+  - [ ] Support editing both `protocol` and `data[]` fields inline: show "protocol · data1, data2" as the display, and split the edit into two inputs (or one smart input with a separator)
+  - [ ] Add edge label background styling that matches the edge color: selected edges should have `bg-tf-signal/10` label background, unselected edges keep `bg-card`
+  - [ ] Show a "+" add label button on edge hover when no label is present (for edges with empty protocol and data)
+  - [ ] Make edge labels draggable to adjust position offset from the midpoint (store a `labelOffset` in edge data) — this is an advanced feature, can be deferred
+- [ ] Improve edge selection and interaction UX
+  - [ ] Increase the clickable/hoverable area of edges (currently 2px stroke is hard to click) — use an invisible wider stroke (10-12px) behind the visible edge for hit testing
+  - [ ] Add hover state: change edge color to a lighter version of the theme accent on hover (before click-to-select)
+  - [ ] Show animated flow direction indicator on hover or selection (a moving dot along the edge path, or animated dashes)
+  - [ ] When an edge is selected, highlight the connected source and target nodes with a subtle glow
+- [ ] Enhance node features and interactivity
+  - [ ] Add **inline node label editing**: double-click on a node label to edit the name in-place (replace the label `<div>` with an `<input>`). Commit on blur or Enter, updating both canvas-store and model-store
+  - [ ] Add resize handles to trust boundary nodes (they're group containers and need to be resizable to contain child elements)
+  - [ ] Add a visual indicator on nodes showing the count of linked threats (a small badge in the corner, e.g., "3 threats" with severity color)
+  - [ ] Add context menu on right-click for nodes: Edit Properties, Delete, Duplicate, Change Type (for element nodes), View Threats
+  - [ ] Add context menu on right-click for edges: Edit Properties, Delete, Reverse Direction
+  - [ ] Show technology badges on nodes: if `technologies[]` is populated, display small pills/tags below the node label
+  - [ ] Add port/handle labels showing the connected flow's protocol on hover (so you can see what's connected without selecting)
+- [ ] Improve drag-and-drop from palette
+  - [ ] Add visual feedback during drag: show a ghost preview of the node being dragged onto the canvas
+  - [ ] Add drop zone highlighting: when dragging over a trust boundary, highlight it to indicate the element will be added inside it
+  - [ ] Auto-assign elements to a trust boundary if dropped inside one (update `TrustBoundary.contains` array)
+- [ ] Edge validation and constraints
+  - [ ] Prevent duplicate edges: don't allow two edges between the same source→target pair (show a toast/notification explaining why)
+  - [ ] Prevent self-loops: don't allow connecting a node to itself
+  - [ ] Visual feedback on invalid connections: show a red highlight or "not allowed" cursor when hovering over an invalid target during edge creation
+- [ ] Testing
+  - [ ] Unit test smart handle position calculation
+  - [ ] Unit test edge validation (no duplicates, no self-loops)
+  - [ ] Component test inline editing on nodes and edges
+  - [ ] Component test context menus render with correct actions
+  - [ ] Visual regression test: verify node/edge renders haven't changed unexpectedly
+
+## 2026-02-27 - Editor improvements and settings modal
+
+Lets have a settings modal, accessible by a gear icon along with the hide left/right panels icons. should house things like language, autosave (need to build this functionality - should be off by default), theme, etc.
+The overall editor needs to be more tuned for keyboard accessibility / shortcuts. Lets make keytips more visible by default on all controls (have a setting to turn them off). Some settings should be local to the user and some should be local to the file/diagram (need further discussion on which should be which).
+
+**Current state:** Keyboard shortcuts are handled in `use-keyboard-shortcuts.ts` hook (Cmd/Ctrl+N, O, S, L). Shortcut hints are shown as tooltip text on hover in `top-menu-bar.tsx` buttons. There is no settings modal or settings persistence (except AI API keys via keychain). The UI store (`ui-store.ts`) manages panel open/close state and right panel tab/width but has no persistence — state resets on reload. Panel toggles are in the top menu bar alongside file action buttons. The only dialog in the codebase is `ai-settings-dialog.tsx` (API key management). There is no autosave feature. There is no localization/i18n system.
+
+**Tasks:**
+
+- [ ] Design settings architecture and persistence
+  - [ ] Define settings scopes:
+    - **User settings** (local to the machine, persist across files): theme, language, autosave on/off, keytips visibility, AI provider preferences, default zoom level, grid snap on/off
+    - **File settings** (saved with / adjacent to the threat model file): diagram-specific grid size, default element colors/styles, STRIDE analysis configuration
+  - [ ] Create `src/types/settings.ts` with `UserSettings` and `FileSettings` interfaces
+  - [ ] Create `src/stores/settings-store.ts` with Zustand + `persist` middleware (localStorage for user settings)
+    - Default values for all settings (autosave: off, keytips: on, gridSnap: on, gridSize: 16, etc.)
+    - `updateUserSetting(key, value)` and `resetToDefaults()` actions
+  - [ ] File settings stored in the `.threatforge.yaml` metadata section or in a separate `.threatforge/settings.json` — decide which (YAML metadata is simpler, separate file keeps the YAML clean)
+- [ ] Build the settings modal
+  - [ ] Create `src/components/panels/settings-dialog.tsx` following the same pattern as `ai-settings-dialog.tsx` (fixed overlay, z-50, bg-black/50 backdrop, Escape to close)
+  - [ ] Organize settings into sections/tabs within the modal:
+    - **General**: Language (future — just show "English" as the only option for now with a "more coming" note), Autosave toggle, Default file location
+    - **Appearance**: Theme mode (Light/Dark/System) + theme preset picker (see Theme Support section), Keytip visibility toggle, Sidebar default widths, Animation preferences (reduce motion)
+    - **Editor**: Grid snap toggle, Grid size, Default zoom level, Confirm before delete toggle
+    - **AI**: Move the current AI settings dialog content here — provider selector, API key management, model selection
+    - **Keyboard Shortcuts**: Read-only list of all shortcuts (future: make them customizable)
+  - [ ] Add a gear icon button (⚙️ / `Settings` lucide icon) to the top menu bar in `top-menu-bar.tsx`, positioned alongside the panel toggle icons
+  - [ ] Wire settings updates to immediate UI response (no "Apply" button — changes take effect live)
+- [ ] Implement autosave
+  - [ ] Add autosave logic in a new `src/hooks/use-autosave.ts` hook:
+    - Watch `model-store.isDirty` flag
+    - When dirty becomes true, start a debounced timer (e.g., 30 seconds)
+    - On timer fire: if model has a `filePath` (was previously saved), call `saveModel()` from `useFileOperations`
+    - If model has never been saved (`filePath` is null), do NOT auto-save (don't trigger Save As dialog automatically)
+    - Cancel the timer if the user manually saves or if dirty becomes false
+    - Show a subtle indicator in the status bar: "Autosaving..." → "Autosaved at HH:MM"
+  - [ ] Add autosave settings to user settings: enabled/disabled (default: off), interval in seconds (default: 30)
+  - [ ] Mount the `useAutosave` hook in `AppLayout` when autosave is enabled
+- [ ] Improve keyboard accessibility
+  - [ ] Audit all interactive elements for keyboard reachability: every button, tab, input, palette item should be focusable and activatable via keyboard
+  - [ ] Add visible keytip badges to UI controls:
+    - Create a `src/components/ui/keytip.tsx` component: a small styled badge showing the keyboard shortcut (e.g., "⌘N") overlaid on or next to the control
+    - Render keytips on: top menu bar buttons (already have tooltips — add persistent visible badges), palette items (if shortcuts are added), panel tab switches
+    - Keytips should be rendered conditionally based on the `keytipsVisible` user setting
+  - [ ] Expand keyboard shortcuts in `use-keyboard-shortcuts.ts`:
+    - `Cmd/Ctrl+Z`: Undo (requires undo/redo system — this is a large feature, add as separate TODO if out of scope)
+    - `Cmd/Ctrl+Shift+Z` or `Cmd/Ctrl+Y`: Redo
+    - `Cmd/Ctrl+,`: Open Settings
+    - `Cmd/Ctrl+D`: Duplicate selected element
+    - `Cmd/Ctrl+A`: Select all elements on canvas
+    - `Escape`: Deselect all / close open dialogs
+    - `Tab`: Cycle through canvas elements (focus navigation)
+    - `1/2/3`: Quick-switch right panel tabs (Properties/Threats/AI)
+    - `Cmd/Ctrl+Shift+S`: Save As
+  - [ ] Show a keyboard shortcuts cheat sheet: accessible via `Cmd/Ctrl+/` or a "?" button, displaying all available shortcuts in a modal
+- [ ] Improve top menu bar organization
+  - [ ] Group controls more clearly: File operations (left) | View toggles (center) | Settings + Help (right)
+  - [ ] Add a Help menu button (? icon) next to the settings gear: links to docs, keyboard shortcuts, and onboarding guides (see Onboarding section)
+  - [ ] Consider moving panel toggles to a "View" dropdown or keeping them as icon buttons — decide based on available horizontal space
+- [ ] Migrate AI settings into the main settings modal
+  - [ ] Move the content of `ai-settings-dialog.tsx` into the AI section of the settings modal
+  - [ ] Update the AI chat tab's settings button to open the main settings modal with the AI tab pre-selected
+  - [ ] Keep `ai-settings-dialog.tsx` as a component but have it render inside the settings modal rather than as a standalone dialog
+- [ ] Testing
+  - [ ] Unit test `settings-store`: verify defaults, updates, persistence to localStorage, and reset
+  - [ ] Unit test `useAutosave` hook: verify debounce timing, dirty flag watching, skip when no filePath
+  - [ ] Component test settings modal: render, navigate tabs, toggle settings, verify live preview
+  - [ ] Component test keytip rendering: visible when setting is on, hidden when off
+  - [ ] Integration test: change a setting → close/reopen app → setting persists
+  - [ ] Keyboard navigation test: Tab through all controls, verify focus is visible and reachable
