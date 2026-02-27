@@ -40,9 +40,8 @@ pub fn write_layout(path: &Path, layout: &DiagramLayout) -> Result<(), ThreatFor
         })?;
     }
 
-    let json = serde_json::to_string_pretty(layout).map_err(|e| ThreatForgeError::JsonSerialize {
-        source: e,
-    })?;
+    let json = serde_json::to_string_pretty(layout)
+        .map_err(|e| ThreatForgeError::JsonSerialize { source: e })?;
 
     std::fs::write(path, json).map_err(|e| ThreatForgeError::FileWrite {
         path: path.display().to_string(),

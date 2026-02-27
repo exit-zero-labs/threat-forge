@@ -234,6 +234,9 @@ data_flows:
         let file = write_temp_yaml(yaml);
         let result = read_threat_model(file.path());
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid reference"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid reference"));
     }
 }

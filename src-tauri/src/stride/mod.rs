@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::models::{
-    ElementType, Severity, StrideCategory, Threat, ThreatModel, TrustBoundary, generate_threat_id,
+    generate_threat_id, ElementType, Severity, StrideCategory, Threat, ThreatModel, TrustBoundary,
 };
 
 /// A rule template for generating STRIDE threats.
@@ -333,13 +333,11 @@ mod tests {
                 data: vec!["user_records".to_string()],
                 authenticated: true,
             }],
-            trust_boundaries: vec![
-                TrustBoundary {
-                    id: "boundary-1".to_string(),
-                    name: "Internal Network".to_string(),
-                    contains: vec!["web-app".to_string(), "db".to_string()],
-                },
-            ],
+            trust_boundaries: vec![TrustBoundary {
+                id: "boundary-1".to_string(),
+                name: "Internal Network".to_string(),
+                contains: vec!["web-app".to_string(), "db".to_string()],
+            }],
             threats: vec![],
             diagrams: vec![],
         }
@@ -354,7 +352,11 @@ mod tests {
             .filter(|t| t.element.as_deref() == Some("web-app"))
             .collect();
         // Process should get: Spoofing, Tampering, Repudiation, InfoDisclosure, DoS, EoP
-        assert_eq!(process_threats.len(), 6, "Process should have 6 STRIDE threats");
+        assert_eq!(
+            process_threats.len(),
+            6,
+            "Process should have 6 STRIDE threats"
+        );
     }
 
     #[test]
@@ -398,7 +400,11 @@ mod tests {
         let model = sample_model();
         let threats = analyze(&model);
         // 6 (process) + 3 (data_store) + 2 (external_entity) + 3 (flow) = 14
-        assert_eq!(threats.len(), 14, "Total should be 14 threats for the sample model");
+        assert_eq!(
+            threats.len(),
+            14,
+            "Total should be 14 threats for the sample model"
+        );
     }
 
     #[test]
@@ -419,8 +425,7 @@ mod tests {
         let spoofing_web: Vec<_> = threats
             .iter()
             .filter(|t| {
-                t.element.as_deref() == Some("web-app")
-                    && t.category == StrideCategory::Spoofing
+                t.element.as_deref() == Some("web-app") && t.category == StrideCategory::Spoofing
             })
             .collect();
         assert_eq!(
@@ -470,7 +475,10 @@ mod tests {
         let dos_threat = cross_flow_threats
             .iter()
             .find(|t| t.category == StrideCategory::DenialOfService);
-        assert!(dos_threat.is_some(), "Should have DoS threat for cross-boundary flow");
+        assert!(
+            dos_threat.is_some(),
+            "Should have DoS threat for cross-boundary flow"
+        );
         assert_eq!(
             dos_threat.unwrap().severity,
             Severity::High,
@@ -483,12 +491,9 @@ mod tests {
         let model = sample_model();
         let threats = analyze(&model);
         // flow-1 is web-app → db, both in boundary-1 (same boundary)
-        let dos_threat = threats
-            .iter()
-            .find(|t| {
-                t.flow.as_deref() == Some("flow-1")
-                    && t.category == StrideCategory::DenialOfService
-            });
+        let dos_threat = threats.iter().find(|t| {
+            t.flow.as_deref() == Some("flow-1") && t.category == StrideCategory::DenialOfService
+        });
         assert!(dos_threat.is_some());
         assert_eq!(
             dos_threat.unwrap().severity,

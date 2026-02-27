@@ -1,19 +1,21 @@
 import { create } from "zustand";
 
+export type RightPanelTab = "properties" | "threats" | "ai";
+
 interface UiState {
 	/** Whether the left sidebar (component palette) is visible */
 	leftPanelOpen: boolean;
-	/** Whether the right panel (properties/threats) is visible */
+	/** Whether the right panel (properties/threats/ai) is visible */
 	rightPanelOpen: boolean;
 	/** Width of the right panel in pixels */
 	rightPanelWidth: number;
 	/** Current right panel tab */
-	rightPanelTab: "properties" | "threats";
+	rightPanelTab: RightPanelTab;
 
 	// Actions
 	toggleLeftPanel: () => void;
 	toggleRightPanel: () => void;
-	setRightPanelTab: (tab: "properties" | "threats") => void;
+	setRightPanelTab: (tab: RightPanelTab) => void;
 	setRightPanelWidth: (width: number) => void;
 }
 

@@ -317,3 +317,67 @@ Branch: `feat/integration-polish` (continuing)
 - Root cause: Rust `Element.technologies` has `#[serde(skip_serializing_if = "Vec::is_empty")]` which omits the field from JSON IPC when empty. TypeScript receives `undefined` instead of `[]`, and `PropertiesTab` calls `.join()` on it → crash.
 - Fixed by adding `?? []` defaults in `elementToNode()` and `PropertiesTab`.
 - Also fixed: boundary nodes missing explicit `width`/`height` for xyflow extent calculations, double `syncFromModel` call, `deleteSelected` edge tracking bug.
+
+---
+
+## 2026-02-27 — Sprint 5: AI Chat Pane
+
+Branch: `feat/ai-chat-pane`
+
+### Plan
+
+**Phase A: Rust Foundation + Keychain**
+- [x] Add deps to Cargo.toml: `reqwest`, `keyring`, `tokio`, `tokio-stream`, `futures`
+- [x] Create `src-tauri/src/ai/mod.rs` — module declarations
+- [x] Create `src-tauri/src/ai/types.rs` — `AiProvider` enum, `ChatMessage`, `ChatRole`
+- [x] Create `src-tauri/src/ai/keychain.rs` — store/get/delete API keys via `keyring` crate
+- [x] Create `src-tauri/src/commands/ai_commands.rs` — Tauri commands: `set_api_key`, `get_api_key_status`, `delete_api_key`, `send_chat_message`
+- [x] Update `src-tauri/src/errors.rs` — add `Keychain`, `AiRequest` variants
+- [x] Update `src-tauri/src/lib.rs` — add `mod ai`, register new commands
+- [x] Update `src-tauri/src/commands/mod.rs` — re-export ai commands
+
+**Phase B: LLM Providers + Streaming**
+- [x] Create `src-tauri/src/ai/providers.rs` — Anthropic + OpenAI streaming HTTP clients
+- [x] Create `src-tauri/src/ai/prompt.rs` — system prompt construction from ThreatModel
+- [x] Add `send_chat_message` command with SSE parsing + Tauri event emission
+- [x] Unit tests for prompt construction and SSE parsing (7 new Rust tests)
+
+**Phase C: Frontend Store**
+- [x] Create `src/stores/chat-store.ts` — Zustand store for chat state
+- [x] Create `src/lib/ai-utils.ts` — parse AI responses, extract threats
+- [x] Create `src/lib/ai-utils.test.ts` — 11 tests for threat extraction
+- [x] Update `src/stores/ui-store.ts` — add "ai" tab type (exported `RightPanelTab`)
+
+**Phase D: Frontend UI**
+- [x] Create `src/components/panels/ai-chat-tab.tsx` — chat tab component
+- [x] Create `src/components/panels/ai-settings-dialog.tsx` — API key config dialog
+- [x] Update `src/components/panels/right-panel.tsx` — add AI tab
+
+**Phase E: Integration + Polish**
+- [x] Wire "Accept Threat" to `model-store.addThreat()` (in ai-chat-tab.tsx)
+- [x] Add `Cmd/Ctrl+L` keyboard shortcut to focus AI chat input
+- [x] Update CSP for external LLM API calls (`connect-src` for api.anthropic.com + api.openai.com)
+
+**Validation**
+- [x] `cargo test` — 33 tests pass (11 new AI tests)
+- [x] `cargo clippy` — clean (1 pre-existing dead_code warning)
+- [x] `npx vitest --run` — 37 tests pass in 4 files (11 new ai-utils tests)
+- [x] `npx biome check .` — clean (40 files)
+- [x] `npx tsc --noEmit` — no type errors
+- [ ] Manual: configure API key, send message, see streaming response
+- [ ] Manual: AI suggests threat, click "Accept", threat appears in model
+- [ ] Manual: switch providers, verify both work
+- [ ] Manual: delete API key, verify empty state shown
+
+### Notes
+
+- Dropped `ChatRequest` struct from types.rs — command takes individual params instead
+- `keyring` v3 with `apple-native` + `windows-native` + `sync-secret-service` features for cross-platform keychain
+- `reqwest` uses `rustls-tls` (not `native-tls`) to avoid OpenSSL dependency on Linux
+- System prompt serializes the full threat model context: elements, flows, boundaries, existing threats
+- AI response parsing uses simple line-based YAML parser for `threats` fenced code blocks (no full YAML dep)
+- `Cmd+L` handled in two places: `use-keyboard-shortcuts.ts` opens AI tab, `ChatInput` component focuses textarea
+- CSP `connect-src` allows `ipc:` and `http://ipc.localhost` for Tauri IPC alongside the LLM API domains
+- Streaming uses Tauri events (`ai:stream-chunk`, `ai:stream-done`, `ai:stream-error`) rather than command return
+- Anthropic uses `claude-sonnet-4-20250514` model, OpenAI uses `gpt-4o`
+- Chat store event listeners are cleaned up in `finally` block after stream completes/errors
