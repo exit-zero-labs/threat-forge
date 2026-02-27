@@ -5,6 +5,7 @@ import {
 	Controls,
 	MiniMap,
 	ReactFlow,
+	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect } from "react";
@@ -50,14 +51,30 @@ export function DfdCanvas() {
 	const deleteSelected = useCanvasStore((s) => s.deleteSelected);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
+	const {
+		screenToFlowPosition,
+		setViewport: setReactFlowViewport,
+		fitView: fitViewFn,
+	} = useReactFlow();
 
 	// Sync canvas from model when it changes (new model loaded, file opened).
 	// `model` is intentionally in deps — syncFromModel reads from model-store internally,
 	// but we need the effect to re-run when the model reference changes.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: model triggers re-sync
 	useEffect(() => {
+		const hadPendingLayout = useCanvasStore.getState().pendingLayout != null;
 		syncFromModel();
-	}, [syncFromModel, model]);
+
+		// After nodes are set, restore saved viewport or fit to new content
+		requestAnimationFrame(() => {
+			if (hadPendingLayout) {
+				const { viewport } = useCanvasStore.getState();
+				setReactFlowViewport(viewport);
+			} else {
+				fitViewFn();
+			}
+		});
+	}, [syncFromModel, model, setReactFlowViewport, fitViewFn]);
 
 	const onConnect = useCallback(
 		(connection: Connection) => {
@@ -77,29 +94,26 @@ export function DfdCanvas() {
 		(event: React.DragEvent) => {
 			event.preventDefault();
 
-			const rawData = event.dataTransfer.getData("application/threatforge-element");
-			if (!rawData) return;
+			// Read type from Zustand store — workaround for WKWebView dataTransfer issues
+			// where getData() returns empty for custom MIME types during drop events
+			const draggedType = useCanvasStore.getState().draggedType;
+			if (!draggedType) return;
 
-			try {
-				const parsed = JSON.parse(rawData) as { type: string };
+			// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
+			const position = screenToFlowPosition({
+				x: event.clientX,
+				y: event.clientY,
+			});
 
-				// Get canvas-relative position
-				const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-				const position = {
-					x: event.clientX - reactFlowBounds.left,
-					y: event.clientY - reactFlowBounds.top,
-				};
-
-				if (parsed.type === "trust_boundary") {
-					addTrustBoundary("New Boundary", position);
-				} else {
-					addElement(parsed.type as ElementType, position);
-				}
-			} catch {
-				// Ignore invalid drag data
+			if (draggedType === "trust_boundary") {
+				addTrustBoundary("New Boundary", position);
+			} else {
+				addElement(draggedType as ElementType, position);
 			}
+
+			useCanvasStore.getState().setDraggedType(null);
 		},
-		[addElement, addTrustBoundary],
+		[addElement, addTrustBoundary, screenToFlowPosition],
 	);
 
 	const onKeyDown = useCallback(

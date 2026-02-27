@@ -1,7 +1,13 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { create } from "zustand";
-import type { DataFlow, Element, ElementType, TrustBoundary } from "@/types/threat-model";
+import type {
+	DataFlow,
+	DiagramLayout,
+	Element,
+	ElementType,
+	TrustBoundary,
+} from "@/types/threat-model";
 import { useModelStore } from "./model-store";
 
 /** ReactFlow node data payload for DFD elements.
@@ -35,10 +41,20 @@ interface CanvasState {
 	edges: DfdEdge[];
 	viewport: Viewport;
 
+	/** Element type currently being dragged from palette (workaround for WKWebView dataTransfer issues) */
+	draggedType: string | null;
+
+	/** Layout to apply on next syncFromModel (set before loading a model) */
+	pendingLayout: DiagramLayout | null;
+
 	// ReactFlow change handlers
 	onNodesChange: OnNodesChange<DfdNode>;
 	onEdgesChange: OnEdgesChange<DfdEdge>;
 	setViewport: (viewport: Viewport) => void;
+
+	// Drag state
+	setDraggedType: (type: string | null) => void;
+	setPendingLayout: (layout: DiagramLayout | null) => void;
 
 	// Canvas actions
 	addElement: (type: ElementType, position: { x: number; y: number }) => void;
@@ -90,9 +106,9 @@ function elementToNode(element: Element, position: { x: number; y: number }): Df
 		data: {
 			label: element.name,
 			elementType: element.type,
-			trustZone: element.trust_zone,
-			description: element.description,
-			technologies: element.technologies,
+			trustZone: element.trust_zone ?? "",
+			description: element.description ?? "",
+			technologies: element.technologies ?? [],
 		},
 	};
 }
@@ -102,6 +118,8 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 		id: boundary.id,
 		type: "trustBoundary",
 		position,
+		width: 400,
+		height: 300,
 		style: { width: 400, height: 300 },
 		data: {
 			label: boundary.name,
@@ -145,6 +163,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	nodes: [],
 	edges: [],
 	viewport: { x: 0, y: 0, zoom: 1 },
+	draggedType: null,
+	pendingLayout: null,
 
 	onNodesChange: (changes) => {
 		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
@@ -194,6 +214,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	},
 
 	setViewport: (viewport) => set({ viewport }),
+	setDraggedType: (type) => set({ draggedType: type }),
+	setPendingLayout: (layout) => set({ pendingLayout: layout }),
 
 	addElement: (type, position) => {
 		const id = generateElementId(type);
@@ -283,52 +305,42 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	},
 
 	deleteSelected: () => {
-		const selectedNodes = get().nodes.filter((n) => n.selected);
-		const selectedEdges = get().edges.filter((e) => e.selected);
+		const currentNodes = get().nodes;
+		const currentEdges = get().edges;
+		const selectedNodes = currentNodes.filter((n) => n.selected);
+		const selectedEdges = currentEdges.filter((e) => e.selected);
 
 		if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
 
 		const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
 		const selectedEdgeIds = new Set(selectedEdges.map((e) => e.id));
 
-		// Remove nodes and any edges connected to removed nodes
-		const nextNodes = get().nodes.filter((n) => !selectedNodeIds.has(n.id));
-		const nextEdges = get().edges.filter(
-			(e) =>
-				!selectedEdgeIds.has(e.id) &&
-				!selectedNodeIds.has(e.source) &&
-				!selectedNodeIds.has(e.target),
-		);
+		// Find all edges to remove: explicitly selected + connected to removed nodes
+		const connectedEdgeIds = currentEdges
+			.filter((e) => selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target))
+			.map((e) => e.id);
+		const allRemovedEdgeIds = new Set([...selectedEdgeIds, ...connectedEdgeIds]);
+
+		// Remove nodes and affected edges
+		const nextNodes = currentNodes.filter((n) => !selectedNodeIds.has(n.id));
+		const nextEdges = currentEdges.filter((e) => !allRemovedEdgeIds.has(e.id));
 
 		set({ nodes: nextNodes, edges: nextEdges });
 
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
-			const removedEdgeIds = new Set([
-				...selectedEdgeIds,
-				...get()
-					.edges.filter((e) => selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target))
-					.map((e) => e.id),
-			]);
-
 			useModelStore.getState().setModel(
 				{
 					...model,
 					elements: model.elements.filter((e) => !selectedNodeIds.has(e.id)),
-					data_flows: model.data_flows.filter((f) => !removedEdgeIds.has(f.id)),
-					trust_boundaries: model.trust_boundaries.filter((b) => !selectedNodeIds.has(b.id)),
-					// Remove references to deleted elements from remaining boundaries
-					...(selectedNodeIds.size > 0
-						? {
-								trust_boundaries: model.trust_boundaries
-									.filter((b) => !selectedNodeIds.has(b.id))
-									.map((b) => ({
-										...b,
-										contains: b.contains.filter((c) => !selectedNodeIds.has(c)),
-									})),
-							}
-						: {}),
+					data_flows: model.data_flows.filter((f) => !allRemovedEdgeIds.has(f.id)),
+					trust_boundaries: model.trust_boundaries
+						.filter((b) => !selectedNodeIds.has(b.id))
+						.map((b) => ({
+							...b,
+							contains: b.contains.filter((c) => !selectedNodeIds.has(c)),
+						})),
 				},
 				useModelStore.getState().filePath,
 			);
@@ -340,9 +352,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	syncFromModel: () => {
 		const model = useModelStore.getState().model;
 		if (!model) {
-			set({ nodes: [], edges: [] });
+			set({ nodes: [], edges: [], pendingLayout: null });
 			return;
 		}
+
+		// Consume pending layout (set before loading a model via setPendingLayout)
+		const layout = get().pendingLayout;
+		const layoutPositions = layout ? new Map(layout.nodes.map((n) => [n.id, n])) : null;
 
 		// Reset counters based on existing IDs
 		const maxElementNum = model.elements.reduce((max, e) => {
@@ -361,13 +377,31 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		flowCounter = maxFlowNum;
 		boundaryCounter = maxBoundaryNum;
 
-		// Keep existing positions for nodes that still exist
+		// Keep existing positions for nodes that still exist (used when model changes in-place)
 		const existingPositions = new Map(get().nodes.map((n) => [n.id, n.position]));
+
+		// Position priority: saved layout > existing canvas positions > default grid
+		function resolvePosition(
+			id: string,
+			defaultPos: { x: number; y: number },
+		): { x: number; y: number } {
+			const saved = layoutPositions?.get(id);
+			if (saved) return { x: saved.x, y: saved.y };
+			return existingPositions.get(id) ?? defaultPos;
+		}
 
 		// Convert trust boundaries to group nodes
 		const boundaryNodes: DfdNode[] = model.trust_boundaries.map((b, i) => {
-			const pos = existingPositions.get(b.id) ?? { x: 50 + i * 450, y: 50 };
-			return boundaryToNode(b, pos);
+			const pos = resolvePosition(b.id, { x: 50 + i * 450, y: 50 });
+			const node = boundaryToNode(b, pos);
+			// Restore saved dimensions for boundaries
+			const saved = layoutPositions?.get(b.id);
+			if (saved?.width != null && saved?.height != null) {
+				node.width = saved.width;
+				node.height = saved.height;
+				node.style = { ...node.style, width: saved.width, height: saved.height };
+			}
+			return node;
 		});
 
 		// Build a set of elements that belong to boundaries
@@ -380,10 +414,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		// Convert elements to nodes
 		const elementNodes: DfdNode[] = model.elements.map((e, i) => {
-			const pos = existingPositions.get(e.id) ?? {
+			const pos = resolvePosition(e.id, {
 				x: 100 + (i % 4) * 250,
 				y: 100 + Math.floor(i / 4) * 200,
-			};
+			});
 			const node = elementToNode(e, pos);
 
 			// Parent to boundary if contained
@@ -400,6 +434,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const edges: DfdEdge[] = model.data_flows.map(flowToEdge);
 
 		// Boundaries first (rendered behind), then elements
-		set({ nodes: [...boundaryNodes, ...elementNodes], edges });
+		set({
+			nodes: [...boundaryNodes, ...elementNodes],
+			edges,
+			pendingLayout: null,
+			...(layout ? { viewport: layout.viewport } : {}),
+		});
 	},
 }));

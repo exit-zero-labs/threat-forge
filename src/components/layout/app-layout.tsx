@@ -1,4 +1,5 @@
 import { ReactFlowProvider } from "@xyflow/react";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useUiStore } from "@/stores/ui-store";
 import { Canvas } from "../canvas/canvas";
 import { ComponentPalette } from "../palette/component-palette";
@@ -9,6 +10,8 @@ import { TopMenuBar } from "./top-menu-bar";
 export function AppLayout() {
 	const leftPanelOpen = useUiStore((s) => s.leftPanelOpen);
 	const rightPanelOpen = useUiStore((s) => s.rightPanelOpen);
+
+	useKeyboardShortcuts();
 
 	return (
 		<ReactFlowProvider>

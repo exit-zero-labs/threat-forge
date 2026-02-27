@@ -1,4 +1,7 @@
+import { useReactFlow } from "@xyflow/react";
 import { Box, Database, Globe, ShieldAlert } from "lucide-react";
+import { useCanvasStore } from "@/stores/canvas-store";
+import type { ElementType } from "@/types/threat-model";
 
 const DFD_ELEMENTS = [
 	{
@@ -84,13 +87,36 @@ function PaletteItem({
 	type: string;
 	description: string;
 }) {
+	const { screenToFlowPosition } = useReactFlow();
+
 	return (
 		<div
 			className="flex cursor-grab items-center gap-3 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-border hover:bg-accent"
 			draggable
 			onDragStart={(e) => {
-				e.dataTransfer.setData("application/threatforge-element", JSON.stringify({ type }));
+				e.dataTransfer.setData("text/plain", type);
 				e.dataTransfer.effectAllowed = "copy";
+				useCanvasStore.getState().setDraggedType(type);
+			}}
+			onDragEnd={(e) => {
+				// Fallback for WKWebView where the drop event never fires on the target.
+				// In normal browsers, onDrop fires first and clears draggedType, so this is a no-op.
+				const draggedType = useCanvasStore.getState().draggedType;
+				if (!draggedType) return;
+				useCanvasStore.getState().setDraggedType(null);
+
+				// Verify the release happened over the ReactFlow canvas
+				const target = document.elementFromPoint(e.clientX, e.clientY);
+				const canvas = document.querySelector(".react-flow");
+				if (!canvas || !canvas.contains(target)) return;
+
+				const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+				if (draggedType === "trust_boundary") {
+					useCanvasStore.getState().addTrustBoundary("New Boundary", position);
+				} else {
+					useCanvasStore.getState().addElement(draggedType as ElementType, position);
+				}
 			}}
 		>
 			<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-secondary">

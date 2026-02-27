@@ -1,4 +1,5 @@
-import { LayoutPanelLeft, PanelRight, Shield } from "lucide-react";
+import { FilePlus, FolderOpen, LayoutPanelLeft, PanelRight, Save, Shield } from "lucide-react";
+import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
 
@@ -7,9 +8,12 @@ export function TopMenuBar() {
 	const model = useModelStore((s) => s.model);
 	const toggleLeftPanel = useUiStore((s) => s.toggleLeftPanel);
 	const toggleRightPanel = useUiStore((s) => s.toggleRightPanel);
+	const { newModel, openModel, saveModel } = useFileOperations();
 
 	const title = model?.metadata.title ?? "ThreatForge";
 	const displayTitle = isDirty ? `${title} *` : title;
+	const isMac = navigator.platform.includes("Mac");
+	const modKey = isMac ? "\u2318" : "Ctrl+";
 
 	return (
 		<header className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3">
@@ -19,28 +23,66 @@ export function TopMenuBar() {
 				<span className="text-sm font-semibold tracking-tight">{displayTitle}</span>
 			</div>
 
+			{/* File operations */}
+			<div className="ml-4 flex items-center gap-0.5">
+				<MenuButton
+					icon={<FilePlus className="h-3.5 w-3.5" />}
+					tooltip={`New Model (${modKey}N)`}
+					onClick={() => void newModel()}
+				/>
+				<MenuButton
+					icon={<FolderOpen className="h-3.5 w-3.5" />}
+					tooltip={`Open Model (${modKey}O)`}
+					onClick={() => void openModel()}
+				/>
+				<MenuButton
+					icon={<Save className="h-3.5 w-3.5" />}
+					tooltip={`Save (${modKey}S)`}
+					onClick={() => void saveModel()}
+					disabled={!model}
+				/>
+			</div>
+
 			{/* Spacer */}
 			<div className="flex-1" />
 
 			{/* View toggles */}
 			<div className="flex items-center gap-1">
-				<button
-					type="button"
+				<MenuButton
+					icon={<LayoutPanelLeft className="h-4 w-4" />}
+					tooltip="Toggle component palette"
 					onClick={toggleLeftPanel}
-					className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-					title="Toggle component palette"
-				>
-					<LayoutPanelLeft className="h-4 w-4" />
-				</button>
-				<button
-					type="button"
+				/>
+				<MenuButton
+					icon={<PanelRight className="h-4 w-4" />}
+					tooltip="Toggle properties panel"
 					onClick={toggleRightPanel}
-					className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-					title="Toggle properties panel"
-				>
-					<PanelRight className="h-4 w-4" />
-				</button>
+				/>
 			</div>
 		</header>
+	);
+}
+
+function MenuButton({
+	icon,
+	tooltip,
+	onClick,
+	disabled,
+}: {
+	icon: React.ReactNode;
+	tooltip: string;
+	onClick: () => void;
+	disabled?: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			title={tooltip}
+			className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:pointer-events-none"
+		>
+			{icon}
+		</button>
 	);
 }

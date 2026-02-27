@@ -241,3 +241,79 @@ Branch: `feat/stride-engine`
 - PropertiesTab syncs name/trustZone changes directly to canvas-store nodes for immediate visual feedback
 - Biome-ignore on FieldGroup label: `children` always contains a form control but Biome can't verify through the prop
 - `invoke` from `@tauri-apps/api/core` is mocked in tests via `vi.mock`
+
+---
+
+## 2026-02-26 — Session 4: Integration + Polish
+
+Branch: `feat/integration-polish`
+
+### Plan
+
+**Dependencies**
+- [x] Install `@tauri-apps/plugin-dialog` (npm) + `tauri-plugin-dialog` (Cargo)
+- [x] Add `dialog:default` permission to capabilities
+
+**File Operations Hook**
+- [x] Create `src/hooks/use-file-operations.ts` with `newModel`, `openModel`, `saveModel`, `saveModelAs`, `closeModel`
+- [x] Wire Tauri dialog for open/save file pickers (`.threatforge.yaml` filter)
+- [x] Update `modified` timestamp before save
+- [x] Unsaved changes confirmation before New/Open when dirty
+- [x] Sync canvas store after model load (deferred via setTimeout)
+
+**Top Menu Bar**
+- [x] Add file operation buttons: New, Open, Save
+- [x] Show keyboard shortcut hints in tooltips (platform-aware: ⌘ on Mac, Ctrl+ on Windows/Linux)
+
+**Welcome Screen**
+- [x] Add "Open Existing" button to empty canvas
+- [x] Wire to file open dialog
+
+**Keyboard Shortcuts**
+- [x] Create `src/hooks/use-keyboard-shortcuts.ts`
+- [x] Cmd/Ctrl+N → new model, Cmd/Ctrl+O → open, Cmd/Ctrl+S → save
+- [x] Register in app layout
+
+**Validation**
+- [x] Validate: `npx biome check .` passes — 35 files, 0 errors
+- [x] Validate: `npx vitest --run` passes — 26 tests in 3 files
+- [x] Validate: `npx tsc --noEmit` passes — no type errors
+- [x] Validate: `cargo test` passes — 22 tests
+- [x] Validate: `cargo clippy` passes — clean (1 expected dead_code warning)
+- [ ] Validate: New Model → draw → save → reopen flow (needs manual check)
+- [ ] Validate: keyboard shortcuts work (needs manual check)
+- [ ] Validate: unsaved changes dialog appears (needs manual check)
+
+### Notes
+
+- Tauri dialog plugin v2.6.0 installed — provides native open/save file pickers and confirmation dialogs
+- `navigator.platform` used for Mac detection (⌘ vs Ctrl+ in tooltips)
+- File filter: `.threatforge.yaml`, `.yaml`, `.yml` extensions
+- Canvas sync after model load uses `setTimeout(syncFromModel, 0)` to let store update settle before sync
+- `saveModel` updates `modified` timestamp to today's date before writing
+- Removed unused `ThreatModel` type import and `createEmptyModel` from canvas.tsx — now delegates to Tauri `create_new_model` command
+
+---
+
+## 2026-02-26 — Fix: crash when interacting with opened file
+
+Branch: `feat/integration-polish` (continuing)
+
+### Plan
+
+- [x] Fix boundary nodes: add explicit `width`/`height` node properties for xyflow extent calculations
+- [x] Fix `syncFromModel`: restore `width`/`height` from saved layout onto node properties
+- [x] Remove double `syncFromModel` calls: remove `setTimeout` from `use-file-operations.ts`
+- [x] Fix `deleteSelected`: edge tracking bug (reads already-filtered state)
+- [x] Fix `captureLayout`: save `width`/`height` from node properties (not just style)
+- [x] Fix crash: `element.technologies` undefined when Rust omits empty vec via `skip_serializing_if`
+- [x] Add defensive defaults in `elementToNode` and `PropertiesTab`
+- [x] Validate: `npx biome check --write .` — 35 files, 0 errors
+- [x] Validate: `npx vitest --run` — 26 tests, all pass
+- [x] Validate: `npx tsc --noEmit` — no type errors
+
+### Notes
+
+- Root cause: Rust `Element.technologies` has `#[serde(skip_serializing_if = "Vec::is_empty")]` which omits the field from JSON IPC when empty. TypeScript receives `undefined` instead of `[]`, and `PropertiesTab` calls `.join()` on it → crash.
+- Fixed by adding `?? []` defaults in `elementToNode()` and `PropertiesTab`.
+- Also fixed: boundary nodes missing explicit `width`/`height` for xyflow extent calculations, double `syncFromModel` call, `deleteSelected` edge tracking bug.

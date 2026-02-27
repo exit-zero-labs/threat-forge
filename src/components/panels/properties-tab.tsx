@@ -66,7 +66,7 @@ export function PropertiesTab() {
 
 			<EditableField
 				label="Technologies"
-				value={element.technologies.join(", ")}
+				value={(element.technologies ?? []).join(", ")}
 				placeholder="e.g. nginx, TLS, OAuth"
 				onChange={(value) => {
 					const technologies = value
