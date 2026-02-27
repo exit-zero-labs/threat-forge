@@ -217,7 +217,14 @@ pub fn generate_element_id(name: &str) -> String {
 
 /// Generate a unique threat ID
 pub fn generate_threat_id() -> String {
-    format!("threat-{}", Uuid::new_v4().as_simple().to_string().get(..8).unwrap_or("00000000"))
+    format!(
+        "threat-{}",
+        Uuid::new_v4()
+            .as_simple()
+            .to_string()
+            .get(..8)
+            .unwrap_or("00000000")
+    )
 }
 
 #[cfg(test)]
@@ -228,9 +235,11 @@ mod tests {
     fn test_serialize_deserialize_round_trip() {
         let model = ThreatModel::new("Test Model", "Test Author");
         let yaml = serde_yaml::to_string(&model).expect("Failed to serialize");
-        let deserialized: ThreatModel =
-            serde_yaml::from_str(&yaml).expect("Failed to deserialize");
-        assert_eq!(model, deserialized, "Round-trip serialization should produce equal models");
+        let deserialized: ThreatModel = serde_yaml::from_str(&yaml).expect("Failed to deserialize");
+        assert_eq!(
+            model, deserialized,
+            "Round-trip serialization should produce equal models"
+        );
     }
 
     #[test]
@@ -312,10 +321,7 @@ diagrams:
         assert_eq!(generate_element_id("Web Application"), "web-application");
         assert_eq!(generate_element_id("API Gateway"), "api-gateway");
         assert_eq!(generate_element_id("payment-db"), "payment-db");
-        assert_eq!(
-            generate_element_id("  Stripe  API  "),
-            "stripe-api"
-        );
+        assert_eq!(generate_element_id("  Stripe  API  "), "stripe-api");
     }
 
     #[test]

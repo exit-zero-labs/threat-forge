@@ -33,9 +33,7 @@ pub enum ThreatForgeError {
     #[error("Failed to serialize JSON: {source}")]
     JsonSerialize { source: serde_json::Error },
 
-    #[error(
-        "Unsupported schema version '{version}'. Supported versions: {supported:?}"
-    )]
+    #[error("Unsupported schema version '{version}'. Supported versions: {supported:?}")]
     UnsupportedVersion {
         version: String,
         supported: Vec<String>,
@@ -50,4 +48,10 @@ pub enum ThreatForgeError {
         reference: String,
         valid: Vec<String>,
     },
+
+    #[error("Keychain error: {message}")]
+    Keychain { message: String },
+
+    #[error("AI request error: {message}")]
+    AiRequest { message: String },
 }

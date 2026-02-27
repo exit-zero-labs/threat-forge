@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
+import { AiChatTab } from "./ai-chat-tab";
 import { PropertiesTab } from "./properties-tab";
 import { ThreatsTab } from "./threats-tab";
 
@@ -24,11 +25,16 @@ export function RightPanel() {
 						</span>
 					)}
 				</TabButton>
+				<TabButton active={tab === "ai"} onClick={() => setTab("ai")}>
+					AI
+				</TabButton>
 			</div>
 
 			{/* Tab content */}
 			<div className="flex-1 overflow-y-auto p-3">
-				{tab === "properties" ? <PropertiesTab /> : <ThreatsTab />}
+				{tab === "properties" && <PropertiesTab />}
+				{tab === "threats" && <ThreatsTab />}
+				{tab === "ai" && <AiChatTab />}
 			</div>
 		</div>
 	);

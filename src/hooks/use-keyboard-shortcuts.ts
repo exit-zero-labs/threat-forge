@@ -1,8 +1,10 @@
 import { useEffect } from "react";
+import { useUiStore } from "@/stores/ui-store";
 import { useFileOperations } from "./use-file-operations";
 
 export function useKeyboardShortcuts() {
 	const { newModel, openModel, saveModel } = useFileOperations();
+	const setRightPanelTab = useUiStore((s) => s.setRightPanelTab);
 
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
@@ -22,10 +24,17 @@ export function useKeyboardShortcuts() {
 					e.preventDefault();
 					void saveModel();
 					break;
+				case "l":
+					e.preventDefault();
+					// Open AI tab and ensure right panel is visible
+					useUiStore.getState().rightPanelOpen || useUiStore.getState().toggleRightPanel();
+					setRightPanelTab("ai");
+					// Focus is handled by the ChatInput component's own keydown listener
+					break;
 			}
 		}
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [newModel, openModel, saveModel]);
+	}, [newModel, openModel, saveModel, setRightPanelTab]);
 }
