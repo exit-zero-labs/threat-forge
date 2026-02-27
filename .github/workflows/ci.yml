@@ -1,10 +1,7 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch: # manual trigger only — use local CI for routine checks
 
 concurrency:
   group: ci-${{ github.ref }}

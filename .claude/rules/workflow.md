@@ -66,3 +66,27 @@ IMPORTANT: Non-trivial changes MUST happen on a new branch, never directly on `m
 - Before making code changes, check if you're on `main` with `git branch --show-current`
 - If on `main`, create a branch FIRST before writing any code
 - NEVER force-push or push to `main` directly
+
+## Local CI — Validate Before Pushing
+
+**Run local CI before opening a PR.** GitHub Actions CI is manual-only (`workflow_dispatch`) to conserve free-tier minutes.
+
+### Quick check (native, ~30s):
+```bash
+npm run ci:local
+```
+
+### Full validation (Docker, clean environment):
+```bash
+npm run ci:docker         # lint + test
+npm run ci:docker:build   # lint + test + Tauri build
+```
+
+### Pre-push hook:
+- Installed automatically via `npm install` (the `prepare` script runs `scripts/setup-hooks.sh`)
+- Runs `npm run ci:local` before every `git push`
+- To skip in emergencies: `git push --no-verify` (use sparingly)
+
+### GitHub Actions (manual):
+- Trigger via GitHub UI or `gh workflow run ci.yml`
+- Use for cross-platform validation before merging to `main`

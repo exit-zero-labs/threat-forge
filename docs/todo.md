@@ -426,3 +426,41 @@ Branch: `chore/ci-release-workflows`
 - Linux system deps: libwebkit2gtk-4.1-dev, libappindicator3-dev, librsvg2-dev, patchelf, libdbus-1-dev, libssl-dev
 - Release workflow creates draft releases (not auto-published) for manual review
 - `[profile.release]`: strip=true, lto=true, codegen-units=1, panic=abort, opt-level=s — reduces binary size ~30-50%
+
+---
+
+## 2026-02-27 — Local Docker CI + Manual GitHub Actions
+
+Branch: `chore/ci-release-workflows` (continuing)
+
+### Plan
+
+**New files**
+- [x] Create `Dockerfile.ci` — Ubuntu 22.04 + Node 20 + Rust stable + Tauri deps
+- [x] Create `compose.yml` — Docker Compose with cargo cache volumes
+- [x] Create `.dockerignore` — exclude node_modules, target, .git, etc.
+- [x] Create `scripts/ci-local.sh` — lint + test + optional build script
+- [x] Create `scripts/hooks/pre-push` — pre-push git hook (native checks)
+- [x] Create `scripts/setup-hooks.sh` — auto-install hooks on `npm install`
+
+**Modified files**
+- [x] Update `package.json` — add `ci:local`, `ci:docker`, `ci:docker:build`, `prepare` scripts
+- [x] Update `.github/workflows/ci.yml` — change trigger to `workflow_dispatch` only
+- [x] Update `.claude/rules/workflow.md` — add local CI requirements
+- [x] Update `CLAUDE.md` — add Docker prerequisite + new commands
+- [x] Update `docs/todo.md` — this plan
+
+**Validation**
+- [x] `npm run ci:local` runs lint + test and exits 0 (37 frontend + 33 Rust tests)
+- [ ] `npm run ci:docker` builds Docker image and runs lint + test in container (needs manual)
+- [x] Pre-push hook is installed and runnable
+- [x] CI workflow only triggers on `workflow_dispatch`
+- [x] Biome + tsc + clippy + cargo fmt all pass
+
+### Notes
+
+- `ci-local.sh` sources `$HOME/.cargo/env` if cargo not in PATH — npm scripts don't inherit shell profile
+- Docker CI uses named volumes for `cargo-target`, `cargo-registry`, `cargo-git` to persist compilation cache
+- Dockerfile uses Ubuntu 22.04 (matches GHA `ubuntu-latest` at time of writing, has `libwebkit2gtk-4.1-dev`)
+- `prepare` lifecycle hook runs `setup-hooks.sh` on every `npm install` — auto-installs pre-push hook
+- `ci:docker:build` overrides the container CMD to pass `--build` flag for Tauri binary compilation
