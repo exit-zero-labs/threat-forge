@@ -1,0 +1,14 @@
+services:
+  ci:
+    build:
+      context: .
+      dockerfile: Dockerfile.ci
+    volumes:
+      - cargo-target:/app/src-tauri/target
+      - cargo-registry:/root/.cargo/registry
+      - cargo-git:/root/.cargo/git
+
+volumes:
+  cargo-target:
+  cargo-registry:
+  cargo-git:

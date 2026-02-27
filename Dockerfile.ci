@@ -1,0 +1,63 @@
+# ThreatForge Local CI — Ubuntu 22.04 + Node 20 + Rust stable + Tauri system deps
+# Matches GitHub Actions ubuntu-latest environment for parity.
+#
+# Layer order optimized for Docker cache efficiency:
+#   1. System deps (rarely change)
+#   2. Node 20 via NodeSource
+#   3. Rust stable + clippy + rustfmt
+#   4. npm ci (cached until package-lock.json changes)
+#   5. cargo fetch (cached until Cargo.lock changes)
+#   6. Full source copy (rebuilds on any source change)
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 1. System dependencies for Tauri + WebKit
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    ca-certificates \
+    gnupg \
+    pkg-config \
+    libwebkit2gtk-4.1-dev \
+    libappindicator3-dev \
+    librsvg2-dev \
+    patchelf \
+    libdbus-1-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Node 20 via NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# 3. Rust stable + clippy + rustfmt
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
+    --default-toolchain stable \
+    --component clippy,rustfmt
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+# 4. npm ci (cached until package-lock.json changes)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# 5. cargo fetch (cached until Cargo.lock changes)
+COPY src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/
+COPY src-tauri/build.rs src-tauri/
+# Stub out src so cargo fetch can resolve the workspace
+RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && echo "" > src-tauri/src/lib.rs
+RUN cd src-tauri && cargo fetch
+RUN rm -rf src-tauri/src
+
+# 6. Full source copy
+COPY . .
+
+# Headless WebKit env vars for Docker builds
+ENV WEBKIT_DISABLE_COMPOSITING_MODE=1
+ENV WEBKIT_DISABLE_DMABUF_RENDERER=1
+
+CMD ["bash", "scripts/ci-local.sh"]
