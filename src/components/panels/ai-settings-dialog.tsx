@@ -1,6 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
 import { KeyRound, Loader2, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
+import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
 
@@ -27,10 +28,9 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
 	useEffect(() => {
 		async function checkStatus() {
 			try {
-				const anthropicStatus = await invoke<boolean>("get_api_key_status", {
-					provider: "anthropic",
-				});
-				const openaiStatus = await invoke<boolean>("get_api_key_status", { provider: "openai" });
+				const adapter = await getKeychainAdapter();
+				const anthropicStatus = await adapter.hasKey("anthropic");
+				const openaiStatus = await adapter.hasKey("openai");
 				setKeyStatus({ anthropic: anthropicStatus, openai: openaiStatus });
 			} catch {
 				// Ignore errors — show as unconfigured
@@ -46,10 +46,14 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
 		setMessage(null);
 
 		try {
-			await invoke("set_api_key", { provider, key: apiKey.trim() });
+			const adapter = await getKeychainAdapter();
+			await adapter.setKey(provider, apiKey.trim());
 			setKeyStatus((prev) => ({ ...prev, [provider]: true }));
 			setApiKey("");
-			setMessage({ type: "success", text: "API key saved securely to OS keychain." });
+			const successText = isTauri()
+				? "API key saved securely to OS keychain."
+				: "API key saved to browser storage.";
+			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
 			setMessage({ type: "error", text: String(err) });
@@ -63,9 +67,13 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
 		setMessage(null);
 
 		try {
-			await invoke("delete_api_key", { provider });
+			const adapter = await getKeychainAdapter();
+			await adapter.deleteKey(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: false }));
-			setMessage({ type: "success", text: "API key removed from keychain." });
+			const successText = isTauri()
+				? "API key removed from keychain."
+				: "API key removed from browser storage.";
+			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
 			setMessage({ type: "error", text: String(err) });
@@ -201,8 +209,9 @@ export function AiSettingsDialog({ onClose }: { onClose: () => void }) {
 
 				{/* Security note */}
 				<p className="mt-3 text-[10px] text-muted-foreground/70">
-					API keys are stored securely in your operating system's keychain. They are never written
-					to files or sent anywhere except the selected AI provider.
+					{isTauri()
+						? "API keys are stored securely in your operating system's keychain. They are never written to files or sent anywhere except the selected AI provider."
+						: "API keys are stored in your browser's localStorage. For stronger security, use the desktop app which stores keys in your OS keychain. Keys are only sent to the selected AI provider."}
 				</p>
 			</div>
 		</div>

@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
+import { getStrideAdapter } from "@/lib/adapters/get-stride-adapter";
 import type { Element, Threat, ThreatModel } from "@/types/threat-model";
 
 interface ModelState {
@@ -128,7 +128,8 @@ export const useModelStore = create<ModelState>((set, get) => ({
 
 		set({ isAnalyzing: true });
 		try {
-			const newThreats = await invoke<Threat[]>("analyze_stride", { model });
+			const adapter = await getStrideAdapter();
+			const newThreats = await adapter.analyze(model);
 			if (newThreats.length > 0) {
 				get().addThreats(newThreats);
 			}
