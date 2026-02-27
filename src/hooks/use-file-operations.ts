@@ -40,8 +40,8 @@ function captureLayout(diagramId: string): DiagramLayout {
 			id: n.id,
 			x: n.position.x,
 			y: n.position.y,
-			...(n.style?.width != null ? { width: Number(n.style.width) } : {}),
-			...(n.style?.height != null ? { height: Number(n.style.height) } : {}),
+			...(n.width != null ? { width: n.width } : {}),
+			...(n.height != null ? { height: n.height } : {}),
 		})),
 	};
 }
@@ -64,7 +64,6 @@ export function useFileOperations() {
 	const isDirty = useModelStore((s) => s.isDirty);
 	const setModel = useModelStore((s) => s.setModel);
 	const clearModel = useModelStore((s) => s.clearModel);
-	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 
 	const newModel = useCallback(async () => {
 		if (isDirty) {
@@ -79,9 +78,8 @@ export function useFileOperations() {
 		// No pending layout for new models — use default positions
 		useCanvasStore.getState().setPendingLayout(null);
 		setModel(created, null);
-		// Defer sync to next tick so store update settles
-		setTimeout(() => syncFromModel(), 0);
-	}, [isDirty, setModel, syncFromModel]);
+		// syncFromModel is called by the useEffect in DfdCanvas when model changes
+	}, [isDirty, setModel]);
 
 	const openModel = useCallback(async () => {
 		if (isDirty) {
@@ -111,8 +109,8 @@ export function useFileOperations() {
 		}
 
 		setModel(loaded, path);
-		setTimeout(() => syncFromModel(), 0);
-	}, [isDirty, setModel, syncFromModel]);
+		// syncFromModel is called by the useEffect in DfdCanvas when model changes
+	}, [isDirty, setModel]);
 
 	const saveModel = useCallback(async () => {
 		if (!model) return;
@@ -174,8 +172,9 @@ export function useFileOperations() {
 			if (!discard) return;
 		}
 		clearModel();
-		setTimeout(() => syncFromModel(), 0);
-	}, [isDirty, clearModel, syncFromModel]);
+		// DfdCanvas unmounts when model is null, so useEffect won't fire — clear canvas directly
+		useCanvasStore.getState().syncFromModel();
+	}, [isDirty, clearModel]);
 
 	return { newModel, openModel, saveModel, saveModelAs, closeModel };
 }

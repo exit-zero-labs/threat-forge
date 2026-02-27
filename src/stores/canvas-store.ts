@@ -106,9 +106,9 @@ function elementToNode(element: Element, position: { x: number; y: number }): Df
 		data: {
 			label: element.name,
 			elementType: element.type,
-			trustZone: element.trust_zone,
-			description: element.description,
-			technologies: element.technologies,
+			trustZone: element.trust_zone ?? "",
+			description: element.description ?? "",
+			technologies: element.technologies ?? [],
 		},
 	};
 }
@@ -118,6 +118,8 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 		id: boundary.id,
 		type: "trustBoundary",
 		position,
+		width: 400,
+		height: 300,
 		style: { width: 400, height: 300 },
 		data: {
 			label: boundary.name,
@@ -303,52 +305,42 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	},
 
 	deleteSelected: () => {
-		const selectedNodes = get().nodes.filter((n) => n.selected);
-		const selectedEdges = get().edges.filter((e) => e.selected);
+		const currentNodes = get().nodes;
+		const currentEdges = get().edges;
+		const selectedNodes = currentNodes.filter((n) => n.selected);
+		const selectedEdges = currentEdges.filter((e) => e.selected);
 
 		if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
 
 		const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
 		const selectedEdgeIds = new Set(selectedEdges.map((e) => e.id));
 
-		// Remove nodes and any edges connected to removed nodes
-		const nextNodes = get().nodes.filter((n) => !selectedNodeIds.has(n.id));
-		const nextEdges = get().edges.filter(
-			(e) =>
-				!selectedEdgeIds.has(e.id) &&
-				!selectedNodeIds.has(e.source) &&
-				!selectedNodeIds.has(e.target),
-		);
+		// Find all edges to remove: explicitly selected + connected to removed nodes
+		const connectedEdgeIds = currentEdges
+			.filter((e) => selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target))
+			.map((e) => e.id);
+		const allRemovedEdgeIds = new Set([...selectedEdgeIds, ...connectedEdgeIds]);
+
+		// Remove nodes and affected edges
+		const nextNodes = currentNodes.filter((n) => !selectedNodeIds.has(n.id));
+		const nextEdges = currentEdges.filter((e) => !allRemovedEdgeIds.has(e.id));
 
 		set({ nodes: nextNodes, edges: nextEdges });
 
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
-			const removedEdgeIds = new Set([
-				...selectedEdgeIds,
-				...get()
-					.edges.filter((e) => selectedNodeIds.has(e.source) || selectedNodeIds.has(e.target))
-					.map((e) => e.id),
-			]);
-
 			useModelStore.getState().setModel(
 				{
 					...model,
 					elements: model.elements.filter((e) => !selectedNodeIds.has(e.id)),
-					data_flows: model.data_flows.filter((f) => !removedEdgeIds.has(f.id)),
-					trust_boundaries: model.trust_boundaries.filter((b) => !selectedNodeIds.has(b.id)),
-					// Remove references to deleted elements from remaining boundaries
-					...(selectedNodeIds.size > 0
-						? {
-								trust_boundaries: model.trust_boundaries
-									.filter((b) => !selectedNodeIds.has(b.id))
-									.map((b) => ({
-										...b,
-										contains: b.contains.filter((c) => !selectedNodeIds.has(c)),
-									})),
-							}
-						: {}),
+					data_flows: model.data_flows.filter((f) => !allRemovedEdgeIds.has(f.id)),
+					trust_boundaries: model.trust_boundaries
+						.filter((b) => !selectedNodeIds.has(b.id))
+						.map((b) => ({
+							...b,
+							contains: b.contains.filter((c) => !selectedNodeIds.has(c)),
+						})),
 				},
 				useModelStore.getState().filePath,
 			);
@@ -405,6 +397,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			// Restore saved dimensions for boundaries
 			const saved = layoutPositions?.get(b.id);
 			if (saved?.width != null && saved?.height != null) {
+				node.width = saved.width;
+				node.height = saved.height;
 				node.style = { ...node.style, width: saved.width, height: saved.height };
 			}
 			return node;

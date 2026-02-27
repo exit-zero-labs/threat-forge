@@ -292,3 +292,28 @@ Branch: `feat/integration-polish`
 - Canvas sync after model load uses `setTimeout(syncFromModel, 0)` to let store update settle before sync
 - `saveModel` updates `modified` timestamp to today's date before writing
 - Removed unused `ThreatModel` type import and `createEmptyModel` from canvas.tsx — now delegates to Tauri `create_new_model` command
+
+---
+
+## 2026-02-26 — Fix: crash when interacting with opened file
+
+Branch: `feat/integration-polish` (continuing)
+
+### Plan
+
+- [x] Fix boundary nodes: add explicit `width`/`height` node properties for xyflow extent calculations
+- [x] Fix `syncFromModel`: restore `width`/`height` from saved layout onto node properties
+- [x] Remove double `syncFromModel` calls: remove `setTimeout` from `use-file-operations.ts`
+- [x] Fix `deleteSelected`: edge tracking bug (reads already-filtered state)
+- [x] Fix `captureLayout`: save `width`/`height` from node properties (not just style)
+- [x] Fix crash: `element.technologies` undefined when Rust omits empty vec via `skip_serializing_if`
+- [x] Add defensive defaults in `elementToNode` and `PropertiesTab`
+- [x] Validate: `npx biome check --write .` — 35 files, 0 errors
+- [x] Validate: `npx vitest --run` — 26 tests, all pass
+- [x] Validate: `npx tsc --noEmit` — no type errors
+
+### Notes
+
+- Root cause: Rust `Element.technologies` has `#[serde(skip_serializing_if = "Vec::is_empty")]` which omits the field from JSON IPC when empty. TypeScript receives `undefined` instead of `[]`, and `PropertiesTab` calls `.join()` on it → crash.
+- Fixed by adding `?? []` defaults in `elementToNode()` and `PropertiesTab`.
+- Also fixed: boundary nodes missing explicit `width`/`height` for xyflow extent calculations, double `syncFromModel` call, `deleteSelected` edge tracking bug.
