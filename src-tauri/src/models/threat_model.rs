@@ -204,6 +204,7 @@ pub struct NodePosition {
 }
 
 /// Generate a new element ID from a name
+#[allow(dead_code)]
 pub fn generate_element_id(name: &str) -> String {
     name.to_lowercase()
         .chars()

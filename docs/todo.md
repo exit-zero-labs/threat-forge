@@ -381,3 +381,48 @@ Branch: `feat/ai-chat-pane`
 - Streaming uses Tauri events (`ai:stream-chunk`, `ai:stream-done`, `ai:stream-error`) rather than command return
 - Anthropic uses `claude-sonnet-4-20250514` model, OpenAI uses `gpt-4o`
 - Chat store event listeners are cleaned up in `finally` block after stream completes/errors
+
+---
+
+## 2026-02-27 — Sprint 6: Cross-Platform CI + Builds
+
+Branch: `chore/ci-release-workflows`
+
+### Plan
+
+**Phase A: CI Workflow (PR gating)**
+- [ ] Create `.github/workflows/ci.yml`
+  - [ ] lint job (ubuntu-only): biome check, tsc --noEmit, cargo clippy, cargo fmt --check
+  - [ ] test job (ubuntu-only): vitest --run, cargo test
+  - [ ] build job (matrix: ubuntu, macos, windows): tauri build + upload artifacts
+  - [ ] Concurrency groups to cancel stale runs
+  - [ ] Pin all actions to exact SHAs
+  - [ ] Least-privilege permissions (contents: read)
+  - [ ] Cargo + npm caching
+
+**Phase B: Release Workflow (tag-triggered)**
+- [ ] Create `.github/workflows/release.yml`
+  - [ ] Trigger on `v*` tags
+  - [ ] Matrix build via tauri-apps/tauri-action
+  - [ ] Draft release with platform binaries
+  - [ ] Pin all actions to exact SHAs
+  - [ ] permissions: contents: write
+
+**Phase C: Build Optimizations**
+- [ ] Create `.node-version` (pin Node 20)
+- [ ] Add `[profile.release]` to `src-tauri/Cargo.toml` (strip, lto, codegen-units, panic, opt-level)
+
+**Validation**
+- [x] `cargo test` — 33 Rust tests pass
+- [x] `npx vitest --run` — 37 frontend tests pass (4 files)
+- [x] `npx biome check .` — 40 files, 0 errors
+- [x] `npx tsc --noEmit` — no type errors
+- [x] `cargo clippy -- -D warnings` — clean (fixed `generate_element_id` dead_code with `#[allow(dead_code)]`)
+- [x] `cargo fmt --check` — clean
+
+### Notes
+- Added `#[allow(dead_code)]` to `generate_element_id` in `threat_model.rs` — utility function for future use, already tested, but CI uses `-D warnings` which treats dead_code as an error
+- GitHub Actions SHAs pinned to: checkout v4.3.1, setup-node v4.4.0, rust-toolchain master 2026-02-13, cache v4.2.3, upload-artifact v4.6.2, tauri-action action-v0.6.1
+- Linux system deps: libwebkit2gtk-4.1-dev, libappindicator3-dev, librsvg2-dev, patchelf, libdbus-1-dev, libssl-dev
+- Release workflow creates draft releases (not auto-published) for manual review
+- `[profile.release]`: strip=true, lto=true, codegen-units=1, panic=abort, opt-level=s — reduces binary size ~30-50%
