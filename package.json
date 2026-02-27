@@ -13,7 +13,11 @@
 		"check": "biome check .",
 		"format": "biome check --write .",
 		"test": "vitest --run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"ci:local": "bash scripts/ci-local.sh",
+		"ci:docker": "docker compose run --rm --build ci",
+		"ci:docker:build": "docker compose run --rm --build ci bash scripts/ci-local.sh --build",
+		"prepare": "bash scripts/setup-hooks.sh"
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^2",

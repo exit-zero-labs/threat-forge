@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Pre-push hook — runs native lint + test checks before pushing.
+# Installed automatically by scripts/setup-hooks.sh via npm prepare.
+
+set -euo pipefail
+
+echo "pre-push: running local CI checks..."
+bash scripts/ci-local.sh

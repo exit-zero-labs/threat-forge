@@ -19,9 +19,15 @@ Fills the gap between Microsoft's legacy TMT (free but Windows-only, binary `.tm
 | Testing (Frontend) | Vitest + React Testing Library |
 | Testing (Rust) | `cargo test` |
 | E2E Testing | Playwright |
-| CI/CD | GitHub Actions |
+| CI/CD | Docker (local) + GitHub Actions (manual) |
 | Linting | Biome (TS), Clippy (Rust) |
 | Formatting | Biome (TS), rustfmt (Rust) |
+
+## Prerequisites
+
+- **Node 20** (see `.node-version`)
+- **Rust stable** with `clippy` and `rustfmt` components
+- **Docker** (for `ci:docker` commands — local CI in a clean Linux environment)
 
 ## Commands
 
@@ -45,6 +51,11 @@ npx biome check .        # Lint check
 npx biome check --write .  # Auto-fix lint + format
 cargo clippy --manifest-path src-tauri/Cargo.toml  # Rust lint
 cargo fmt --manifest-path src-tauri/Cargo.toml     # Rust format
+
+# Local CI (run before pushing)
+npm run ci:local         # Native lint + test (fast, ~30s)
+npm run ci:docker        # Docker lint + test (clean environment)
+npm run ci:docker:build  # Docker lint + test + Tauri build
 ```
 
 ## Architecture
