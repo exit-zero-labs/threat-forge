@@ -464,3 +464,73 @@ Branch: `chore/ci-release-workflows` (continuing)
 - Dockerfile uses Ubuntu 22.04 (matches GHA `ubuntu-latest` at time of writing, has `libwebkit2gtk-4.1-dev`)
 - `prepare` lifecycle hook runs `setup-hooks.sh` on every `npm install` — auto-installs pre-push hook
 - `ci:docker:build` overrides the container CMD to pass `--build` flag for Tauri binary compilation
+
+---
+
+## 2026-02-27 — Browser Support (Adapter Pattern)
+
+Branch: `feat/browser-support`
+
+### Plan
+
+**Step 1: Foundation**
+- [x] Install `js-yaml` + `@types/js-yaml`
+- [x] Create `src/lib/platform.ts` — `isTauri()` detection via `window.__TAURI_INTERNALS__`
+- [x] Create 4 adapter interfaces: `file-adapter.ts`, `stride-adapter.ts`, `chat-adapter.ts`, `keychain-adapter.ts`
+- [x] Create 4 factory files: `get-file-adapter.ts`, `get-stride-adapter.ts`, `get-chat-adapter.ts`, `get-keychain-adapter.ts`
+
+**Step 2: STRIDE Adapter**
+- [x] Port 14 STRIDE rules from Rust to TypeScript (`src/lib/stride-engine.ts`)
+- [x] Port all 8 Rust tests + add 1 more (`src/lib/stride-engine.test.ts`) — 9 tests pass
+- [x] Create `browser-stride-adapter.ts` (delegates to TS engine)
+- [x] Create `tauri-stride-adapter.ts` (wraps `invoke("analyze_stride")`)
+- [x] Refactor `model-store.ts` — remove `invoke` import, use `getStrideAdapter()`
+
+**Step 3: Keychain Adapter**
+- [x] Create `browser-keychain-adapter.ts` (localStorage with `tf-api-key-{provider}` keys)
+- [x] Create `tauri-keychain-adapter.ts` (wraps `invoke()` for OS keychain)
+- [x] Refactor `ai-settings-dialog.tsx` — use `getKeychainAdapter()`, conditional security note text
+- [x] Refactor `chat-store.ts` — use `getKeychainAdapter()` for `checkApiKey`
+
+**Step 4: File Ops Adapter**
+- [x] Create `browser-file-adapter.ts` (File API + js-yaml + Blob download)
+- [x] Create `tauri-file-adapter.ts` (wraps `invoke()` + native dialogs)
+- [x] Refactor `use-file-operations.ts` — remove `@tauri-apps/api` imports, use `getFileAdapter()`
+
+**Step 5: Chat Adapter**
+- [x] Port `build_system_prompt()` from Rust (`src/lib/ai-prompt.ts`)
+- [x] Write 4 tests for prompt builder (`src/lib/ai-prompt.test.ts`)
+- [x] Create `browser-chat-adapter.ts` (direct `fetch()` with SSE streaming to Anthropic/OpenAI)
+- [x] Create `tauri-chat-adapter.ts` (wraps `invoke()` + Tauri event listeners)
+- [x] Refactor `chat-store.ts` — use `getChatAdapter()` with callback pattern
+
+**Step 6: Build Config**
+- [x] Update `vite.config.ts` — externalize `@tauri-apps/*` when not in Tauri build
+- [x] Add `dev:web` and `build:web` scripts to `package.json`
+- [x] Create `vercel.json` (SPA rewrite, output dir, build command)
+
+**Step 7: Validation**
+- [x] `npx vitest --run` — 50 tests pass in 6 files (13 new: 9 STRIDE + 4 AI prompt)
+- [x] `npx tsc --noEmit` — no type errors
+- [x] `npx biome check .` — 62 files, 0 issues
+- [x] `npm run build:web` — builds successfully, adapters code-split into separate chunks
+- [x] Main bundle (`index-*.js`) contains 0 `@tauri-apps` references
+- [x] Browser adapter chunks contain 0 `@tauri-apps` references
+- [x] Tauri adapter chunks properly isolated (only loaded via dynamic import when `isTauri()`)
+- [ ] `npm run tauri dev` — desktop app works identically (needs manual check)
+- [ ] `npm run dev:web` — browser version works (needs manual check)
+- [ ] Manual: export YAML from browser → open in desktop app (needs manual check)
+
+### Notes
+
+- Adapter pattern: each domain (file, stride, keychain, chat) gets an interface + tauri/browser implementations + factory
+- Factory files use `isTauri()` + dynamic `import()` for tree-shaking — Vite code-splits tauri adapters into separate chunks
+- STRIDE TS port: 14 rules matching Rust implementation exactly. All 9 tests match Rust test assertions
+- Browser AI: direct `fetch()` to Anthropic/OpenAI APIs. Anthropic requires `anthropic-dangerous-direct-browser-access: true` header
+- Browser keychain: `localStorage` with `tf-api-key-{provider}` keys. Security note in UI updated to reflect this
+- Browser file ops: `<input type="file">` for open, `Blob` + download link for save, `js-yaml` for YAML parse/serialize
+- No layout persistence in browser — positions reset on reload. Browser is "try before you download" experience
+- `vite.config.ts` uses `TAURI_ENV_ARCH` env var to detect Tauri builds (set by `tauri dev` / `tauri build`)
+- Web dev server (`dev:web`) runs on port 3000 to avoid conflict with Tauri's port 1420
+- Used `.replace()` instead of `.replaceAll()` in stride-engine.ts because tsconfig targets ES2020 (replaceAll needs ES2021)
+- Build output: main bundle 466KB, browser adapters ~52KB total, tauri adapters ~2KB total (all gzipped much smaller)

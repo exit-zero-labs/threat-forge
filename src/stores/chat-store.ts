@@ -1,7 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-import { listen } from "@tauri-apps/api/event";
 import { create } from "zustand";
+import { getChatAdapter } from "@/lib/adapters/get-chat-adapter";
+import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
 import type { ThreatModel } from "@/types/threat-model";
 
 export type AiProvider = "anthropic" | "openai";
@@ -52,46 +51,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			error: null,
 		});
 
-		// Set up event listeners for streaming
-		const unlisteners: UnlistenFn[] = [];
-
 		try {
-			const unlisten1 = await listen<{ text: string }>("ai:stream-chunk", (event) => {
-				set((state) => {
-					const msgs = [...state.messages];
-					const last = msgs[msgs.length - 1];
-					if (last && last.role === "assistant") {
-						msgs[msgs.length - 1] = { ...last, content: last.content + event.payload.text };
-					}
-					return { messages: msgs };
-				});
+			const adapter = await getChatAdapter();
+			await adapter.sendMessage(provider, updatedMessages, model, {
+				onChunk: (text) => {
+					set((state) => {
+						const msgs = [...state.messages];
+						const last = msgs[msgs.length - 1];
+						if (last && last.role === "assistant") {
+							msgs[msgs.length - 1] = { ...last, content: last.content + text };
+						}
+						return { messages: msgs };
+					});
+				},
+				onDone: () => {
+					// Stream completed — handled by finally block
+				},
+				onError: (error) => {
+					set({ error });
+				},
 			});
-			unlisteners.push(unlisten1);
-
-			const donePromise = new Promise<void>((resolve, reject) => {
-				listen("ai:stream-done", () => {
-					resolve();
-				}).then((unlisten) => unlisteners.push(unlisten));
-
-				listen<{ error: string }>("ai:stream-error", (event) => {
-					reject(new Error(event.payload.error));
-				}).then((unlisten) => unlisteners.push(unlisten));
-			});
-
-			// Send the chat request to Rust backend
-			const ipcMessages = updatedMessages.map((m) => ({
-				role: m.role,
-				content: m.content,
-			}));
-
-			await invoke("send_chat_message", {
-				provider,
-				messages: ipcMessages,
-				model,
-			});
-
-			// Wait for stream to complete
-			await donePromise;
 		} catch (err) {
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			set({ error: errorMessage });
@@ -106,10 +85,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				return { messages: msgs };
 			});
 		} finally {
-			// Clean up all event listeners
-			for (const unlisten of unlisteners) {
-				unlisten();
-			}
 			set({ isStreaming: false });
 		}
 	},
@@ -123,7 +98,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	checkApiKey: async (providerOverride) => {
 		const provider = providerOverride ?? get().provider;
 		try {
-			const hasKey = await invoke<boolean>("get_api_key_status", { provider });
+			const adapter = await getKeychainAdapter();
+			const hasKey = await adapter.hasKey(provider);
 			set({ hasApiKey: hasKey });
 		} catch {
 			set({ hasApiKey: false });
