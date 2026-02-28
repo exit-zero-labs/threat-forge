@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings-store";
 import { KEYBOARD_SHORTCUTS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
+import { ThemePicker } from "./theme-picker";
 
 type SettingsSection = "general" | "appearance" | "editor" | "ai" | "shortcuts";
 
@@ -201,11 +202,9 @@ function AppearanceSection() {
 				/>
 			</SettingRow>
 
-			<div className="rounded border border-border/50 bg-muted/20 p-3">
-				<p className="text-[10px] text-muted-foreground">
-					Theme selection will be available here once the theme system is implemented. Currently
-					using the default dark theme.
-				</p>
+			{/* Theme selection */}
+			<div className="mt-2">
+				<ThemePicker />
 			</div>
 		</div>
 	);

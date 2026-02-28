@@ -8,10 +8,11 @@ import {
 	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
+import { useUiStore } from "@/stores/ui-store";
 import type { ElementType } from "@/types/threat-model";
 import { DataFlowEdge } from "./edges/data-flow-edge";
 import { DataStoreNode } from "./nodes/data-store-node";
@@ -129,6 +130,23 @@ export function DfdCanvas() {
 		useModelStore.getState().setSelectedElement(null);
 	}, []);
 
+	// Subscribe to themePresetId so canvas re-renders when theme changes,
+	// picking up the new CSS variable values for ReactFlow sub-components.
+	const themePresetId = useUiStore((s) => s.themePresetId);
+
+	// Read resolved CSS variable values so ReactFlow prop-based colors update on theme change
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themePresetId triggers recalculation when theme changes
+	const canvasColors = useMemo(() => {
+		const style = getComputedStyle(document.documentElement);
+		return {
+			dotColor: style.getPropertyValue("--color-muted-foreground").trim() || "oklch(0.35 0 0)",
+			minimapNodeColor:
+				style.getPropertyValue("--color-muted-foreground").trim() || "oklch(0.4 0 0)",
+			minimapMaskColor:
+				style.getPropertyValue("--color-background").trim() || "oklch(0.1 0 0 / 0.7)",
+		};
+	}, [themePresetId]);
+
 	return (
 		<div className="h-full w-full" onKeyDown={onKeyDown}>
 			<ReactFlow<DfdNode, DfdEdge>
@@ -151,12 +169,17 @@ export function DfdCanvas() {
 				className="bg-background"
 				proOptions={{ hideAttribution: true }}
 			>
-				<Background variant={BackgroundVariant.Dots} gap={16} size={1} color="oklch(0.35 0 0)" />
+				<Background
+					variant={BackgroundVariant.Dots}
+					gap={16}
+					size={1}
+					color={canvasColors.dotColor}
+				/>
 				<Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent" />
 				<MiniMap
 					className="!bg-card !border-border"
-					nodeColor="oklch(0.4 0 0)"
-					maskColor="oklch(0.1 0 0 / 0.7)"
+					nodeColor={canvasColors.minimapNodeColor}
+					maskColor={canvasColors.minimapMaskColor}
 				/>
 			</ReactFlow>
 		</div>

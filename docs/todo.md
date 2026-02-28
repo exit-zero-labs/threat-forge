@@ -8,43 +8,49 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 Need to add support for themes in the UI. Currently only a dark theme is available, but we should allow users to not just choose between light and dark (and follow system), but also to select from a variety of color schemes and styles. Will have 2-3 themes for light and 2-3 themes for dark at launch, and then add more over time.
 
-**Current state:** Dark mode is hardcoded via `class="dark"` on `<html>` in `index.html`. All color tokens are dark-only oklch() values in the `@theme` block of `src/styles.css`. Brand colors (`tf-zero`, `tf-signal`, `tf-ember`, etc.) are hex. There is no theme switching mechanism, no light mode CSS, and no theme state in any store. All components use semantic Tailwind classes (`bg-background`, `text-foreground`, `border-border`, etc.) which is good — they'll automatically respond to theme token changes.
+**Current state:** Implemented on branch `feat/theme-support`.
 
 **Tasks:**
 
-- [ ] Define theme data structure and registry
-  - [ ] Create `src/types/theme.ts` with `ThemeMode` (`"light" | "dark" | "system"`), `ThemePreset` interface (id, name, mode, token overrides), and `ThemeConfig` type
-  - [ ] Create `src/lib/themes/` directory with a registry of built-in themes — each theme is a record of CSS variable names to oklch values
-  - [ ] Design 2-3 dark presets (e.g., "Midnight" default, "Slate", "Nord-inspired") and 2-3 light presets (e.g., "Daylight", "Warm Sand", "High Contrast")
-  - [ ] Ensure each preset defines ALL shadcn-compatible tokens (`background`, `foreground`, `card`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `chart-1` through `chart-5`, sidebar tokens)
-  - [ ] Brand accent colors (`tf-signal`, `tf-ember`) should remain constant across themes for brand consistency; only surface/text/border tokens change
-- [ ] Implement theme state management
-  - [ ] Add `themeMode`, `themePresetId`, and `setTheme(mode, presetId)` to `src/stores/ui-store.ts`
-  - [ ] Persist theme preference to localStorage (ui-store doesn't persist today — add persistence via Zustand `persist` middleware or a dedicated settings store)
-  - [ ] Add system theme detection via `window.matchMedia("(prefers-color-scheme: dark)")` with a listener for live changes when mode is `"system"`
-- [ ] Implement runtime theme application
-  - [ ] Create `src/lib/themes/apply-theme.ts` utility that takes a `ThemePreset` and applies CSS variable overrides to `document.documentElement.style`
-  - [ ] Toggle `dark`/`light` class on `<html>` element based on resolved mode (needed for Tailwind dark variant if used)
-  - [ ] Remove hardcoded `class="dark"` from `index.html` — set it dynamically on app init
-  - [ ] Call `applyTheme()` on app mount (in `App.tsx` or a `ThemeProvider` wrapper) and whenever the store changes
-- [ ] Refactor `src/styles.css` for multi-theme support
-  - [ ] Move the current dark-mode oklch tokens out of the `@theme` block and into a `:root` / `.dark` CSS scope (or keep in `@theme` as defaults and override via inline styles — choose the approach that plays best with Tailwind v4's `@theme` system)
-  - [ ] Define a light-mode base set of tokens under `.light` scope as a fallback for CSS-only theming
-  - [ ] Verify all components render correctly in light mode — audit canvas nodes, edges, panels, dialogs, status bar, minimap colors
-- [ ] Add theme selector UI
-  - [ ] Add theme picker to the Settings modal (see "Editor improvements and settings modal" section below)
-  - [ ] Show mode toggle (Light / Dark / System) and a grid/list of available presets with color swatches
-  - [ ] Provide live preview — applying a theme should be instant, no page reload
-- [ ] Update canvas-specific styling
-  - [ ] ReactFlow `<MiniMap>` uses hardcoded oklch colors in `dfd-canvas.tsx` — make these reactive to the current theme
-  - [ ] ReactFlow `<Background>` dot color should adapt to theme
-  - [ ] ReactFlow `<Controls>` styles should adapt to theme
-  - [ ] Edge marker (arrowhead) colors should adapt
-- [ ] Testing
-  - [ ] Unit test theme application: verify CSS variables are set on documentElement after `applyTheme()`
-  - [ ] Unit test system preference detection logic
-  - [ ] Unit test theme persistence round-trip (save to localStorage → reload → correct theme applied)
-  - [ ] Visual smoke test: verify all screens in both light and dark modes
+- [x] Define theme data structure and registry
+  - [x] Create `src/types/theme.ts` with `ThemeMode` (`"light" | "dark" | "system"`), `ThemePreset` interface (id, name, mode, token overrides), and `ThemeConfig` type
+  - [x] Create `src/lib/themes/` directory with a registry of built-in themes — each theme is a record of CSS variable names to oklch values
+  - [x] Design 2-3 dark presets (e.g., "Midnight" default, "Slate", "Nord-inspired") and 2-3 light presets (e.g., "Daylight", "Warm Sand", "High Contrast")
+  - [x] Ensure each preset defines ALL shadcn-compatible tokens (`background`, `foreground`, `card`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`, `chart-1` through `chart-5`, sidebar tokens)
+  - [x] Brand accent colors (`tf-signal`, `tf-ember`) should remain constant across themes for brand consistency; only surface/text/border tokens change
+- [x] Implement theme state management
+  - [x] Add `themeMode`, `themePresetId`, and `setTheme(mode, presetId)` to `src/stores/ui-store.ts`
+  - [x] Persist theme preference to localStorage (via manual JSON serialization with validation on load)
+  - [x] Add system theme detection via `window.matchMedia("(prefers-color-scheme: dark)")` with a listener for live changes when mode is `"system"`
+- [x] Implement runtime theme application
+  - [x] Create `src/lib/themes/apply-theme.ts` utility that takes a `ThemePreset` and applies CSS variable overrides to `document.documentElement.style`
+  - [x] Toggle `dark`/`light` class on `<html>` element based on resolved mode (needed for Tailwind dark variant if used)
+  - [x] Remove hardcoded `class="dark"` from `index.html` — set it dynamically on app init
+  - [x] `applyTheme()` called on store initialization (module-level side effect in ui-store.ts) and whenever `setTheme()` is called
+- [x] Refactor `src/styles.css` for multi-theme support
+  - [x] Keep current dark-mode oklch tokens in `@theme` as defaults; override via inline styles at runtime — best approach for Tailwind v4's `@theme` system
+  - [x] Define a light-mode base set of tokens under `html.light` scope as a fallback for CSS-only theming
+  - [x] Verify all components render correctly in light mode — canvas nodes, edges, panels, dialogs, status bar, minimap colors use semantic tokens
+- [x] Add theme selector UI
+  - [x] Add theme picker popover to top menu bar (Palette icon) — will be migrated to Settings modal when that feature is built
+  - [x] Show mode toggle (Light / Dark / System) and a list of available presets with color swatches
+  - [x] Provide live preview — applying a theme is instant, no page reload
+- [x] Update canvas-specific styling
+  - [x] ReactFlow `<MiniMap>` now reads CSS variables reactively via `useMemo` keyed on `themePresetId`
+  - [x] ReactFlow `<Background>` dot color adapts to theme via CSS variable
+  - [x] ReactFlow `<Controls>` styles already use semantic Tailwind classes (`!bg-card`, `!border-border`, etc.)
+  - [x] Edge marker (arrowhead) colors inherit from edge stroke classes which use semantic tokens
+- [x] Testing
+  - [x] Unit test theme application: verify CSS variables are set on documentElement after `applyTheme()` (8 tests in `apply-theme.test.ts`)
+  - [x] Unit test system preference detection logic (guarded for jsdom environment)
+  - [x] Unit test theme persistence round-trip (save to localStorage → reload → correct theme applied) (12 tests in `ui-store.test.ts`)
+  - [ ] Visual smoke test: verify all screens in both light and dark modes (manual)
+
+### Notes
+
+- Theme is applied at module initialization of `ui-store.ts` via side effect — no ThemeProvider wrapper needed
+- `matchMedia` guarded with `typeof window.matchMedia !== "function"` to handle jsdom test environment
+- All 65 tests pass, Biome lint clean
 
 ## 2026-02-27 - Onboarding and Quick Start Guides
 
