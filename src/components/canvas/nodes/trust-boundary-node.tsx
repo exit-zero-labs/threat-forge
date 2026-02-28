@@ -85,20 +85,6 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 					...(hasCustomColors ? customStyle : {}),
 				}}
 			>
-				{/* Four thin edge strips along each border — only these capture clicks */}
-				{["top", "bottom", "left", "right"].map((side) => (
-					<div
-						key={side}
-						className="absolute"
-						style={{
-							pointerEvents: "auto",
-							...(side === "top" && { top: 0, left: 0, right: 0, height: 8 }),
-							...(side === "bottom" && { bottom: 0, left: 0, right: 0, height: 8 }),
-							...(side === "left" && { top: 0, bottom: 0, left: 0, width: 8 }),
-							...(side === "right" && { top: 0, bottom: 0, right: 0, width: 8 }),
-						}}
-					/>
-				))}
 				{/* Name label — always clickable */}
 				<div className="relative p-2" style={{ pointerEvents: "auto" }}>
 					{isEditing ? (

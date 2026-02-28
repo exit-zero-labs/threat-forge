@@ -518,7 +518,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		flowCounter = maxFlowNum;
 		boundaryCounter = maxBoundaryNum;
 
-		// Keep existing positions for nodes that still exist (used when model changes in-place)
+		// Keep existing node state for nodes that still exist (used when model changes in-place)
+		const existingNodes = new Map(get().nodes.map((n) => [n.id, n]));
 		const existingPositions = new Map(get().nodes.map((n) => [n.id, n.position]));
 
 		// Position priority: saved layout > existing canvas positions > default grid
@@ -535,15 +536,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const boundaryNodes: DfdNode[] = model.trust_boundaries.map((b, i) => {
 			const pos = resolvePosition(b.id, { x: 50 + i * 450, y: 50 });
 			const node = boundaryToNode(b, pos);
-			// Restore saved dimensions for boundaries
+			// Restore dimensions: saved layout > existing canvas > default
 			const saved = layoutPositions?.get(b.id);
-			if (saved?.width != null && saved?.height != null) {
-				node.width = saved.width;
-				node.height = saved.height;
+			const existing = existingNodes.get(b.id);
+			const w =
+				saved?.width ?? existing?.width ?? (existing?.style as Record<string, unknown>)?.width;
+			const h =
+				saved?.height ?? existing?.height ?? (existing?.style as Record<string, unknown>)?.height;
+			if (w != null && h != null) {
+				node.width = w as number;
+				node.height = h as number;
 				node.style = {
 					...node.style,
-					width: saved.width,
-					height: saved.height,
+					width: w as number,
+					height: h as number,
 				};
 			}
 			return node;
