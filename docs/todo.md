@@ -15,12 +15,20 @@ Shared execution plan for humans and LLM agents. Update this file before, during
   - [x] When label exists + has been dragged, route edge through label as waypoint (`getWaypointPath`)
   - [x] Make label draggable when selected (mousedown/mousemove/mouseup on document)
   - [x] No label → standard bezier, no change
+- [x] Fix label drag interaction (click vs drag detection) — `didDrag` ref with 4px threshold
+- [x] Fix label drag root causes — remove `!selected` guard, zoom compensation, prevent deselection
+  - [x] Label mousedown always selects edge via `setSelectedEdge` (no selection prerequisite)
+  - [x] Drag deltas divided by viewport zoom for correct flow coordinates
+  - [x] `stopImmediatePropagation` on mousedown prevents ReactFlow pane deselection
+  - [x] Re-assert edge selection after drag ends
+  - [x] `wasSelectedBefore` ref: first click selects, second click opens editor
 - [x] Validate: tsc, biome, vitest all pass (92 tests)
 
 ### Notes
 
 - Boundary interior is now `pointer-events: none` — only a thin border ring + the name label are clickable. This lets edges and inner nodes be selected without the boundary stealing the click.
 - Edge labels become movable waypoints: drag them when selected to reshape the edge path. The edge draws two quadratic bezier segments through the label position. When not dragged, the default bezier path is used.
+- Label drag had three root causes: (1) `!selected` guard prevented drag on unselected edges since label clicks don't trigger ReactFlow edge selection, (2) drag deltas in screen pixels needed zoom division for flow coordinates, (3) mouseup propagated to pane causing deselection.
 
 ---
 

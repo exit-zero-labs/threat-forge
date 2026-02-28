@@ -6,8 +6,8 @@ import {
 	useReactFlow,
 	useViewport,
 } from "@xyflow/react";
-import { Plus } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { Lock, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
@@ -56,8 +56,11 @@ export function DataFlowEdge({
 		targetPosition,
 	});
 
-	const hasLabel =
+	const isAuthenticated = edgeData?.authenticated === true;
+	const hasTextLabel =
 		edgeData?.name || edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0);
+	// Show the label chip if there's text content OR the edge is authenticated (lock icon)
+	const hasLabel = hasTextLabel || isAuthenticated;
 
 	// Custom label position (user-dragged offset from default)
 	const offsetX = (edgeData?.labelOffsetX as number) ?? 0;
@@ -77,21 +80,34 @@ export function DataFlowEdge({
 	const [isEditing, setIsEditing] = useState(false);
 	const { zoom } = useViewport();
 
-	// --- Draggable label logic ---
+	// --- Draggable label via native pointer events ---
+	// React synthetic stopPropagation doesn't prevent ReactFlow's native
+	// pointer event listeners from firing. Using a native listener on the
+	// DOM element stops propagation before it reaches ReactFlow's container,
+	// preventing pane-click deselection and pan/drag interference.
+	const labelRef = useRef<HTMLButtonElement>(null);
 	const isDragging = useRef(false);
 	const didDrag = useRef(false);
 	const dragStartPos = useRef({ x: 0, y: 0 });
 	const dragStartOffset = useRef({ x: 0, y: 0 });
 	const wasSelectedBefore = useRef(false);
 
-	const onLabelMouseDown = useCallback(
-		(e: React.MouseEvent) => {
-			if (e.button !== 0) return;
-			// Stop event from reaching ReactFlow pane (prevents deselection)
-			e.stopPropagation();
-			e.nativeEvent.stopImmediatePropagation();
+	// Keep reactive values in a ref so the native listener always reads fresh values
+	const stateRef = useRef({ offsetX, offsetY, zoom, selected: !!selected });
+	stateRef.current = { offsetX, offsetY, zoom, selected: !!selected };
 
-			wasSelectedBefore.current = !!selected;
+	useEffect(() => {
+		const el = labelRef.current;
+		if (!el) return;
+
+		const handlePointerDown = (e: PointerEvent) => {
+			if (e.button !== 0) return;
+			// Native stopPropagation — prevents ReactFlow from seeing this event
+			e.stopPropagation();
+			e.preventDefault();
+
+			const { offsetX: ox, offsetY: oy, zoom: z, selected: sel } = stateRef.current;
+			wasSelectedBefore.current = sel;
 
 			// Always select the edge when clicking its label
 			useModelStore.getState().setSelectedEdge(id);
@@ -100,20 +116,16 @@ export function DataFlowEdge({
 			isDragging.current = true;
 			didDrag.current = false;
 			dragStartPos.current = { x: e.clientX, y: e.clientY };
-			dragStartOffset.current = { x: offsetX, y: offsetY };
+			dragStartOffset.current = { x: ox, y: oy };
 
-			// Capture zoom at drag start for consistent scaling
-			const currentZoom = zoom;
+			const currentZoom = z;
 
-			const onMouseMove = (ev: MouseEvent) => {
+			const onPointerMove = (ev: PointerEvent) => {
 				if (!isDragging.current) return;
-				// Convert screen pixels to flow coordinates by dividing by zoom
 				const dx = (ev.clientX - dragStartPos.current.x) / currentZoom;
 				const dy = (ev.clientY - dragStartPos.current.y) / currentZoom;
-				// Only start dragging after a small threshold to distinguish from clicks
 				if (!didDrag.current && Math.abs(dx) + Math.abs(dy) < 3) return;
 				didDrag.current = true;
-				// Update edge data with new offset
 				setEdges((edges) =>
 					edges.map((edge) =>
 						edge.id === id
@@ -130,31 +142,26 @@ export function DataFlowEdge({
 				);
 			};
 
-			const onMouseUp = () => {
+			const onPointerUp = () => {
 				isDragging.current = false;
-				document.removeEventListener("mousemove", onMouseMove);
-				document.removeEventListener("mouseup", onMouseUp);
+				document.removeEventListener("pointermove", onPointerMove);
+				document.removeEventListener("pointerup", onPointerUp);
 				if (didDrag.current) {
 					useModelStore.getState().markDirty();
-					// Re-assert selection after drag (ReactFlow may have cleared it)
 					useModelStore.getState().setSelectedEdge(id);
+				} else if (wasSelectedBefore.current) {
+					// Pure click on already-selected edge → open editor
+					setIsEditing(true);
 				}
 			};
 
-			document.addEventListener("mousemove", onMouseMove);
-			document.addEventListener("mouseup", onMouseUp);
-		},
-		[id, selected, offsetX, offsetY, setEdges, zoom],
-	);
+			document.addEventListener("pointermove", onPointerMove);
+			document.addEventListener("pointerup", onPointerUp);
+		};
 
-	const onLabelClick = useCallback((e: React.MouseEvent) => {
-		// Stop click from reaching ReactFlow pane
-		e.stopPropagation();
-		// Only open editor on a pure click (no drag) when already selected before this click
-		if (wasSelectedBefore.current && !didDrag.current) {
-			setIsEditing(true);
-		}
-	}, []);
+		el.addEventListener("pointerdown", handlePointerDown);
+		return () => el.removeEventListener("pointerdown", handlePointerDown);
+	}, [id, setEdges]);
 
 	return (
 		<>
@@ -181,8 +188,8 @@ export function DataFlowEdge({
 							: "!stroke-muted-foreground/50",
 				)}
 			/>
-			{/* Animated flow direction dashes on hover/selection */}
-			{(isHovered || selected) && (
+			{/* Animated flow direction dashes on hover/selection (only for non-authenticated edges) */}
+			{(isHovered || selected) && !isAuthenticated && (
 				<path
 					d={edgePath}
 					fill="none"
@@ -203,9 +210,10 @@ export function DataFlowEdge({
 			<EdgeLabelRenderer>
 				{hasLabel && !isEditing && (
 					<button
+						ref={labelRef}
 						type="button"
 						className={cn(
-							"pointer-events-all nodrag nopan absolute rounded border px-1.5 py-0.5 text-left transition-colors",
+							"pointer-events-auto nodrag nopan absolute flex items-center gap-1 rounded border px-1.5 py-0.5 text-left transition-colors",
 							selected
 								? "border-tf-signal bg-tf-signal/10 text-foreground cursor-grab active:cursor-grabbing"
 								: "border-border bg-card text-muted-foreground hover:border-muted-foreground cursor-pointer",
@@ -213,21 +221,23 @@ export function DataFlowEdge({
 						style={{
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}
-						onDoubleClick={() => setIsEditing(true)}
-						onClick={onLabelClick}
-						onMouseDown={onLabelMouseDown}
 					>
-						{edgeData?.name && (
-							<div className="text-[11px] font-medium text-foreground">{edgeData.name}</div>
-						)}
-						{(edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0)) && (
-							<div className="text-[9px]">
-								{edgeData?.protocol && <span>{edgeData.protocol}</span>}
-								{edgeData?.protocol && edgeData?.data && edgeData.data.length > 0 && (
-									<span> · </span>
+						{isAuthenticated && <Lock className="h-3 w-3 shrink-0 text-tf-signal" />}
+						{hasTextLabel && (
+							<div>
+								{edgeData?.name && (
+									<div className="text-[11px] font-medium text-foreground">{edgeData.name}</div>
 								)}
-								{edgeData?.data && edgeData.data.length > 0 && (
-									<span>{edgeData.data.join(", ")}</span>
+								{(edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0)) && (
+									<div className="text-[9px]">
+										{edgeData?.protocol && <span>{edgeData.protocol}</span>}
+										{edgeData?.protocol && edgeData?.data && edgeData.data.length > 0 && (
+											<span> · </span>
+										)}
+										{edgeData?.data && edgeData.data.length > 0 && (
+											<span>{edgeData.data.join(", ")}</span>
+										)}
+									</div>
 								)}
 							</div>
 						)}
@@ -247,7 +257,7 @@ export function DataFlowEdge({
 				{!hasLabel && !isEditing && (isHovered || selected) && (
 					<button
 						type="button"
-						className="pointer-events-all nodrag nopan absolute flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-accent"
+						className="pointer-events-auto nodrag nopan absolute flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-accent"
 						style={{
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}

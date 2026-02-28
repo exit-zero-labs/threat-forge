@@ -159,7 +159,6 @@ function flowToEdge(flow: DataFlow): DfdEdge {
 		source: flow.from,
 		target: flow.to,
 		type: "dataFlow",
-		animated: flow.authenticated,
 		data: {
 			name: flow.name ?? "",
 			protocol: flow.protocol,
