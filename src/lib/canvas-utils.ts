@@ -1,6 +1,6 @@
 import type { Position } from "@xyflow/react";
 
-type HandlePosition = "top-left" | "top-right" | "bottom-left" | "bottom-right" | "left" | "right";
+type HandlePosition = "top" | "bottom" | "left" | "right";
 
 interface NodeRect {
 	x: number;
@@ -15,10 +15,8 @@ interface HandlePair {
 }
 
 const POSITION_MAP: Record<HandlePosition, Position> = {
-	"top-left": "top" as Position,
-	"top-right": "top" as Position,
-	"bottom-left": "bottom" as Position,
-	"bottom-right": "bottom" as Position,
+	top: "top" as Position,
+	bottom: "bottom" as Position,
 	left: "left" as Position,
 	right: "right" as Position,
 };
@@ -29,8 +27,8 @@ const DEFAULT_NODE_HEIGHT = 50;
 
 /**
  * Given source and target node positions/sizes, determines the optimal
- * handle pair from the 6 available handles (left, right, top-left, top-right,
- * bottom-left, bottom-right) to minimize path length.
+ * handle pair (top/bottom/left/right) to minimize path length and avoid
+ * edges crossing through nodes.
  */
 export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePair {
 	const sourceCx = source.x + source.width / 2;
@@ -45,7 +43,6 @@ export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePa
 	let targetPos: HandlePosition;
 
 	if (Math.abs(dx) > Math.abs(dy)) {
-		// Primarily horizontal — use left/right midpoints
 		if (dx > 0) {
 			sourcePos = "right";
 			targetPos = "left";
@@ -54,15 +51,12 @@ export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePa
 			targetPos = "right";
 		}
 	} else {
-		// Primarily vertical — use corner handles
 		if (dy > 0) {
-			// Target is below
-			sourcePos = dx >= 0 ? "bottom-right" : "bottom-left";
-			targetPos = dx >= 0 ? "top-left" : "top-right";
+			sourcePos = "bottom";
+			targetPos = "top";
 		} else {
-			// Target is above
-			sourcePos = dx >= 0 ? "top-right" : "top-left";
-			targetPos = dx >= 0 ? "bottom-left" : "bottom-right";
+			sourcePos = "top";
+			targetPos = "bottom";
 		}
 	}
 

@@ -20,44 +20,32 @@ describe("getSmartHandlePair", () => {
 		expect(result.targetHandle).toBe("right-target");
 	});
 
-	it("returns bottom-right corner handles when target is directly below", () => {
+	it("returns bottom-source → top-target when target is below", () => {
 		const result = getSmartHandlePair(
 			{ x: 0, y: 0, width: 140, height: 50 },
 			{ x: 0, y: 300, width: 140, height: 50 },
 		);
-		// dx === 0, dy > 0, dx >= 0 → bottom-right-source / top-left-target
-		expect(result.sourceHandle).toBe("bottom-right-source");
-		expect(result.targetHandle).toBe("top-left-target");
+		expect(result.sourceHandle).toBe("bottom-source");
+		expect(result.targetHandle).toBe("top-target");
 	});
 
-	it("returns top-right corner handles when target is directly above", () => {
+	it("returns top-source → bottom-target when target is above", () => {
 		const result = getSmartHandlePair(
 			{ x: 0, y: 300, width: 140, height: 50 },
 			{ x: 0, y: 0, width: 140, height: 50 },
 		);
-		// dx === 0, dy < 0, dx >= 0 → top-right-source / bottom-left-target
-		expect(result.sourceHandle).toBe("top-right-source");
-		expect(result.targetHandle).toBe("bottom-left-target");
+		expect(result.sourceHandle).toBe("top-source");
+		expect(result.targetHandle).toBe("bottom-target");
 	});
 
-	it("uses corner handles when dx equals dy (vertical tie-break)", () => {
+	it("uses vertical handles when dx equals dy (vertical tie-break)", () => {
 		const result = getSmartHandlePair(
 			{ x: 0, y: 0, width: 100, height: 100 },
 			{ x: 200, y: 200, width: 100, height: 100 },
 		);
-		// dx === dy, both are 200, Math.abs(dx) > Math.abs(dy) is false,
-		// falls through to vertical: dy > 0, dx >= 0 → bottom-right-source / top-left-target
-		expect(result.sourceHandle).toBe("bottom-right-source");
-		expect(result.targetHandle).toBe("top-left-target");
-	});
-
-	it("returns bottom-right/top-left when target is below-right", () => {
-		const result = getSmartHandlePair(
-			{ x: 0, y: 0, width: 100, height: 50 },
-			{ x: 50, y: 300, width: 100, height: 50 },
-		);
-		expect(result.sourceHandle).toBe("bottom-right-source");
-		expect(result.targetHandle).toBe("top-left-target");
+		// dx === dy, Math.abs(dx) > Math.abs(dy) is false → vertical: bottom/top
+		expect(result.sourceHandle).toBe("bottom-source");
+		expect(result.targetHandle).toBe("top-target");
 	});
 });
 

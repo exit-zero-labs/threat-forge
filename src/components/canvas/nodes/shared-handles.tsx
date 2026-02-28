@@ -6,13 +6,31 @@ const HIDDEN_HANDLE_CLASS = cn(HANDLE_CLASS, "!opacity-0 !w-1 !h-1");
 
 /**
  * Shared bidirectional handles for all DFD element nodes.
- * 6 connection points: 2 horizontal midpoints (left, right) + 4 corners.
+ * 4 connection points: top, bottom, left, right.
  * Each point has both a source and target handle for bidirectional connections.
  */
 export function NodeHandles() {
 	return (
 		<>
-			{/* Horizontal midpoint handles */}
+			<Handle id="top-target" type="target" position={Position.Top} className={HANDLE_CLASS} />
+			<Handle
+				id="top-source"
+				type="source"
+				position={Position.Top}
+				className={HIDDEN_HANDLE_CLASS}
+			/>
+			<Handle
+				id="bottom-target"
+				type="target"
+				position={Position.Bottom}
+				className={HIDDEN_HANDLE_CLASS}
+			/>
+			<Handle
+				id="bottom-source"
+				type="source"
+				position={Position.Bottom}
+				className={HANDLE_CLASS}
+			/>
 			<Handle id="left-target" type="target" position={Position.Left} className={HANDLE_CLASS} />
 			<Handle
 				id="left-source"
@@ -27,64 +45,6 @@ export function NodeHandles() {
 				className={HIDDEN_HANDLE_CLASS}
 			/>
 			<Handle id="right-source" type="source" position={Position.Right} className={HANDLE_CLASS} />
-
-			{/* Corner handles */}
-			<Handle
-				id="top-left-target"
-				type="target"
-				position={Position.Top}
-				style={{ left: 0 }}
-				className={HANDLE_CLASS}
-			/>
-			<Handle
-				id="top-left-source"
-				type="source"
-				position={Position.Top}
-				style={{ left: 0 }}
-				className={HIDDEN_HANDLE_CLASS}
-			/>
-			<Handle
-				id="top-right-target"
-				type="target"
-				position={Position.Top}
-				style={{ left: "100%" }}
-				className={HANDLE_CLASS}
-			/>
-			<Handle
-				id="top-right-source"
-				type="source"
-				position={Position.Top}
-				style={{ left: "100%" }}
-				className={HIDDEN_HANDLE_CLASS}
-			/>
-			<Handle
-				id="bottom-left-source"
-				type="source"
-				position={Position.Bottom}
-				style={{ left: 0 }}
-				className={HANDLE_CLASS}
-			/>
-			<Handle
-				id="bottom-left-target"
-				type="target"
-				position={Position.Bottom}
-				style={{ left: 0 }}
-				className={HIDDEN_HANDLE_CLASS}
-			/>
-			<Handle
-				id="bottom-right-source"
-				type="source"
-				position={Position.Bottom}
-				style={{ left: "100%" }}
-				className={HANDLE_CLASS}
-			/>
-			<Handle
-				id="bottom-right-target"
-				type="target"
-				position={Position.Bottom}
-				style={{ left: "100%" }}
-				className={HIDDEN_HANDLE_CLASS}
-			/>
 		</>
 	);
 }

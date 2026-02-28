@@ -3,16 +3,49 @@ import {
 	EdgeLabelRenderer,
 	type EdgeProps,
 	getBezierPath,
+	useEdges,
 	useReactFlow,
 } from "@xyflow/react";
 import { Plus } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 
+/** Base curvature for bezier paths */
+const BASE_CURVATURE = 0.25;
+/** Additional curvature per sibling edge to fan out parallel connections */
+const CURVATURE_STEP = 0.3;
+
+/**
+ * Compute a curvature multiplier for this edge when multiple edges exist between
+ * the same pair of nodes (in either direction). Spreads edges so they don't overlap.
+ */
+function computeCurvature(
+	allEdges: ReadonlyArray<{ id: string; source: string; target: string }>,
+	currentId: string,
+	source: string,
+	target: string,
+): number {
+	const siblings = allEdges.filter(
+		(e) =>
+			(e.source === source && e.target === target) || (e.source === target && e.target === source),
+	);
+	if (siblings.length <= 1) return BASE_CURVATURE;
+
+	const sorted = [...siblings].sort((a, b) => a.id.localeCompare(b.id));
+	const index = sorted.findIndex((e) => e.id === currentId);
+	const count = sorted.length;
+
+	// Center around 0: e.g. for 3 edges → offsets -1, 0, 1
+	const offset = index - (count - 1) / 2;
+	return BASE_CURVATURE + offset * CURVATURE_STEP;
+}
+
 export function DataFlowEdge({
 	id,
+	source,
+	target,
 	sourceX,
 	sourceY,
 	targetX,
@@ -24,6 +57,12 @@ export function DataFlowEdge({
 	markerEnd,
 }: EdgeProps) {
 	const edgeData = data as DfdEdgeData | undefined;
+	const allEdges = useEdges();
+
+	const curvature = useMemo(
+		() => computeCurvature(allEdges, id, source, target),
+		[allEdges, id, source, target],
+	);
 
 	const [edgePath, labelX, labelY] = getBezierPath({
 		sourceX,
@@ -32,6 +71,7 @@ export function DataFlowEdge({
 		targetX,
 		targetY,
 		targetPosition,
+		curvature,
 	});
 
 	const [isHovered, setIsHovered] = useState(false);

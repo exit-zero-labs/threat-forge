@@ -1,4 +1,5 @@
 import { ArrowLeftRight } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { type DfdEdge, useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -85,15 +86,11 @@ function EdgeProperties({ flow }: { flow: DataFlow }) {
 				}}
 			/>
 
-			<EditableField
+			<CommaSeparatedField
 				label="Data"
-				value={flow.data.join(", ")}
+				items={flow.data}
 				placeholder="Comma-separated data items"
-				onChange={(value) => {
-					const data = value
-						.split(",")
-						.map((s) => s.trim())
-						.filter((s) => s.length > 0);
+				onCommit={(data) => {
 					updateDataFlow(flow.id, { data });
 					syncEdgeData({ data });
 				}}
@@ -335,6 +332,61 @@ function EditableTextarea({
 				onChange={(e) => onChange(e.target.value)}
 				rows={3}
 				className="w-full resize-none rounded border border-border bg-background px-2 py-1 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+			/>
+		</label>
+	);
+}
+
+/**
+ * A text input that accepts comma-separated values but only parses them on blur,
+ * allowing the user to type commas freely without the input fighting them.
+ */
+function CommaSeparatedField({
+	label,
+	items,
+	placeholder,
+	onCommit,
+}: {
+	label: string;
+	items: string[];
+	placeholder?: string;
+	onCommit: (items: string[]) => void;
+}) {
+	const [rawText, setRawText] = useState(items.join(", "));
+	const [isFocused, setIsFocused] = useState(false);
+
+	// Sync from external changes only when not focused
+	useEffect(() => {
+		if (!isFocused) {
+			setRawText(items.join(", "));
+		}
+	}, [items, isFocused]);
+
+	const commitValue = useCallback(() => {
+		const parsed = rawText
+			.split(",")
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0);
+		onCommit(parsed);
+	}, [rawText, onCommit]);
+
+	return (
+		<label className="block">
+			<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">{label}</span>
+			<input
+				type="text"
+				value={rawText}
+				placeholder={placeholder}
+				onChange={(e) => setRawText(e.target.value)}
+				onFocus={() => setIsFocused(true)}
+				onBlur={() => {
+					setIsFocused(false);
+					commitValue();
+				}}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") commitValue();
+				}}
+				className="w-full rounded border border-border bg-background px-2 py-1 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
 			/>
 		</label>
 	);

@@ -451,14 +451,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const flow = model.data_flows.find((f) => f.id === edgeId);
 		if (!flow) return;
 
-		// Update model: swap from/to
+		// Update model: swap from/to (use direct set to preserve selection state)
 		const updatedFlows = model.data_flows.map((f) =>
 			f.id === edgeId ? { ...f, from: f.to, to: f.from } : f,
 		);
-		useModelStore
-			.getState()
-			.setModel({ ...model, data_flows: updatedFlows }, useModelStore.getState().filePath);
-		useModelStore.getState().markDirty();
+		useModelStore.setState({
+			model: { ...model, data_flows: updatedFlows },
+			isDirty: true,
+		});
 
 		// Update canvas edge: swap source/target
 		const currentEdges = get().edges;

@@ -382,3 +382,28 @@ The overall editor needs to be more tuned for keyboard accessibility / shortcuts
   - [ ] Component test keytip rendering: visible when setting is on, hidden when off
   - [ ] Integration test: change a setting → close/reopen app → setting persists
   - [ ] Keyboard navigation test: Tab through all controls, verify focus is visible and reachable
+
+## 2026-02-28 - Canvas Improvements: Edge UX & Properties Panel
+
+**Current state:** Completed on branch `feat/canvas-improvements`.
+
+### Plan
+
+- [x] Scale handles from 8 to 6 connection points (left/right midpoints + 4 corners)
+- [x] Remove parallel edge offset computation (caused handle detachment)
+- [x] Add `selectedEdgeId` state + `setSelectedEdge` action to model-store
+- [x] Add `updateDataFlow` action to model-store
+- [x] Add `onNodeClick`/`onEdgeClick` handlers to DFD canvas
+- [x] Build edge properties panel (Name, Protocol, Data, Authenticated, Flip Direction)
+- [x] Show "+" label button on selected edges (not just hover)
+- [x] Single-click on selected edge label opens editor
+- [x] Update smart handle routing for 6-handle corner layout
+- [x] Update canvas-utils tests for new handle IDs
+- [x] Lint (Biome + tsc) + all 93 tests pass
+- [x] Commit and push (`c83e0a0`)
+
+### Notes
+
+- Edge selection clears element selection and vice versa
+- Corner handles use `Position.Top`/`Position.Bottom` with `style={{ left: 0 }}` / `style={{ left: "100%" }}`
+- Smart routing picks `bottom-right`/`top-left` for target-below when dx >= 0
