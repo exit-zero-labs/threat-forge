@@ -4,12 +4,14 @@ import {
 	type EdgeProps,
 	getBezierPath,
 	useReactFlow,
+	useViewport,
 } from "@xyflow/react";
 import { Plus } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
+import { useUiStore } from "@/stores/ui-store";
 
 /**
  * Build two quadratic bezier segments that route through a waypoint.
@@ -73,29 +75,43 @@ export function DataFlowEdge({
 
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
+	const { zoom } = useViewport();
 
 	// --- Draggable label logic ---
 	const isDragging = useRef(false);
 	const didDrag = useRef(false);
 	const dragStartPos = useRef({ x: 0, y: 0 });
 	const dragStartOffset = useRef({ x: 0, y: 0 });
+	const wasSelectedBefore = useRef(false);
 
 	const onLabelMouseDown = useCallback(
 		(e: React.MouseEvent) => {
-			// Only start drag on primary button and when selected
-			if (e.button !== 0 || !selected) return;
+			if (e.button !== 0) return;
+			// Stop event from reaching ReactFlow pane (prevents deselection)
 			e.stopPropagation();
+			e.nativeEvent.stopImmediatePropagation();
+
+			wasSelectedBefore.current = !!selected;
+
+			// Always select the edge when clicking its label
+			useModelStore.getState().setSelectedEdge(id);
+			useUiStore.getState().setRightPanelTab("properties");
+
 			isDragging.current = true;
 			didDrag.current = false;
 			dragStartPos.current = { x: e.clientX, y: e.clientY };
 			dragStartOffset.current = { x: offsetX, y: offsetY };
 
+			// Capture zoom at drag start for consistent scaling
+			const currentZoom = zoom;
+
 			const onMouseMove = (ev: MouseEvent) => {
 				if (!isDragging.current) return;
-				const dx = ev.clientX - dragStartPos.current.x;
-				const dy = ev.clientY - dragStartPos.current.y;
+				// Convert screen pixels to flow coordinates by dividing by zoom
+				const dx = (ev.clientX - dragStartPos.current.x) / currentZoom;
+				const dy = (ev.clientY - dragStartPos.current.y) / currentZoom;
 				// Only start dragging after a small threshold to distinguish from clicks
-				if (!didDrag.current && Math.abs(dx) + Math.abs(dy) < 4) return;
+				if (!didDrag.current && Math.abs(dx) + Math.abs(dy) < 3) return;
 				didDrag.current = true;
 				// Update edge data with new offset
 				setEdges((edges) =>
@@ -120,21 +136,25 @@ export function DataFlowEdge({
 				document.removeEventListener("mouseup", onMouseUp);
 				if (didDrag.current) {
 					useModelStore.getState().markDirty();
+					// Re-assert selection after drag (ReactFlow may have cleared it)
+					useModelStore.getState().setSelectedEdge(id);
 				}
 			};
 
 			document.addEventListener("mousemove", onMouseMove);
 			document.addEventListener("mouseup", onMouseUp);
 		},
-		[id, selected, offsetX, offsetY, setEdges],
+		[id, selected, offsetX, offsetY, setEdges, zoom],
 	);
 
-	const onLabelClick = useCallback(() => {
-		// Only open editor on a pure click (no drag occurred)
-		if (selected && !didDrag.current) {
+	const onLabelClick = useCallback((e: React.MouseEvent) => {
+		// Stop click from reaching ReactFlow pane
+		e.stopPropagation();
+		// Only open editor on a pure click (no drag) when already selected before this click
+		if (wasSelectedBefore.current && !didDrag.current) {
 			setIsEditing(true);
 		}
-	}, [selected]);
+	}, []);
 
 	return (
 		<>
