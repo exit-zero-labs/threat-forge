@@ -575,13 +575,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			return node;
 		});
 
-		// Convert flows to edges, preserving handle assignments from existing edges
+		// Convert flows to edges, preserving handle assignments and label offsets from existing edges
 		const existingEdgeMap = new Map(get().edges.map((e) => [e.id, e]));
 		const edges: DfdEdge[] = model.data_flows.map((flow) => {
 			const edge = flowToEdge(flow);
 			const existing = existingEdgeMap.get(flow.id);
 			if (existing?.sourceHandle) edge.sourceHandle = existing.sourceHandle;
 			if (existing?.targetHandle) edge.targetHandle = existing.targetHandle;
+			// Preserve dragged label position
+			if (existing?.data?.labelOffsetX != null || existing?.data?.labelOffsetY != null) {
+				edge.data = {
+					...(edge.data as DfdEdgeData),
+					labelOffsetX: existing.data.labelOffsetX,
+					labelOffsetY: existing.data.labelOffsetY,
+				};
+			}
 			return edge;
 		});
 
