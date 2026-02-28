@@ -74,23 +74,32 @@ export function DfdCanvas() {
 	// Track connection source for validation feedback
 	const connectingNodeId = useRef<string | null>(null);
 
+	// Track whether the initial sync has happened (file open / new model)
+	const initialSyncDone = useRef(false);
+
 	// Sync canvas from model when it changes (new model loaded, file opened).
 	// `model` is intentionally in deps — syncFromModel reads from model-store internally,
 	// but we need the effect to re-run when the model reference changes.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: model triggers re-sync
 	useEffect(() => {
 		const hadPendingLayout = useCanvasStore.getState().pendingLayout != null;
+		// A pending layout means a file was just loaded — reset so we adjust viewport
+		if (hadPendingLayout) initialSyncDone.current = false;
+
 		syncFromModel();
 
-		// After nodes are set, restore saved viewport or fit to new content
-		requestAnimationFrame(() => {
-			if (hadPendingLayout) {
-				const { viewport } = useCanvasStore.getState();
-				setReactFlowViewport(viewport);
-			} else {
-				fitViewFn();
-			}
-		});
+		// Only adjust viewport on initial load (file open / new model), not on property edits
+		if (!initialSyncDone.current) {
+			initialSyncDone.current = true;
+			requestAnimationFrame(() => {
+				if (hadPendingLayout) {
+					const { viewport } = useCanvasStore.getState();
+					setReactFlowViewport(viewport);
+				} else {
+					fitViewFn();
+				}
+			});
+		}
 	}, [syncFromModel, model, setReactFlowViewport, fitViewFn]);
 
 	const onConnect = useCallback(
