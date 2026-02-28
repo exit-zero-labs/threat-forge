@@ -245,45 +245,59 @@ The canvas connector system requires significant improvements for better usabili
 
 **Tasks:**
 
-- [ ] Fix connector handle positioning and smart routing
-  - [ ] Implement a `getSmartHandlePositions` utility that, given source and target node positions, determines the optimal handle pair (top/bottom/left/right) to minimize edge crossings and path length
-  - [ ] Apply this in `onConnect` handler in `canvas-store.ts`: when creating a new edge, store `sourceHandle` and `targetHandle` IDs so ReactFlow uses the correct handles
-  - [ ] Assign unique IDs to each handle in node components (e.g., `id="top-target"`, `id="right-source"`) so they can be targeted programmatically
+- [x] Fix connector handle positioning and smart routing
+  - [x] Implement a `getSmartHandlePositions` utility that, given source and target node positions, determines the optimal handle pair (top/bottom/left/right) to minimize edge crossings and path length
+  - [x] Apply this in `onConnect` handler in `canvas-store.ts`: when creating a new edge, store `sourceHandle` and `targetHandle` IDs so ReactFlow uses the correct handles
+  - [x] Assign unique IDs to each handle in node components (e.g., `id="top-target"`, `id="right-source"`) so they can be targeted programmatically
   - [ ] Consider switching from `getBezierPath` to `getSmoothStepPath` for cleaner orthogonal routing, or implement custom pathfinding that avoids nodes
-  - [ ] Ensure handles on all four sides are functional: verify the `type` (source/target) assignment — currently top/left are target-only and bottom/right are source-only, which prevents some connection directions. Either make all handles bidirectional (`type="source"` on all, or use two overlapping handles per side) or explain the design constraint to users visually
-- [ ] Improve edge label rendering and interaction
-  - [ ] Add **inline label editing**: double-click on an edge label to enter edit mode (replace the label `<div>` with an `<input>` or `<textarea>`). On blur or Enter, commit the change to `canvas-store` and `model-store`
-  - [ ] Support editing both `protocol` and `data[]` fields inline: show "protocol · data1, data2" as the display, and split the edit into two inputs (or one smart input with a separator)
-  - [ ] Add edge label background styling that matches the edge color: selected edges should have `bg-tf-signal/10` label background, unselected edges keep `bg-card`
-  - [ ] Show a "+" add label button on edge hover when no label is present (for edges with empty protocol and data)
+  - [x] Ensure handles on all four sides are functional: verify the `type` (source/target) assignment — currently top/left are target-only and bottom/right are source-only, which prevents some connection directions. Either make all handles bidirectional (`type="source"` on all, or use two overlapping handles per side) or explain the design constraint to users visually
+- [x] Improve edge label rendering and interaction
+  - [x] Add **inline label editing**: double-click on an edge label to enter edit mode (replace the label `<div>` with an `<input>` or `<textarea>`). On blur or Enter, commit the change to `canvas-store` and `model-store`
+  - [x] Support editing both `protocol` and `data[]` fields inline: show "protocol · data1, data2" as the display, and split the edit into two inputs (or one smart input with a separator)
+  - [x] Add edge label background styling that matches the edge color: selected edges should have `bg-tf-signal/10` label background, unselected edges keep `bg-card`
+  - [x] Show a "+" add label button on edge hover when no label is present (for edges with empty protocol and data)
   - [ ] Make edge labels draggable to adjust position offset from the midpoint (store a `labelOffset` in edge data) — this is an advanced feature, can be deferred
-- [ ] Improve edge selection and interaction UX
-  - [ ] Increase the clickable/hoverable area of edges (currently 2px stroke is hard to click) — use an invisible wider stroke (10-12px) behind the visible edge for hit testing
-  - [ ] Add hover state: change edge color to a lighter version of the theme accent on hover (before click-to-select)
-  - [ ] Show animated flow direction indicator on hover or selection (a moving dot along the edge path, or animated dashes)
+- [x] Improve edge selection and interaction UX
+  - [x] Increase the clickable/hoverable area of edges (currently 2px stroke is hard to click) — use an invisible wider stroke (10-12px) behind the visible edge for hit testing
+  - [x] Add hover state: change edge color to a lighter version of the theme accent on hover (before click-to-select)
+  - [x] Show animated flow direction indicator on hover or selection (a moving dot along the edge path, or animated dashes)
   - [ ] When an edge is selected, highlight the connected source and target nodes with a subtle glow
-- [ ] Enhance node features and interactivity
-  - [ ] Add **inline node label editing**: double-click on a node label to edit the name in-place (replace the label `<div>` with an `<input>`). Commit on blur or Enter, updating both canvas-store and model-store
-  - [ ] Add resize handles to trust boundary nodes (they're group containers and need to be resizable to contain child elements)
-  - [ ] Add a visual indicator on nodes showing the count of linked threats (a small badge in the corner, e.g., "3 threats" with severity color)
-  - [ ] Add context menu on right-click for nodes: Edit Properties, Delete, Duplicate, Change Type (for element nodes), View Threats
-  - [ ] Add context menu on right-click for edges: Edit Properties, Delete, Reverse Direction
-  - [ ] Show technology badges on nodes: if `technologies[]` is populated, display small pills/tags below the node label
+- [x] Enhance node features and interactivity
+  - [x] Add **inline node label editing**: double-click on a node label to edit the name in-place (replace the label `<div>` with an `<input>`). Commit on blur or Enter, updating both canvas-store and model-store
+  - [x] Add resize handles to trust boundary nodes (they're group containers and need to be resizable to contain child elements)
+  - [x] Add a visual indicator on nodes showing the count of linked threats (a small badge in the corner, e.g., "3 threats" with severity color)
+  - [x] Add context menu on right-click for nodes: Edit Properties, Delete, Duplicate, Change Type (for element nodes), View Threats
+  - [x] Add context menu on right-click for edges: Edit Properties, Delete, Reverse Direction
+  - [x] Show technology badges on nodes: if `technologies[]` is populated, display small pills/tags below the node label
   - [ ] Add port/handle labels showing the connected flow's protocol on hover (so you can see what's connected without selecting)
 - [ ] Improve drag-and-drop from palette
   - [ ] Add visual feedback during drag: show a ghost preview of the node being dragged onto the canvas
   - [ ] Add drop zone highlighting: when dragging over a trust boundary, highlight it to indicate the element will be added inside it
-  - [ ] Auto-assign elements to a trust boundary if dropped inside one (update `TrustBoundary.contains` array)
-- [ ] Edge validation and constraints
-  - [ ] Prevent duplicate edges: don't allow two edges between the same source→target pair (show a toast/notification explaining why)
-  - [ ] Prevent self-loops: don't allow connecting a node to itself
-  - [ ] Visual feedback on invalid connections: show a red highlight or "not allowed" cursor when hovering over an invalid target during edge creation
-- [ ] Testing
-  - [ ] Unit test smart handle position calculation
-  - [ ] Unit test edge validation (no duplicates, no self-loops)
+  - [x] Auto-assign elements to a trust boundary if dropped inside one (update `TrustBoundary.contains` array)
+- [x] Edge validation and constraints
+  - [x] Prevent duplicate edges: don't allow two edges between the same source→target pair (show a toast/notification explaining why)
+  - [x] Prevent self-loops: don't allow connecting a node to itself
+  - [x] Visual feedback on invalid connections: show a red highlight or "not allowed" cursor when hovering over an invalid target during edge creation
+- [x] Testing
+  - [x] Unit test smart handle position calculation
+  - [x] Unit test edge validation (no duplicates, no self-loops)
   - [ ] Component test inline editing on nodes and edges
   - [ ] Component test context menus render with correct actions
   - [ ] Visual regression test: verify node/edge renders haven't changed unexpectedly
+
+### Notes
+
+- Implemented smart handle positioning in `src/lib/canvas-utils.ts` with `getSmartHandlePair()` — selects optimal handle pair based on relative node positions
+- All nodes now use bidirectional handles via shared `NodeHandles` component (`shared-handles.tsx`) — each side has both source and target handles with hidden overlapping handles
+- Edge validation (no self-loops, no duplicates) implemented in both `canvas-store.addDataFlow()` and ReactFlow's `isValidConnection` callback
+- Inline editing on all node types via double-click → input, with sync to both canvas-store and model-store
+- Edge inline editing supports two fields (protocol + data) in a compact editor overlay
+- Context menus built as a standalone `CanvasContextMenu` component with builder functions for node/edge-specific items
+- Added `duplicateElement()` and `reverseEdge()` actions to canvas-store
+- Auto-assign to trust boundary checks boundary positions on element drop
+- Trust boundaries now have `NodeResizeControl` from `@xyflow/react`
+- Threat count badges use a `useThreatCount(elementId)` hook that selects from model-store
+- Deferred items: orthogonal routing (`getSmoothStepPath`), draggable edge labels, connected node glow on edge select, drag ghost previews, drop zone highlighting, component tests for inline editing/context menus, visual regression tests
 
 ## 2026-02-27 - Editor improvements and settings modal
 

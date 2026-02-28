@@ -1,6 +1,7 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { create } from "zustand";
+import { getSmartHandlePair, isDuplicateEdge, isSelfLoop, nodeToRect } from "@/lib/canvas-utils";
 import type {
 	DataFlow,
 	DiagramLayout,
@@ -58,9 +59,11 @@ interface CanvasState {
 
 	// Canvas actions
 	addElement: (type: ElementType, position: { x: number; y: number }) => void;
-	addDataFlow: (sourceId: string, targetId: string) => void;
+	addDataFlow: (sourceId: string, targetId: string) => string | null;
 	addTrustBoundary: (name: string, position: { x: number; y: number }) => void;
 	deleteSelected: () => void;
+	duplicateElement: (nodeId: string) => void;
+	reverseEdge: (edgeId: string) => void;
 
 	// Sync from model store
 	syncFromModel: () => void;
@@ -232,18 +235,50 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		const newNode = elementToNode(newElement, position);
 
+		// Check if the drop position is inside a trust boundary
+		const boundaryNode = get().nodes.find((n) => {
+			if (!n.data.isBoundary) return false;
+			const bw = n.width ?? (n.style as Record<string, number> | undefined)?.width ?? 400;
+			const bh = n.height ?? (n.style as Record<string, number> | undefined)?.height ?? 300;
+			return (
+				position.x >= n.position.x &&
+				position.x <= n.position.x + bw &&
+				position.y >= n.position.y &&
+				position.y <= n.position.y + bh
+			);
+		});
+
+		if (boundaryNode) {
+			newNode.parentId = boundaryNode.id;
+			newNode.extent = "parent";
+			// Adjust position to be relative to the boundary
+			newNode.position = {
+				x: position.x - boundaryNode.position.x,
+				y: position.y - boundaryNode.position.y,
+			};
+		}
+
 		// Update canvas
 		set({ nodes: [...get().nodes, newNode] });
 
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
-			useModelStore
-				.getState()
-				.setModel(
-					{ ...model, elements: [...model.elements, newElement] },
-					useModelStore.getState().filePath,
+			// If dropped inside boundary, add to its contains array
+			let updatedBoundaries = model.trust_boundaries;
+			if (boundaryNode) {
+				updatedBoundaries = model.trust_boundaries.map((b) =>
+					b.id === boundaryNode.id ? { ...b, contains: [...b.contains, id] } : b,
 				);
+			}
+			useModelStore.getState().setModel(
+				{
+					...model,
+					elements: [...model.elements, newElement],
+					trust_boundaries: updatedBoundaries,
+				},
+				useModelStore.getState().filePath,
+			);
 			useModelStore.getState().markDirty();
 		}
 
@@ -252,6 +287,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	},
 
 	addDataFlow: (sourceId, targetId) => {
+		// Prevent self-loops
+		if (isSelfLoop(sourceId, targetId)) {
+			return null;
+		}
+
+		// Prevent duplicate edges
+		if (isDuplicateEdge(get().edges, sourceId, targetId)) {
+			return null;
+		}
+
 		const id = generateFlowId();
 		const newFlow: DataFlow = {
 			id,
@@ -262,7 +307,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			authenticated: false,
 		};
 
+		// Compute smart handle pair based on node positions
+		const sourceNode = get().nodes.find((n) => n.id === sourceId);
+		const targetNode = get().nodes.find((n) => n.id === targetId);
 		const newEdge = flowToEdge(newFlow);
+
+		if (sourceNode && targetNode) {
+			const handlePair = getSmartHandlePair(nodeToRect(sourceNode), nodeToRect(targetNode));
+			newEdge.sourceHandle = handlePair.sourceHandle;
+			newEdge.targetHandle = handlePair.targetHandle;
+		}
+
 		set({ edges: [...get().edges, newEdge] });
 
 		// Update model store
@@ -276,6 +331,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 				);
 			useModelStore.getState().markDirty();
 		}
+
+		return id;
 	},
 
 	addTrustBoundary: (name, position) => {
@@ -349,6 +406,69 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		}
 	},
 
+	duplicateElement: (nodeId) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+
+		const element = model.elements.find((e) => e.id === nodeId);
+		if (!element) return;
+
+		const sourceNode = get().nodes.find((n) => n.id === nodeId);
+		const offsetX = sourceNode ? sourceNode.position.x + 50 : 200;
+		const offsetY = sourceNode ? sourceNode.position.y + 50 : 200;
+
+		const newId = generateElementId(element.type);
+		const newElement: Element = {
+			...element,
+			id: newId,
+			name: `${element.name} (copy)`,
+		};
+
+		const newNode = elementToNode(newElement, { x: offsetX, y: offsetY });
+		set({ nodes: [...get().nodes, newNode] });
+
+		useModelStore
+			.getState()
+			.setModel(
+				{ ...model, elements: [...model.elements, newElement] },
+				useModelStore.getState().filePath,
+			);
+		useModelStore.getState().markDirty();
+		useModelStore.getState().setSelectedElement(newId);
+	},
+
+	reverseEdge: (edgeId) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+
+		const flow = model.data_flows.find((f) => f.id === edgeId);
+		if (!flow) return;
+
+		// Update model: swap from/to
+		const updatedFlows = model.data_flows.map((f) =>
+			f.id === edgeId ? { ...f, from: f.to, to: f.from } : f,
+		);
+		useModelStore
+			.getState()
+			.setModel({ ...model, data_flows: updatedFlows }, useModelStore.getState().filePath);
+		useModelStore.getState().markDirty();
+
+		// Update canvas edge: swap source/target
+		const currentEdges = get().edges;
+		const updatedEdges = currentEdges.map((e) =>
+			e.id === edgeId
+				? {
+						...e,
+						source: e.target,
+						target: e.source,
+						sourceHandle: e.targetHandle?.replace("target", "source"),
+						targetHandle: e.sourceHandle?.replace("source", "target"),
+					}
+				: e,
+		);
+		set({ edges: updatedEdges });
+	},
+
 	syncFromModel: () => {
 		const model = useModelStore.getState().model;
 		if (!model) {
@@ -399,7 +519,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			if (saved?.width != null && saved?.height != null) {
 				node.width = saved.width;
 				node.height = saved.height;
-				node.style = { ...node.style, width: saved.width, height: saved.height };
+				node.style = {
+					...node.style,
+					width: saved.width,
+					height: saved.height,
+				};
 			}
 			return node;
 		});

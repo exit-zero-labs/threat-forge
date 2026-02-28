@@ -32,7 +32,8 @@
 				"noUnusedVariables": "error"
 			},
 			"a11y": {
-				"noStaticElementInteractions": "off"
+				"noStaticElementInteractions": "off",
+				"noAutofocus": "off"
 			}
 		}
 	},
