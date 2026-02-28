@@ -14,8 +14,9 @@ import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
 
 /**
- * Build two quadratic bezier segments that route through a waypoint.
- * source → waypoint → target, producing a smooth path.
+ * Build a quadratic bezier from source to target that passes through the waypoint.
+ * For a quadratic bezier B(t) = (1-t)²S + 2t(1-t)C + t²T,
+ * solving B(0.5) = W gives C = 2W - (S+T)/2.
  */
 function getWaypointPath(
 	sx: number,
@@ -25,10 +26,9 @@ function getWaypointPath(
 	wx: number,
 	wy: number,
 ): string {
-	// Quadratic bezier using waypoint as control point, ending at target
-	const mid2x = (wx + tx) / 2;
-	const mid2y = (wy + ty) / 2;
-	return `M ${sx},${sy} Q ${wx},${wy} ${mid2x},${mid2y} T ${tx},${ty}`;
+	const cx = 2 * wx - (sx + tx) / 2;
+	const cy = 2 * wy - (sy + ty) / 2;
+	return `M ${sx},${sy} Q ${cx},${cy} ${tx},${ty}`;
 }
 
 export function DataFlowEdge({
