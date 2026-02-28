@@ -288,42 +288,42 @@ The overall editor needs to be more tuned for keyboard accessibility / shortcuts
 
 **Tasks:**
 
-- [ ] Design settings architecture and persistence
-  - [ ] Define settings scopes:
+- [x] Design settings architecture and persistence
+  - [x] Define settings scopes:
     - **User settings** (local to the machine, persist across files): theme, language, autosave on/off, keytips visibility, AI provider preferences, default zoom level, grid snap on/off
     - **File settings** (saved with / adjacent to the threat model file): diagram-specific grid size, default element colors/styles, STRIDE analysis configuration
-  - [ ] Create `src/types/settings.ts` with `UserSettings` and `FileSettings` interfaces
-  - [ ] Create `src/stores/settings-store.ts` with Zustand + `persist` middleware (localStorage for user settings)
+  - [x] Create `src/types/settings.ts` with `UserSettings` and `FileSettings` interfaces
+  - [x] Create `src/stores/settings-store.ts` with Zustand + `persist` middleware (localStorage for user settings)
     - Default values for all settings (autosave: off, keytips: on, gridSnap: on, gridSize: 16, etc.)
     - `updateUserSetting(key, value)` and `resetToDefaults()` actions
-  - [ ] File settings stored in the `.threatforge.yaml` metadata section or in a separate `.threatforge/settings.json` — decide which (YAML metadata is simpler, separate file keeps the YAML clean)
-- [ ] Build the settings modal
-  - [ ] Create `src/components/panels/settings-dialog.tsx` following the same pattern as `ai-settings-dialog.tsx` (fixed overlay, z-50, bg-black/50 backdrop, Escape to close)
-  - [ ] Organize settings into sections/tabs within the modal:
+  - [ ] File settings stored in the `.threatforge.yaml` metadata section or in a separate `.threatforge/settings.json` — decide which (YAML metadata is simpler, separate file keeps the YAML clean) — deferred: user settings done, file settings need further discussion
+- [x] Build the settings modal
+  - [x] Create `src/components/panels/settings-dialog.tsx` following the same pattern as `ai-settings-dialog.tsx` (fixed overlay, z-50, bg-black/50 backdrop, Escape to close)
+  - [x] Organize settings into sections/tabs within the modal:
     - **General**: Language (future — just show "English" as the only option for now with a "more coming" note), Autosave toggle, Default file location
     - **Appearance**: Theme mode (Light/Dark/System) + theme preset picker (see Theme Support section), Keytip visibility toggle, Sidebar default widths, Animation preferences (reduce motion)
     - **Editor**: Grid snap toggle, Grid size, Default zoom level, Confirm before delete toggle
     - **AI**: Move the current AI settings dialog content here — provider selector, API key management, model selection
     - **Keyboard Shortcuts**: Read-only list of all shortcuts (future: make them customizable)
-  - [ ] Add a gear icon button (⚙️ / `Settings` lucide icon) to the top menu bar in `top-menu-bar.tsx`, positioned alongside the panel toggle icons
-  - [ ] Wire settings updates to immediate UI response (no "Apply" button — changes take effect live)
-- [ ] Implement autosave
-  - [ ] Add autosave logic in a new `src/hooks/use-autosave.ts` hook:
+  - [x] Add a gear icon button (⚙️ / `Settings` lucide icon) to the top menu bar in `top-menu-bar.tsx`, positioned alongside the panel toggle icons
+  - [x] Wire settings updates to immediate UI response (no "Apply" button — changes take effect live)
+- [x] Implement autosave
+  - [x] Add autosave logic in a new `src/hooks/use-autosave.ts` hook:
     - Watch `model-store.isDirty` flag
     - When dirty becomes true, start a debounced timer (e.g., 30 seconds)
     - On timer fire: if model has a `filePath` (was previously saved), call `saveModel()` from `useFileOperations`
     - If model has never been saved (`filePath` is null), do NOT auto-save (don't trigger Save As dialog automatically)
     - Cancel the timer if the user manually saves or if dirty becomes false
     - Show a subtle indicator in the status bar: "Autosaving..." → "Autosaved at HH:MM"
-  - [ ] Add autosave settings to user settings: enabled/disabled (default: off), interval in seconds (default: 30)
-  - [ ] Mount the `useAutosave` hook in `AppLayout` when autosave is enabled
-- [ ] Improve keyboard accessibility
-  - [ ] Audit all interactive elements for keyboard reachability: every button, tab, input, palette item should be focusable and activatable via keyboard
-  - [ ] Add visible keytip badges to UI controls:
+  - [x] Add autosave settings to user settings: enabled/disabled (default: off), interval in seconds (default: 30)
+  - [x] Mount the `useAutosave` hook in `AppLayout` when autosave is enabled
+- [x] Improve keyboard accessibility
+  - [ ] Audit all interactive elements for keyboard reachability: every button, tab, input, palette item should be focusable and activatable via keyboard — deferred to a follow-up
+  - [x] Add visible keytip badges to UI controls:
     - Create a `src/components/ui/keytip.tsx` component: a small styled badge showing the keyboard shortcut (e.g., "⌘N") overlaid on or next to the control
     - Render keytips on: top menu bar buttons (already have tooltips — add persistent visible badges), palette items (if shortcuts are added), panel tab switches
     - Keytips should be rendered conditionally based on the `keytipsVisible` user setting
-  - [ ] Expand keyboard shortcuts in `use-keyboard-shortcuts.ts`:
+  - [x] Expand keyboard shortcuts in `use-keyboard-shortcuts.ts`:
     - `Cmd/Ctrl+Z`: Undo (requires undo/redo system — this is a large feature, add as separate TODO if out of scope)
     - `Cmd/Ctrl+Shift+Z` or `Cmd/Ctrl+Y`: Redo
     - `Cmd/Ctrl+,`: Open Settings
@@ -333,12 +333,12 @@ The overall editor needs to be more tuned for keyboard accessibility / shortcuts
     - `Tab`: Cycle through canvas elements (focus navigation)
     - `1/2/3`: Quick-switch right panel tabs (Properties/Threats/AI)
     - `Cmd/Ctrl+Shift+S`: Save As
-  - [ ] Show a keyboard shortcuts cheat sheet: accessible via `Cmd/Ctrl+/` or a "?" button, displaying all available shortcuts in a modal
-- [ ] Improve top menu bar organization
-  - [ ] Group controls more clearly: File operations (left) | View toggles (center) | Settings + Help (right)
-  - [ ] Add a Help menu button (? icon) next to the settings gear: links to docs, keyboard shortcuts, and onboarding guides (see Onboarding section)
-  - [ ] Consider moving panel toggles to a "View" dropdown or keeping them as icon buttons — decide based on available horizontal space
-- [ ] Migrate AI settings into the main settings modal
+  - [x] Show a keyboard shortcuts cheat sheet: accessible via `Cmd/Ctrl+/` or a "?" button, displaying all available shortcuts in a modal
+- [x] Improve top menu bar organization
+  - [x] Group controls more clearly: File operations (left) | View toggles (center) | Settings + Help (right)
+  - [x] Add a Help menu button (? icon) next to the settings gear: links to docs, keyboard shortcuts, and onboarding guides (see Onboarding section)
+  - [x] Consider moving panel toggles to a "View" dropdown or keeping them as icon buttons — decided to keep as icon buttons with a divider separator
+- [x] Migrate AI settings into the main settings modal
   - [ ] Move the content of `ai-settings-dialog.tsx` into the AI section of the settings modal
   - [ ] Update the AI chat tab's settings button to open the main settings modal with the AI tab pre-selected
   - [ ] Keep `ai-settings-dialog.tsx` as a component but have it render inside the settings modal rather than as a standalone dialog
