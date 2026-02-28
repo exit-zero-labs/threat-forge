@@ -21,11 +21,7 @@ const presetList = Object.values(THEME_PRESETS);
 const darkPresets = presetList.filter((p) => p.mode === "dark");
 const lightPresets = presetList.filter((p) => p.mode === "light");
 
-interface ThemePickerProps {
-	onClose: () => void;
-}
-
-export function ThemePicker({ onClose }: ThemePickerProps) {
+export function ThemePicker() {
 	const themeMode = useUiStore((s) => s.themeMode);
 	const themePresetId = useUiStore((s) => s.themePresetId);
 	const setTheme = useUiStore((s) => s.setTheme);
@@ -43,12 +39,7 @@ export function ThemePicker({ onClose }: ThemePickerProps) {
 	};
 
 	return (
-		<div
-			className="absolute right-0 top-full z-50 mt-1 w-56 rounded-md border border-border bg-popover p-2 shadow-lg"
-			onKeyDown={(e) => {
-				if (e.key === "Escape") onClose();
-			}}
-		>
+		<div className="space-y-3">
 			{/* Mode selector */}
 			<div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
 				Mode
