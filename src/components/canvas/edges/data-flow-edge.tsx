@@ -3,16 +3,46 @@ import {
 	EdgeLabelRenderer,
 	type EdgeProps,
 	getBezierPath,
+	useEdges,
 	useReactFlow,
 } from "@xyflow/react";
 import { Plus } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 
+/** Spacing between parallel edges (in pixels perpendicular to the edge direction) */
+const PARALLEL_SPACING = 20;
+
+/**
+ * Compute a perpendicular offset for this edge when multiple edges exist between
+ * the same pair of nodes (in either direction). Returns 0 if this is the only edge.
+ */
+function computeParallelOffset(
+	allEdges: ReadonlyArray<{ id: string; source: string; target: string }>,
+	currentId: string,
+	source: string,
+	target: string,
+): number {
+	const siblings = allEdges.filter(
+		(e) =>
+			(e.source === source && e.target === target) || (e.source === target && e.target === source),
+	);
+	if (siblings.length <= 1) return 0;
+
+	// Deterministic sort by ID
+	const sorted = [...siblings].sort((a, b) => a.id.localeCompare(b.id));
+	const index = sorted.findIndex((e) => e.id === currentId);
+	const count = sorted.length;
+
+	return (index - (count - 1) / 2) * PARALLEL_SPACING;
+}
+
 export function DataFlowEdge({
 	id,
+	source,
+	target,
 	sourceX,
 	sourceY,
 	targetX,
@@ -24,19 +54,40 @@ export function DataFlowEdge({
 	markerEnd,
 }: EdgeProps) {
 	const edgeData = data as DfdEdgeData | undefined;
+	const allEdges = useEdges();
+
+	// Compute perpendicular offset for parallel edges
+	const offset = useMemo(
+		() => computeParallelOffset(allEdges, id, source, target),
+		[allEdges, id, source, target],
+	);
+
+	// Apply offset perpendicular to the source→target direction
+	const dx = targetX - sourceX;
+	const dy = targetY - sourceY;
+	const len = Math.sqrt(dx * dx + dy * dy) || 1;
+	const px = -dy / len; // perpendicular x
+	const py = dx / len; // perpendicular y
+
+	const oSourceX = sourceX + px * offset;
+	const oSourceY = sourceY + py * offset;
+	const oTargetX = targetX + px * offset;
+	const oTargetY = targetY + py * offset;
+
 	const [edgePath, labelX, labelY] = getBezierPath({
-		sourceX,
-		sourceY,
+		sourceX: oSourceX,
+		sourceY: oSourceY,
 		sourcePosition,
-		targetX,
-		targetY,
+		targetX: oTargetX,
+		targetY: oTargetY,
 		targetPosition,
 	});
 
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
 
-	const hasLabel = edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0);
+	const hasLabel =
+		edgeData?.name || edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0);
 
 	return (
 		<>
@@ -86,7 +137,7 @@ export function DataFlowEdge({
 				{hasLabel && !isEditing && (
 					<div
 						className={cn(
-							"pointer-events-all nodrag nopan absolute cursor-pointer rounded border px-1.5 py-0.5 text-[10px] transition-colors",
+							"pointer-events-all nodrag nopan absolute cursor-pointer rounded border px-1.5 py-0.5 transition-colors",
 							selected
 								? "border-tf-signal bg-tf-signal/10 text-foreground"
 								: "border-border bg-card text-muted-foreground hover:border-muted-foreground",
@@ -96,14 +147,26 @@ export function DataFlowEdge({
 						}}
 						onDoubleClick={() => setIsEditing(true)}
 					>
-						{edgeData?.protocol && <span>{edgeData.protocol}</span>}
-						{edgeData?.protocol && edgeData?.data && edgeData.data.length > 0 && <span> · </span>}
-						{edgeData?.data && edgeData.data.length > 0 && <span>{edgeData.data.join(", ")}</span>}
+						{edgeData?.name && (
+							<div className="text-[11px] font-medium text-foreground">{edgeData.name}</div>
+						)}
+						{(edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0)) && (
+							<div className="text-[9px]">
+								{edgeData?.protocol && <span>{edgeData.protocol}</span>}
+								{edgeData?.protocol && edgeData?.data && edgeData.data.length > 0 && (
+									<span> · </span>
+								)}
+								{edgeData?.data && edgeData.data.length > 0 && (
+									<span>{edgeData.data.join(", ")}</span>
+								)}
+							</div>
+						)}
 					</div>
 				)}
 				{isEditing && (
 					<EdgeLabelEditor
 						edgeId={id}
+						name={edgeData?.name ?? ""}
 						protocol={edgeData?.protocol ?? ""}
 						dataItems={edgeData?.data ?? []}
 						labelX={labelX}
@@ -130,6 +193,7 @@ export function DataFlowEdge({
 
 function EdgeLabelEditor({
 	edgeId,
+	name,
 	protocol,
 	dataItems,
 	labelX,
@@ -137,17 +201,20 @@ function EdgeLabelEditor({
 	onClose,
 }: {
 	edgeId: string;
+	name: string;
 	protocol: string;
 	dataItems: string[];
 	labelX: number;
 	labelY: number;
 	onClose: () => void;
 }) {
+	const nameRef = useRef<HTMLInputElement>(null);
 	const protocolRef = useRef<HTMLInputElement>(null);
 	const dataRef = useRef<HTMLInputElement>(null);
 	const { setEdges } = useReactFlow();
 
 	const commit = useCallback(() => {
+		const newName = nameRef.current?.value.trim() ?? "";
 		const newProtocol = protocolRef.current?.value.trim() ?? "";
 		const newData = (dataRef.current?.value ?? "")
 			.split(",")
@@ -158,7 +225,7 @@ function EdgeLabelEditor({
 		const model = useModelStore.getState().model;
 		if (model) {
 			const updatedFlows = model.data_flows.map((f) =>
-				f.id === edgeId ? { ...f, protocol: newProtocol, data: newData } : f,
+				f.id === edgeId ? { ...f, name: newName, protocol: newProtocol, data: newData } : f,
 			);
 			useModelStore
 				.getState()
@@ -169,7 +236,9 @@ function EdgeLabelEditor({
 		// Update canvas edge data
 		setEdges((edges) =>
 			edges.map((e) =>
-				e.id === edgeId ? { ...e, data: { ...e.data, protocol: newProtocol, data: newData } } : e,
+				e.id === edgeId
+					? { ...e, data: { ...e.data, name: newName, protocol: newProtocol, data: newData } }
+					: e,
 			),
 		);
 
@@ -184,11 +253,21 @@ function EdgeLabelEditor({
 			}}
 		>
 			<input
+				ref={nameRef}
+				defaultValue={name}
+				placeholder="Flow name (e.g. Login Request)"
+				autoFocus
+				className="w-44 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+				onKeyDown={(e) => {
+					if (e.key === "Enter") commit();
+					if (e.key === "Escape") onClose();
+				}}
+			/>
+			<input
 				ref={protocolRef}
 				defaultValue={protocol}
 				placeholder="Protocol (e.g. HTTPS)"
-				autoFocus
-				className="w-32 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+				className="w-44 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
 				onKeyDown={(e) => {
 					if (e.key === "Enter") commit();
 					if (e.key === "Escape") onClose();
@@ -198,7 +277,7 @@ function EdgeLabelEditor({
 				ref={dataRef}
 				defaultValue={dataItems.join(", ")}
 				placeholder="Data (comma-separated)"
-				className="w-32 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+				className="w-44 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
 				onKeyDown={(e) => {
 					if (e.key === "Enter") commit();
 					if (e.key === "Escape") onClose();

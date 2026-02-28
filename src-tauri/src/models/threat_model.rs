@@ -90,6 +90,8 @@ pub struct Element {
 #[serde(deny_unknown_fields)]
 pub struct DataFlow {
     pub id: String,
+    #[serde(default)]
+    pub name: String,
     pub from: String,
     pub to: String,
     #[serde(default)]

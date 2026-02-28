@@ -66,6 +66,7 @@ describe("buildSystemPrompt", () => {
 		const model = emptyModel();
 		model.data_flows.push({
 			id: "flow-1",
+			name: "",
 			from: "web-app",
 			to: "api-gw",
 			protocol: "HTTPS",

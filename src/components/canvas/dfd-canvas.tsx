@@ -10,7 +10,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isDuplicateEdge, isSelfLoop } from "@/lib/canvas-utils";
+import { isSelfLoop } from "@/lib/canvas-utils";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
@@ -96,7 +96,10 @@ export function DfdCanvas() {
 	const onConnect = useCallback(
 		(connection: Connection) => {
 			if (connection.source && connection.target) {
-				addDataFlow(connection.source, connection.target);
+				addDataFlow(connection.source, connection.target, {
+					sourceHandle: connection.sourceHandle ?? undefined,
+					targetHandle: connection.targetHandle ?? undefined,
+				});
 			}
 			connectingNodeId.current = null;
 		},
@@ -111,16 +114,12 @@ export function DfdCanvas() {
 		connectingNodeId.current = null;
 	}, []);
 
-	/** Validates whether a connection is allowed (no self-loops, no duplicates) */
-	const isValidConnection = useCallback(
-		(connection: Connection | DfdEdge) => {
-			if (!connection.source || !connection.target) return false;
-			if (isSelfLoop(connection.source, connection.target)) return false;
-			if (isDuplicateEdge(edges, connection.source, connection.target)) return false;
-			return true;
-		},
-		[edges],
-	);
+	/** Validates whether a connection is allowed (no self-loops) */
+	const isValidConnection = useCallback((connection: Connection | DfdEdge) => {
+		if (!connection.source || !connection.target) return false;
+		if (isSelfLoop(connection.source, connection.target)) return false;
+		return true;
+	}, []);
 
 	const onDragOver = useCallback((event: React.DragEvent) => {
 		event.preventDefault();

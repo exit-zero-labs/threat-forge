@@ -1,7 +1,7 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { create } from "zustand";
-import { getSmartHandlePair, isDuplicateEdge, isSelfLoop, nodeToRect } from "@/lib/canvas-utils";
+import { getSmartHandlePair, isSelfLoop, nodeToRect } from "@/lib/canvas-utils";
 import type {
 	DataFlow,
 	DiagramLayout,
@@ -29,6 +29,7 @@ export type DfdNodeData = {
  *  Uses `type` + index signature to satisfy ReactFlow's `Record<string, unknown>` constraint. */
 export type DfdEdgeData = {
 	[key: string]: unknown;
+	name: string;
 	protocol: string;
 	data: string[];
 	authenticated: boolean;
@@ -59,7 +60,11 @@ interface CanvasState {
 
 	// Canvas actions
 	addElement: (type: ElementType, position: { x: number; y: number }) => void;
-	addDataFlow: (sourceId: string, targetId: string) => string | null;
+	addDataFlow: (
+		sourceId: string,
+		targetId: string,
+		opts?: { sourceHandle?: string; targetHandle?: string; name?: string },
+	) => string | null;
 	addTrustBoundary: (name: string, position: { x: number; y: number }) => void;
 	deleteSelected: () => void;
 	duplicateElement: (nodeId: string) => void;
@@ -144,6 +149,7 @@ function flowToEdge(flow: DataFlow): DfdEdge {
 		type: "dataFlow",
 		animated: flow.authenticated,
 		data: {
+			name: flow.name ?? "",
 			protocol: flow.protocol,
 			data: flow.data,
 			authenticated: flow.authenticated,
@@ -286,20 +292,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		useModelStore.getState().setSelectedElement(id);
 	},
 
-	addDataFlow: (sourceId, targetId) => {
+	addDataFlow: (sourceId, targetId, opts) => {
 		// Prevent self-loops
 		if (isSelfLoop(sourceId, targetId)) {
-			return null;
-		}
-
-		// Prevent duplicate edges
-		if (isDuplicateEdge(get().edges, sourceId, targetId)) {
 			return null;
 		}
 
 		const id = generateFlowId();
 		const newFlow: DataFlow = {
 			id,
+			name: opts?.name ?? "",
 			from: sourceId,
 			to: targetId,
 			protocol: "",
@@ -307,15 +309,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			authenticated: false,
 		};
 
-		// Compute smart handle pair based on node positions
-		const sourceNode = get().nodes.find((n) => n.id === sourceId);
-		const targetNode = get().nodes.find((n) => n.id === targetId);
 		const newEdge = flowToEdge(newFlow);
 
-		if (sourceNode && targetNode) {
-			const handlePair = getSmartHandlePair(nodeToRect(sourceNode), nodeToRect(targetNode));
-			newEdge.sourceHandle = handlePair.sourceHandle;
-			newEdge.targetHandle = handlePair.targetHandle;
+		// Use explicitly provided handles (from user drag), or fall back to smart routing
+		if (opts?.sourceHandle && opts?.targetHandle) {
+			newEdge.sourceHandle = opts.sourceHandle;
+			newEdge.targetHandle = opts.targetHandle;
+		} else {
+			const sourceNode = get().nodes.find((n) => n.id === sourceId);
+			const targetNode = get().nodes.find((n) => n.id === targetId);
+			if (sourceNode && targetNode) {
+				const handlePair = getSmartHandlePair(nodeToRect(sourceNode), nodeToRect(targetNode));
+				newEdge.sourceHandle = handlePair.sourceHandle;
+				newEdge.targetHandle = handlePair.targetHandle;
+			}
 		}
 
 		set({ edges: [...get().edges, newEdge] });

@@ -275,12 +275,20 @@ The canvas connector system requires significant improvements for better usabili
   - [ ] Add drop zone highlighting: when dragging over a trust boundary, highlight it to indicate the element will be added inside it
   - [x] Auto-assign elements to a trust boundary if dropped inside one (update `TrustBoundary.contains` array)
 - [x] Edge validation and constraints
-  - [x] Prevent duplicate edges: don't allow two edges between the same source→target pair (show a toast/notification explaining why)
+  - [x] Allow multiple edges between same pair: threat models require back-and-forth flows (e.g., "1. Login Request", "1b. Auth Token") — removed `isDuplicateEdge` blocking from `addDataFlow` and `isValidConnection`
   - [x] Prevent self-loops: don't allow connecting a node to itself
   - [x] Visual feedback on invalid connections: show a red highlight or "not allowed" cursor when hovering over an invalid target during edge creation
+  - [x] Parallel edge offset rendering: multiple edges between same pair fan out with perpendicular offset (20px spacing) so they don't overlap
+- [x] Edge naming support
+  - [x] Added `name` field to `DataFlow` in Rust schema (`#[serde(default)]` for backward compat) and TypeScript types
+  - [x] Edge label shows `name` as primary label with protocol/data as secondary detail
+  - [x] `EdgeLabelEditor` includes a name input field (autoFocus, commits to model store and canvas edges)
+  - [x] `addDataFlow` accepts optional `{ sourceHandle?, targetHandle?, name? }` — smart routing only as fallback when user hasn't explicitly chosen handles
 - [x] Testing
   - [x] Unit test smart handle position calculation
-  - [x] Unit test edge validation (no duplicates, no self-loops)
+  - [x] Unit test edge validation (no self-loops)
+  - [x] Unit test multiple edges between same pair allowed
+  - [x] Unit test handle and name opts passed through to addDataFlow
   - [ ] Component test inline editing on nodes and edges
   - [ ] Component test context menus render with correct actions
   - [ ] Visual regression test: verify node/edge renders haven't changed unexpectedly
@@ -289,7 +297,12 @@ The canvas connector system requires significant improvements for better usabili
 
 - Implemented smart handle positioning in `src/lib/canvas-utils.ts` with `getSmartHandlePair()` — selects optimal handle pair based on relative node positions
 - All nodes now use bidirectional handles via shared `NodeHandles` component (`shared-handles.tsx`) — each side has both source and target handles with hidden overlapping handles
-- Edge validation (no self-loops, no duplicates) implemented in both `canvas-store.addDataFlow()` and ReactFlow's `isValidConnection` callback
+- Edge validation (no self-loops) in both `canvas-store.addDataFlow()` and ReactFlow's `isValidConnection` callback
+- Multiple edges between the same pair are allowed — `isDuplicateEdge` removed from blocking paths
+- Parallel edges rendered with perpendicular offset via `computeParallelOffset()` in `DataFlowEdge`
+- `DataFlow` has a `name` field (Rust: `#[serde(default)]`, TS: defaults to `""`) for backward compat with existing files
+- `addDataFlow` accepts optional `{ sourceHandle?, targetHandle?, name? }` opts; smart routing via `getSmartHandlePair()` is only a fallback when handles not provided by user drag
+- `onConnect` in `dfd-canvas.tsx` passes `connection.sourceHandle/targetHandle` through to `addDataFlow`
 - Inline editing on all node types via double-click → input, with sync to both canvas-store and model-store
 - Edge inline editing supports two fields (protocol + data) in a compact editor overlay
 - Context menus built as a standalone `CanvasContextMenu` component with builder functions for node/edge-specific items

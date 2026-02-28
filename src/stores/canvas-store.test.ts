@@ -34,6 +34,7 @@ function createTestModel(): ThreatModel {
 		data_flows: [
 			{
 				id: "flow-1",
+				name: "DB Query",
 				from: "process-1",
 				to: "data-store-1",
 				protocol: "PostgreSQL/TLS",
@@ -205,24 +206,40 @@ describe("canvas-store", () => {
 		expect(useCanvasStore.getState().edges).toHaveLength(1);
 	});
 
-	it("prevents duplicate edges", () => {
+	it("allows multiple edges between same pair", () => {
 		useModelStore.getState().setModel(createTestModel(), null);
 		useCanvasStore.getState().syncFromModel();
 
 		// flow-1 already exists: process-1 → data-store-1
 		const result = useCanvasStore.getState().addDataFlow("process-1", "data-store-1");
-		expect(result).toBeNull();
-		expect(useCanvasStore.getState().edges).toHaveLength(1);
+		expect(result).not.toBeNull();
+		expect(useCanvasStore.getState().edges).toHaveLength(2);
+
+		// Model store should also have both flows
+		const model = useModelStore.getState().model;
+		expect(model?.data_flows).toHaveLength(2);
 	});
 
-	it("allows reverse direction of existing edge", () => {
+	it("passes source and target handles when provided", () => {
 		useModelStore.getState().setModel(createTestModel(), null);
 		useCanvasStore.getState().syncFromModel();
 
-		// Reverse: data-store-1 → process-1 (different from existing process-1 → data-store-1)
-		const result = useCanvasStore.getState().addDataFlow("data-store-1", "process-1");
-		expect(result).not.toBeNull();
-		expect(useCanvasStore.getState().edges).toHaveLength(2);
+		useCanvasStore.getState().addDataFlow("data-store-1", "process-1", {
+			sourceHandle: "bottom",
+			targetHandle: "top",
+			name: "Query Response",
+		});
+
+		const { edges } = useCanvasStore.getState();
+		const newEdge = edges.find((e) => e.source === "data-store-1" && e.target === "process-1");
+		expect(newEdge).toBeDefined();
+		expect(newEdge?.sourceHandle).toBe("bottom");
+		expect(newEdge?.targetHandle).toBe("top");
+
+		// Model store should have the name
+		const model = useModelStore.getState().model;
+		const flow = model?.data_flows.find((f) => f.from === "data-store-1" && f.to === "process-1");
+		expect(flow?.name).toBe("Query Response");
 	});
 
 	it("duplicates an element", () => {
