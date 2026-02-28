@@ -163,7 +163,19 @@ export function DfdCanvas() {
 
 	const onPaneClick = useCallback(() => {
 		useModelStore.getState().setSelectedElement(null);
+		useModelStore.getState().setSelectedEdge(null);
 		setContextMenu(null);
+	}, []);
+
+	const onNodeClick = useCallback((_event: React.MouseEvent, node: DfdNode) => {
+		if (node.data.isBoundary) return;
+		useModelStore.getState().setSelectedElement(node.id);
+		useUiStore.getState().setRightPanelTab("properties");
+	}, []);
+
+	const onEdgeClick = useCallback((_event: React.MouseEvent, edge: DfdEdge) => {
+		useModelStore.getState().setSelectedEdge(edge.id);
+		useUiStore.getState().setRightPanelTab("properties");
 	}, []);
 
 	const onNodeContextMenu = useCallback((event: React.MouseEvent, node: DfdNode) => {
@@ -210,7 +222,8 @@ export function DfdCanvas() {
 		if (contextMenu.edgeId) {
 			return buildEdgeMenuItems({
 				onEditProperties: () => {
-					/* Edge properties are edited via inline label editing */
+					useModelStore.getState().setSelectedEdge(contextMenu.edgeId ?? null);
+					useUiStore.getState().setRightPanelTab("properties");
 				},
 				onDelete: () => {
 					const edgeId = contextMenu.edgeId;
@@ -264,6 +277,8 @@ export function DfdCanvas() {
 				onDragOver={onDragOver}
 				onDrop={onDrop}
 				onPaneClick={onPaneClick}
+				onNodeClick={onNodeClick}
+				onEdgeClick={onEdgeClick}
 				onNodeContextMenu={onNodeContextMenu}
 				onEdgeContextMenu={onEdgeContextMenu}
 				nodeTypes={nodeTypes}

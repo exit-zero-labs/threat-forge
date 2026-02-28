@@ -1,25 +1,153 @@
-import { useCanvasStore } from "@/stores/canvas-store";
+import { ArrowLeftRight } from "lucide-react";
+import { type DfdEdge, useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
+import type { DataFlow } from "@/types/threat-model";
 
 export function PropertiesTab() {
 	const selectedElementId = useModelStore((s) => s.selectedElementId);
+	const selectedEdgeId = useModelStore((s) => s.selectedEdgeId);
 	const model = useModelStore((s) => s.model);
-	const updateElement = useModelStore((s) => s.updateElement);
 
 	if (!model) {
 		return <p className="text-xs text-muted-foreground">No model open.</p>;
 	}
 
-	if (!selectedElementId) {
-		return (
-			<p className="text-xs text-muted-foreground">
-				Select an element on the canvas to view its properties.
-			</p>
-		);
+	if (selectedEdgeId) {
+		const flow = model.data_flows.find((f) => f.id === selectedEdgeId);
+		if (!flow) {
+			return <p className="text-xs text-muted-foreground">Data flow not found.</p>;
+		}
+		return <EdgeProperties flow={flow} />;
 	}
 
-	const element = model.elements.find((e) => e.id === selectedElementId);
+	if (selectedElementId) {
+		return <ElementProperties elementId={selectedElementId} />;
+	}
+
+	return (
+		<p className="text-xs text-muted-foreground">
+			Select an element or connector on the canvas to view its properties.
+		</p>
+	);
+}
+
+function EdgeProperties({ flow }: { flow: DataFlow }) {
+	const model = useModelStore((s) => s.model);
+	const updateDataFlow = useModelStore((s) => s.updateDataFlow);
+	const reverseEdge = useCanvasStore((s) => s.reverseEdge);
+
+	const fromElement = model?.elements.find((e) => e.id === flow.from);
+	const toElement = model?.elements.find((e) => e.id === flow.to);
+
+	const syncEdgeData = (updates: Partial<DataFlow>) => {
+		const edges = useCanvasStore.getState().edges;
+		const updatedEdges: DfdEdge[] = edges.map((e) =>
+			e.id === flow.id ? { ...e, data: { ...e.data, ...updates } as DfdEdge["data"] } : e,
+		);
+		useCanvasStore.setState({ edges: updatedEdges });
+	};
+
+	return (
+		<div className="flex flex-col gap-3">
+			<ReadOnlyField label="ID" value={flow.id} />
+			<ReadOnlyField
+				label="Direction"
+				value={`${fromElement?.name ?? flow.from} → ${toElement?.name ?? flow.to}`}
+			/>
+
+			<button
+				type="button"
+				onClick={() => reverseEdge(flow.id)}
+				className="flex items-center gap-1.5 self-start rounded border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+			>
+				<ArrowLeftRight className="h-3 w-3" />
+				Flip Direction
+			</button>
+
+			<EditableField
+				label="Name"
+				value={flow.name}
+				placeholder="e.g. Login Request"
+				onChange={(value) => {
+					updateDataFlow(flow.id, { name: value });
+					syncEdgeData({ name: value });
+				}}
+			/>
+
+			<EditableField
+				label="Protocol"
+				value={flow.protocol}
+				placeholder="e.g. HTTPS, gRPC"
+				onChange={(value) => {
+					updateDataFlow(flow.id, { protocol: value });
+					syncEdgeData({ protocol: value });
+				}}
+			/>
+
+			<EditableField
+				label="Data"
+				value={flow.data.join(", ")}
+				placeholder="Comma-separated data items"
+				onChange={(value) => {
+					const data = value
+						.split(",")
+						.map((s) => s.trim())
+						.filter((s) => s.length > 0);
+					updateDataFlow(flow.id, { data });
+					syncEdgeData({ data });
+				}}
+			/>
+
+			<label className="flex items-center gap-2">
+				<input
+					type="checkbox"
+					checked={flow.authenticated}
+					onChange={(e) => {
+						updateDataFlow(flow.id, { authenticated: e.target.checked });
+						syncEdgeData({ authenticated: e.target.checked });
+					}}
+					className="h-3.5 w-3.5 rounded border-border accent-primary"
+				/>
+				<span className="text-xs text-foreground">Authenticated</span>
+			</label>
+
+			{/* Related threats for this flow */}
+			<FlowThreats flowId={flow.id} />
+		</div>
+	);
+}
+
+function FlowThreats({ flowId }: { flowId: string }) {
+	const model = useModelStore((s) => s.model);
+	const relatedThreats = model?.threats.filter((t) => t.element === flowId) ?? [];
+
+	if (relatedThreats.length === 0) return null;
+
+	return (
+		<div className="border-t border-border pt-3">
+			<p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
+				Related Threats ({relatedThreats.length})
+			</p>
+			<div className="flex flex-col gap-1">
+				{relatedThreats.map((threat) => (
+					<ThreatLink
+						key={threat.id}
+						threatId={threat.id}
+						title={threat.title}
+						severity={threat.severity}
+					/>
+				))}
+			</div>
+		</div>
+	);
+}
+
+function ElementProperties({ elementId }: { elementId: string }) {
+	const model = useModelStore((s) => s.model);
+	const updateElement = useModelStore((s) => s.updateElement);
+
+	const element = model?.elements.find((e) => e.id === elementId);
 	if (!element) {
 		return <p className="text-xs text-muted-foreground">Element not found.</p>;
 	}
@@ -29,15 +157,13 @@ export function PropertiesTab() {
 		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 		.join(" ");
 
-	const relatedThreats = model.threats.filter((t) => t.element === element.id);
+	const relatedThreats = model?.threats.filter((t) => t.element === element.id) ?? [];
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* Read-only fields */}
 			<ReadOnlyField label="ID" value={element.id} />
 			<ReadOnlyField label="Type" value={elementTypeLabel} />
 
-			{/* Editable fields */}
 			<EditableField
 				label="Name"
 				value={element.name}
@@ -77,7 +203,6 @@ export function PropertiesTab() {
 				}}
 			/>
 
-			{/* Related threats summary */}
 			{relatedThreats.length > 0 && (
 				<div className="border-t border-border pt-3">
 					<p className="mb-1.5 text-[10px] font-medium text-muted-foreground">

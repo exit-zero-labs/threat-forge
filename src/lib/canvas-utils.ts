@@ -1,6 +1,6 @@
 import type { Position } from "@xyflow/react";
 
-type HandlePosition = "top" | "bottom" | "left" | "right";
+type HandlePosition = "top-left" | "top-right" | "bottom-left" | "bottom-right" | "left" | "right";
 
 interface NodeRect {
 	x: number;
@@ -15,8 +15,10 @@ interface HandlePair {
 }
 
 const POSITION_MAP: Record<HandlePosition, Position> = {
-	top: "top" as Position,
-	bottom: "bottom" as Position,
+	"top-left": "top" as Position,
+	"top-right": "top" as Position,
+	"bottom-left": "bottom" as Position,
+	"bottom-right": "bottom" as Position,
 	left: "left" as Position,
 	right: "right" as Position,
 };
@@ -27,8 +29,8 @@ const DEFAULT_NODE_HEIGHT = 50;
 
 /**
  * Given source and target node positions/sizes, determines the optimal
- * handle pair (top/bottom/left/right) to minimize path length and avoid
- * edges crossing through nodes.
+ * handle pair from the 6 available handles (left, right, top-left, top-right,
+ * bottom-left, bottom-right) to minimize path length.
  */
 export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePair {
 	const sourceCx = source.x + source.width / 2;
@@ -42,9 +44,8 @@ export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePa
 	let sourcePos: HandlePosition;
 	let targetPos: HandlePosition;
 
-	// Determine primary axis based on relative position
 	if (Math.abs(dx) > Math.abs(dy)) {
-		// Horizontal: source on the side closer to target, target on opposite side
+		// Primarily horizontal — use left/right midpoints
 		if (dx > 0) {
 			sourcePos = "right";
 			targetPos = "left";
@@ -53,13 +54,15 @@ export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePa
 			targetPos = "right";
 		}
 	} else {
-		// Vertical: source below/above depending on direction
+		// Primarily vertical — use corner handles
 		if (dy > 0) {
-			sourcePos = "bottom";
-			targetPos = "top";
+			// Target is below
+			sourcePos = dx >= 0 ? "bottom-right" : "bottom-left";
+			targetPos = dx >= 0 ? "top-left" : "top-right";
 		} else {
-			sourcePos = "top";
-			targetPos = "bottom";
+			// Target is above
+			sourcePos = dx >= 0 ? "top-right" : "top-left";
+			targetPos = dx >= 0 ? "bottom-left" : "bottom-right";
 		}
 	}
 
