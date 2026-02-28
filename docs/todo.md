@@ -4,6 +4,25 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-02-28 — Parallel Edge Separation + Trust Boundary Properties
+
+### Plan
+- [x] Fix parallel edge overlap — replace `curvature` param with custom bezier path using perpendicular control point offsets
+- [x] Add `selectedBoundaryId` + `setSelectedBoundary` to model-store
+- [x] Add `updateTrustBoundary` action to model-store
+- [x] Add color fields to `DfdNodeData` (fillColor, strokeColor, fillOpacity, strokeOpacity)
+- [x] Handle boundary clicks in dfd-canvas (select instead of ignore)
+- [x] Add `TrustBoundaryProperties` component with name, fill color, stroke color (native picker + opacity slider)
+- [x] Apply custom colors in `TrustBoundaryNode` rendering
+- [x] Validate: tsc, biome, vitest all pass (92 tests)
+
+### Notes
+- `getBezierPath({ curvature })` only scales control point distance — it doesn't offset parallel edges. Replaced with custom `getOffsetBezierPath` that shifts control points perpendicular to the edge direction.
+- Boundary colors are stored in canvas node data (not in the YAML schema) — they are layout-level visual properties, consistent with ADR-006.
+- `setSelectedBoundary` clears both `selectedElementId` and `selectedEdgeId` (mutual exclusion).
+
+---
+
 ## 2026-02-27 - Theme Support
 
 Need to add support for themes in the UI. Currently only a dark theme is available, but we should allow users to not just choose between light and dark (and follow system), but also to select from a variety of color schemes and styles. Will have 2-3 themes for light and 2-3 themes for dark at launch, and then add more over time.

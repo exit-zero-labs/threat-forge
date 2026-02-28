@@ -1,14 +1,42 @@
 import { type NodeProps, NodeResizeControl } from "@xyflow/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { DfdNodeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 
+/**
+ * Convert a hex color (#rrggbb) + opacity (0-1) to an rgba string.
+ */
+function hexToRgba(hex: string, opacity: number): string {
+	const r = Number.parseInt(hex.slice(1, 3), 16);
+	const g = Number.parseInt(hex.slice(3, 5), 16);
+	const b = Number.parseInt(hex.slice(5, 7), 16);
+	return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
 export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 	const nodeData = data as DfdNodeData;
 	const [isEditing, setIsEditing] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
+
+	const fillColor = nodeData.boundaryFillColor as string | undefined;
+	const strokeColor = nodeData.boundaryStrokeColor as string | undefined;
+	const fillOpacity = (nodeData.boundaryFillOpacity as number | undefined) ?? 0.05;
+	const strokeOpacity = (nodeData.boundaryStrokeOpacity as number | undefined) ?? 0.6;
+
+	const customStyle = useMemo(() => {
+		const style: React.CSSProperties = {};
+		if (fillColor) {
+			style.backgroundColor = hexToRgba(fillColor, fillOpacity);
+		}
+		if (strokeColor) {
+			style.borderColor = hexToRgba(strokeColor, strokeOpacity);
+		}
+		return style;
+	}, [fillColor, strokeColor, fillOpacity, strokeOpacity]);
+
+	const hasCustomColors = Boolean(fillColor || strokeColor);
 
 	const commitLabel = useCallback(
 		(value: string) => {
@@ -42,8 +70,15 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 			<div
 				className={cn(
 					"h-full w-full rounded-lg border-2 border-dashed p-2 transition-colors",
-					selected ? "border-tf-ember/60 bg-tf-ember/5" : "border-muted-foreground/30 bg-muted/5",
+					!hasCustomColors &&
+						(selected
+							? "border-tf-ember/60 bg-tf-ember/5"
+							: "border-muted-foreground/30 bg-muted/5"),
+					hasCustomColors &&
+						selected &&
+						"ring-2 ring-tf-signal ring-offset-1 ring-offset-background",
 				)}
+				style={hasCustomColors ? customStyle : undefined}
 			>
 				{isEditing ? (
 					<input

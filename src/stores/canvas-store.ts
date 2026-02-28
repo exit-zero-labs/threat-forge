@@ -23,6 +23,14 @@ export type DfdNodeData = {
 	/** For trust boundary group nodes */
 	isBoundary?: boolean;
 	boundaryName?: string;
+	/** Trust boundary fill color (CSS color with opacity) */
+	boundaryFillColor?: string;
+	/** Trust boundary stroke color (CSS color with opacity) */
+	boundaryStrokeColor?: string;
+	/** Trust boundary fill opacity (0-1) */
+	boundaryFillOpacity?: number;
+	/** Trust boundary stroke opacity (0-1) */
+	boundaryStrokeOpacity?: number;
 };
 
 /** ReactFlow edge data payload for data flows.
@@ -188,7 +196,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const selectionChange = changes.find((c) => c.type === "select" && c.selected);
 		if (selectionChange && selectionChange.type === "select") {
 			const node = get().nodes.find((n) => n.id === selectionChange.id);
-			if (node && !node.data.isBoundary) {
+			if (node?.data.isBoundary) {
+				useModelStore.getState().setSelectedBoundary(selectionChange.id);
+			} else if (node && !node.data.isBoundary) {
 				useModelStore.getState().setSelectedElement(selectionChange.id);
 			}
 		}
@@ -197,6 +207,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const deselection = changes.find((c) => c.type === "select" && !c.selected);
 		if (deselection && !changes.some((c) => c.type === "select" && c.selected)) {
 			useModelStore.getState().setSelectedElement(null);
+			useModelStore.getState().setSelectedBoundary(null);
 		}
 	},
 

@@ -164,12 +164,16 @@ export function DfdCanvas() {
 	const onPaneClick = useCallback(() => {
 		useModelStore.getState().setSelectedElement(null);
 		useModelStore.getState().setSelectedEdge(null);
+		useModelStore.getState().setSelectedBoundary(null);
 		setContextMenu(null);
 	}, []);
 
 	const onNodeClick = useCallback((_event: React.MouseEvent, node: DfdNode) => {
-		if (node.data.isBoundary) return;
-		useModelStore.getState().setSelectedElement(node.id);
+		if (node.data.isBoundary) {
+			useModelStore.getState().setSelectedBoundary(node.id);
+		} else {
+			useModelStore.getState().setSelectedElement(node.id);
+		}
 		useUiStore.getState().setRightPanelTab("properties");
 	}, []);
 

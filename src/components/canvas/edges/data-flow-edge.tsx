@@ -12,16 +12,15 @@ import { cn } from "@/lib/utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 
-/** Base curvature for bezier paths */
-const BASE_CURVATURE = 0.25;
-/** Additional curvature per sibling edge to fan out parallel connections */
-const CURVATURE_STEP = 0.3;
+/** Perpendicular offset in pixels between parallel edges */
+const PARALLEL_OFFSET_PX = 25;
 
 /**
- * Compute a curvature multiplier for this edge when multiple edges exist between
- * the same pair of nodes (in either direction). Spreads edges so they don't overlap.
+ * Compute the perpendicular offset index for this edge when multiple edges
+ * connect the same pair of nodes (in either direction). Returns 0 for single
+ * edges, and a centered spread for multiple siblings (e.g. -1, 0, 1 for 3).
  */
-function computeCurvature(
+function computeParallelOffset(
 	allEdges: ReadonlyArray<{ id: string; source: string; target: string }>,
 	currentId: string,
 	source: string,
@@ -31,15 +30,100 @@ function computeCurvature(
 		(e) =>
 			(e.source === source && e.target === target) || (e.source === target && e.target === source),
 	);
-	if (siblings.length <= 1) return BASE_CURVATURE;
+	if (siblings.length <= 1) return 0;
 
 	const sorted = [...siblings].sort((a, b) => a.id.localeCompare(b.id));
 	const index = sorted.findIndex((e) => e.id === currentId);
 	const count = sorted.length;
+	return index - (count - 1) / 2;
+}
 
-	// Center around 0: e.g. for 3 edges → offsets -1, 0, 1
-	const offset = index - (count - 1) / 2;
-	return BASE_CURVATURE + offset * CURVATURE_STEP;
+/**
+ * Build a cubic bezier SVG path with control points shifted perpendicular
+ * to the source→target direction. This visually fans out parallel edges
+ * instead of drawing them on top of each other.
+ *
+ * Returns [path, labelX, labelY].
+ */
+function getOffsetBezierPath(
+	sx: number,
+	sy: number,
+	tx: number,
+	ty: number,
+	sourcePosition: string,
+	targetPosition: string,
+	offset: number,
+): [string, number, number] {
+	// If no offset needed, use the standard path
+	if (offset === 0) {
+		const [path, lx, ly] = getBezierPath({
+			sourceX: sx,
+			sourceY: sy,
+			sourcePosition: sourcePosition as never,
+			targetX: tx,
+			targetY: ty,
+			targetPosition: targetPosition as never,
+		});
+		return [path, lx, ly];
+	}
+
+	const dx = tx - sx;
+	const dy = ty - sy;
+	const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+	// Perpendicular unit vector (rotated 90° counter-clockwise)
+	const px = -dy / dist;
+	const py = dx / dist;
+
+	const perpOffset = offset * PARALLEL_OFFSET_PX;
+
+	// Control point distance along the axis (same as default bezier)
+	const controlDist = dist * 0.25;
+
+	// Compute control points with perpendicular offset
+	let cx1: number;
+	let cy1: number;
+	let cx2: number;
+	let cy2: number;
+
+	// Extend control points along the source/target handle direction,
+	// then shift them perpendicular
+	if (sourcePosition === "bottom") {
+		cx1 = sx + px * perpOffset;
+		cy1 = sy + controlDist + py * perpOffset;
+	} else if (sourcePosition === "top") {
+		cx1 = sx + px * perpOffset;
+		cy1 = sy - controlDist + py * perpOffset;
+	} else if (sourcePosition === "right") {
+		cx1 = sx + controlDist + px * perpOffset;
+		cy1 = sy + py * perpOffset;
+	} else {
+		// left
+		cx1 = sx - controlDist + px * perpOffset;
+		cy1 = sy + py * perpOffset;
+	}
+
+	if (targetPosition === "top") {
+		cx2 = tx + px * perpOffset;
+		cy2 = ty - controlDist + py * perpOffset;
+	} else if (targetPosition === "bottom") {
+		cx2 = tx + px * perpOffset;
+		cy2 = ty + controlDist + py * perpOffset;
+	} else if (targetPosition === "left") {
+		cx2 = tx - controlDist + px * perpOffset;
+		cy2 = ty + py * perpOffset;
+	} else {
+		// right
+		cx2 = tx + controlDist + px * perpOffset;
+		cy2 = ty + py * perpOffset;
+	}
+
+	const path = `M ${sx},${sy} C ${cx1},${cy1} ${cx2},${cy2} ${tx},${ty}`;
+	// Label at the curve midpoint (t=0.5 of cubic bezier)
+	const labelX = 0.125 * sx + 0.375 * cx1 + 0.375 * cx2 + 0.125 * tx;
+	const labelY = 0.125 * sy + 0.375 * cy1 + 0.375 * cy2 + 0.125 * ty;
+
+	return [path, labelX, labelY];
 }
 
 export function DataFlowEdge({
@@ -59,20 +143,24 @@ export function DataFlowEdge({
 	const edgeData = data as DfdEdgeData | undefined;
 	const allEdges = useEdges();
 
-	const curvature = useMemo(
-		() => computeCurvature(allEdges, id, source, target),
+	const parallelOffset = useMemo(
+		() => computeParallelOffset(allEdges, id, source, target),
 		[allEdges, id, source, target],
 	);
 
-	const [edgePath, labelX, labelY] = getBezierPath({
-		sourceX,
-		sourceY,
-		sourcePosition,
-		targetX,
-		targetY,
-		targetPosition,
-		curvature,
-	});
+	const [edgePath, labelX, labelY] = useMemo(
+		() =>
+			getOffsetBezierPath(
+				sourceX,
+				sourceY,
+				targetX,
+				targetY,
+				sourcePosition,
+				targetPosition,
+				parallelOffset,
+			),
+		[sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, parallelOffset],
+	);
 
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);

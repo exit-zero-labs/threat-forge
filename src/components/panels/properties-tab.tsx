@@ -8,6 +8,7 @@ import type { DataFlow } from "@/types/threat-model";
 export function PropertiesTab() {
 	const selectedElementId = useModelStore((s) => s.selectedElementId);
 	const selectedEdgeId = useModelStore((s) => s.selectedEdgeId);
+	const selectedBoundaryId = useModelStore((s) => s.selectedBoundaryId);
 	const model = useModelStore((s) => s.model);
 
 	if (!model) {
@@ -20,6 +21,14 @@ export function PropertiesTab() {
 			return <p className="text-xs text-muted-foreground">Data flow not found.</p>;
 		}
 		return <EdgeProperties flow={flow} />;
+	}
+
+	if (selectedBoundaryId) {
+		const boundary = model.trust_boundaries.find((b) => b.id === selectedBoundaryId);
+		if (!boundary) {
+			return <p className="text-xs text-muted-foreground">Trust boundary not found.</p>;
+		}
+		return <TrustBoundaryProperties boundaryId={selectedBoundaryId} />;
 	}
 
 	if (selectedElementId) {
@@ -259,6 +268,128 @@ function SeverityDot({ severity }: { severity: string }) {
 
 	return (
 		<span className={`h-2 w-2 shrink-0 rounded-full ${colorMap[severity] ?? "bg-gray-400"}`} />
+	);
+}
+
+function TrustBoundaryProperties({ boundaryId }: { boundaryId: string }) {
+	const model = useModelStore((s) => s.model);
+	const updateTrustBoundary = useModelStore((s) => s.updateTrustBoundary);
+	const boundary = model?.trust_boundaries.find((b) => b.id === boundaryId);
+
+	// Read current colors from canvas node data
+	const node = useCanvasStore((s) => s.nodes.find((n) => n.id === boundaryId));
+	const fillColor = (node?.data.boundaryFillColor as string) ?? "";
+	const strokeColor = (node?.data.boundaryStrokeColor as string) ?? "";
+	const fillOpacity = (node?.data.boundaryFillOpacity as number) ?? 0.05;
+	const strokeOpacity = (node?.data.boundaryStrokeOpacity as number) ?? 0.6;
+
+	if (!boundary) {
+		return <p className="text-xs text-muted-foreground">Boundary not found.</p>;
+	}
+
+	const syncBoundaryNodeData = (updates: Record<string, unknown>) => {
+		const nodes = useCanvasStore.getState().nodes;
+		const updatedNodes = nodes.map((n) =>
+			n.id === boundaryId ? { ...n, data: { ...n.data, ...updates } } : n,
+		);
+		useCanvasStore.setState({ nodes: updatedNodes });
+		useModelStore.getState().markDirty();
+	};
+
+	return (
+		<div className="flex flex-col gap-3">
+			<ReadOnlyField label="ID" value={boundary.id} />
+			<ReadOnlyField label="Type" value="Trust Boundary" />
+
+			<EditableField
+				label="Name"
+				value={boundary.name}
+				placeholder="e.g. Internal Network"
+				onChange={(value) => {
+					updateTrustBoundary(boundary.id, { name: value });
+					syncBoundaryNodeData({ label: value, boundaryName: value });
+				}}
+			/>
+
+			<ReadOnlyField
+				label="Contains"
+				value={
+					boundary.contains.length > 0
+						? boundary.contains
+								.map((id) => model?.elements.find((e) => e.id === id)?.name ?? id)
+								.join(", ")
+						: "No elements"
+				}
+			/>
+
+			<ColorField
+				label="Fill Color"
+				color={fillColor}
+				opacity={fillOpacity}
+				onColorChange={(color) => syncBoundaryNodeData({ boundaryFillColor: color })}
+				onOpacityChange={(opacity) => syncBoundaryNodeData({ boundaryFillOpacity: opacity })}
+			/>
+
+			<ColorField
+				label="Stroke Color"
+				color={strokeColor}
+				opacity={strokeOpacity}
+				onColorChange={(color) => syncBoundaryNodeData({ boundaryStrokeColor: color })}
+				onOpacityChange={(opacity) => syncBoundaryNodeData({ boundaryStrokeOpacity: opacity })}
+			/>
+		</div>
+	);
+}
+
+function ColorField({
+	label,
+	color,
+	opacity,
+	onColorChange,
+	onOpacityChange,
+}: {
+	label: string;
+	color: string;
+	opacity: number;
+	onColorChange: (color: string) => void;
+	onOpacityChange: (opacity: number) => void;
+}) {
+	return (
+		<div>
+			<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">{label}</span>
+			<div className="flex items-center gap-2">
+				<input
+					type="color"
+					value={color || "#888888"}
+					onChange={(e) => onColorChange(e.target.value)}
+					className="h-7 w-7 shrink-0 cursor-pointer rounded border border-border bg-transparent p-0"
+				/>
+				<div className="flex flex-1 items-center gap-1.5">
+					<span className="text-[10px] text-muted-foreground">Opacity</span>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.05"
+						value={opacity}
+						onChange={(e) => onOpacityChange(Number.parseFloat(e.target.value))}
+						className="h-1 flex-1 accent-primary"
+					/>
+					<span className="w-7 text-right text-[10px] text-muted-foreground">
+						{Math.round(opacity * 100)}%
+					</span>
+				</div>
+			</div>
+			{color && (
+				<button
+					type="button"
+					onClick={() => onColorChange("")}
+					className="mt-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+				>
+					Reset to default
+				</button>
+			)}
+		</div>
 	);
 }
 
