@@ -41,6 +41,10 @@ export type DfdEdgeData = {
 	protocol: string;
 	data: string[];
 	authenticated: boolean;
+	/** Dragged label X offset from default position */
+	labelOffsetX?: number;
+	/** Dragged label Y offset from default position */
+	labelOffsetY?: number;
 };
 
 export type DfdNode = Node<DfdNodeData>;

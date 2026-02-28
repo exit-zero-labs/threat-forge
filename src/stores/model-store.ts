@@ -84,11 +84,23 @@ export const useModelStore = create<ModelState>((set, get) => ({
 	markDirty: () => set({ isDirty: true }),
 	markClean: () => set({ isDirty: false }),
 	setSelectedElement: (id) =>
-		set({ selectedElementId: id, selectedEdgeId: null, selectedBoundaryId: null }),
+		set({
+			selectedElementId: id,
+			selectedEdgeId: null,
+			selectedBoundaryId: null,
+		}),
 	setSelectedEdge: (id) =>
-		set({ selectedEdgeId: id, selectedElementId: null, selectedBoundaryId: null }),
+		set({
+			selectedEdgeId: id,
+			selectedElementId: null,
+			selectedBoundaryId: null,
+		}),
 	setSelectedBoundary: (id) =>
-		set({ selectedBoundaryId: id, selectedElementId: null, selectedEdgeId: null }),
+		set({
+			selectedBoundaryId: id,
+			selectedElementId: null,
+			selectedEdgeId: null,
+		}),
 	setSelectedThreat: (id) => set({ selectedThreatId: id }),
 
 	updateElement: (id, updates) => {

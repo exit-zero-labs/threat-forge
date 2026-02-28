@@ -67,9 +67,11 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 			<NodeResizeControl minWidth={200} minHeight={150} className="!bg-transparent !border-none">
 				<ResizeIcon />
 			</NodeResizeControl>
+			{/* Outer wrapper: only the border zone (8px inset) captures pointer events.
+          The interior is pointer-events:none so clicks fall through to edges/nodes. */}
 			<div
 				className={cn(
-					"h-full w-full rounded-lg border-2 border-dashed p-2 transition-colors",
+					"h-full w-full rounded-lg border-2 border-dashed transition-colors",
 					!hasCustomColors &&
 						(selected
 							? "border-tf-ember/60 bg-tf-ember/5"
@@ -78,28 +80,43 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 						selected &&
 						"ring-2 ring-tf-signal ring-offset-1 ring-offset-background",
 				)}
-				style={hasCustomColors ? customStyle : undefined}
+				style={{
+					pointerEvents: "none",
+					...(hasCustomColors ? customStyle : {}),
+				}}
 			>
-				{isEditing ? (
-					<input
-						ref={inputRef}
-						defaultValue={nodeData.boundaryName ?? nodeData.label}
-						autoFocus
-						className="bg-transparent text-xs font-semibold uppercase tracking-wider text-muted-foreground outline-none"
-						onBlur={(e) => commitLabel(e.target.value)}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") commitLabel(e.currentTarget.value);
-							if (e.key === "Escape") setIsEditing(false);
-						}}
-					/>
-				) : (
-					<div
-						className="text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-text"
-						onDoubleClick={() => setIsEditing(true)}
-					>
-						{nodeData.boundaryName ?? nodeData.label}
-					</div>
-				)}
+				{/* Border click zone: an 8px inset ring that captures clicks on the border */}
+				<div
+					className="absolute inset-0 rounded-lg"
+					style={{ pointerEvents: "auto", padding: 8, background: "transparent" }}
+					onMouseDown={(e) => e.stopPropagation()}
+				>
+					{/* Inner transparent area — clicks pass through */}
+					<div className="h-full w-full" style={{ pointerEvents: "none" }} />
+				</div>
+				{/* Name label — always clickable */}
+				<div className="relative p-2" style={{ pointerEvents: "auto" }}>
+					{isEditing ? (
+						<input
+							ref={inputRef}
+							defaultValue={nodeData.boundaryName ?? nodeData.label}
+							autoFocus
+							className="bg-transparent text-xs font-semibold uppercase tracking-wider text-muted-foreground outline-none"
+							onBlur={(e) => commitLabel(e.target.value)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter") commitLabel(e.currentTarget.value);
+								if (e.key === "Escape") setIsEditing(false);
+							}}
+						/>
+					) : (
+						<div
+							className="text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-text"
+							onDoubleClick={() => setIsEditing(true)}
+						>
+							{nodeData.boundaryName ?? nodeData.label}
+						</div>
+					)}
+				</div>
 			</div>
 		</>
 	);
