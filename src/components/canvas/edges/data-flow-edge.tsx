@@ -237,7 +237,15 @@ function EdgeLabelEditor({
 		setEdges((edges) =>
 			edges.map((e) =>
 				e.id === edgeId
-					? { ...e, data: { ...e.data, name: newName, protocol: newProtocol, data: newData } }
+					? {
+							...e,
+							data: {
+								...e.data,
+								name: newName,
+								protocol: newProtocol,
+								data: newData,
+							},
+						}
 					: e,
 			),
 		);
@@ -245,12 +253,26 @@ function EdgeLabelEditor({
 		onClose();
 	}, [edgeId, onClose, setEdges]);
 
+	const containerRef = useRef<HTMLDivElement>(null);
+
+	/** Commit when focus leaves the editor entirely (but not when tabbing between inputs) */
+	const handleContainerBlur = useCallback(
+		(e: React.FocusEvent) => {
+			if (!containerRef.current?.contains(e.relatedTarget as Node)) {
+				commit();
+			}
+		},
+		[commit],
+	);
+
 	return (
 		<div
+			ref={containerRef}
 			className="pointer-events-all nodrag nopan absolute flex flex-col gap-1 rounded border border-tf-signal bg-card p-2 shadow-lg"
 			style={{
 				transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 			}}
+			onBlur={handleContainerBlur}
 		>
 			<input
 				ref={nameRef}
@@ -282,7 +304,6 @@ function EdgeLabelEditor({
 					if (e.key === "Enter") commit();
 					if (e.key === "Escape") onClose();
 				}}
-				onBlur={commit}
 			/>
 		</div>
 	);
