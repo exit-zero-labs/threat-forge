@@ -172,6 +172,7 @@ mod tests {
         let mut model = ThreatModel::new("Test", "Author");
         model.data_flows.push(DataFlow {
             id: "flow-1".to_string(),
+            name: String::new(),
             from: "web-app".to_string(),
             to: "api-gw".to_string(),
             protocol: "HTTPS".to_string(),

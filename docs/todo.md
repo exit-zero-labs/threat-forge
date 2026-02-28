@@ -4,6 +4,55 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-02-28 — Boundary click fix + Draggable edge labels
+
+### Plan
+
+- [x] Fix trust boundary click stealing — make interior `pointer-events: none`, only border zone (8px inset) and name label capture clicks
+- [x] Replace parallel offset bezier with draggable label waypoint system
+  - [x] Remove `computeParallelOffset` / `getOffsetBezierPath` code
+  - [x] Add `labelOffsetX` / `labelOffsetY` to `DfdEdgeData`
+  - [x] When label exists + has been dragged, route edge through label as waypoint (`getWaypointPath`)
+  - [x] Make label draggable when selected (mousedown/mousemove/mouseup on document)
+  - [x] No label → standard bezier, no change
+- [x] Fix label drag interaction (click vs drag detection) — `didDrag` ref with 4px threshold
+- [x] Fix label drag root causes — remove `!selected` guard, zoom compensation, prevent deselection
+  - [x] Label mousedown always selects edge via `setSelectedEdge` (no selection prerequisite)
+  - [x] Drag deltas divided by viewport zoom for correct flow coordinates
+  - [x] `stopImmediatePropagation` on mousedown prevents ReactFlow pane deselection
+  - [x] Re-assert edge selection after drag ends
+  - [x] `wasSelectedBefore` ref: first click selects, second click opens editor
+- [x] Validate: tsc, biome, vitest all pass (92 tests)
+
+### Notes
+
+- Boundary interior is now `pointer-events: none` — only a thin border ring + the name label are clickable. This lets edges and inner nodes be selected without the boundary stealing the click.
+- Edge labels become movable waypoints: drag them when selected to reshape the edge path. The edge draws two quadratic bezier segments through the label position. When not dragged, the default bezier path is used.
+- Label drag had three root causes: (1) `!selected` guard prevented drag on unselected edges since label clicks don't trigger ReactFlow edge selection, (2) drag deltas in screen pixels needed zoom division for flow coordinates, (3) mouseup propagated to pane causing deselection.
+
+---
+
+## 2026-02-28 — Parallel Edge Separation + Trust Boundary Properties
+
+### Plan
+
+- [x] Fix parallel edge overlap — replace `curvature` param with custom bezier path using perpendicular control point offsets
+- [x] Add `selectedBoundaryId` + `setSelectedBoundary` to model-store
+- [x] Add `updateTrustBoundary` action to model-store
+- [x] Add color fields to `DfdNodeData` (fillColor, strokeColor, fillOpacity, strokeOpacity)
+- [x] Handle boundary clicks in dfd-canvas (select instead of ignore)
+- [x] Add `TrustBoundaryProperties` component with name, fill color, stroke color (native picker + opacity slider)
+- [x] Apply custom colors in `TrustBoundaryNode` rendering
+- [x] Validate: tsc, biome, vitest all pass (92 tests)
+
+### Notes
+
+- `getBezierPath({ curvature })` only scales control point distance — it doesn't offset parallel edges. Replaced with custom `getOffsetBezierPath` that shifts control points perpendicular to the edge direction.
+- Boundary colors are stored in canvas node data (not in the YAML schema) — they are layout-level visual properties, consistent with ADR-006.
+- `setSelectedBoundary` clears both `selectedElementId` and `selectedEdgeId` (mutual exclusion).
+
+---
+
 ## 2026-02-27 - Theme Support
 
 Need to add support for themes in the UI. Currently only a dark theme is available, but we should allow users to not just choose between light and dark (and follow system), but also to select from a variety of color schemes and styles. Will have 2-3 themes for light and 2-3 themes for dark at launch, and then add more over time.
@@ -245,45 +294,72 @@ The canvas connector system requires significant improvements for better usabili
 
 **Tasks:**
 
-- [ ] Fix connector handle positioning and smart routing
-  - [ ] Implement a `getSmartHandlePositions` utility that, given source and target node positions, determines the optimal handle pair (top/bottom/left/right) to minimize edge crossings and path length
-  - [ ] Apply this in `onConnect` handler in `canvas-store.ts`: when creating a new edge, store `sourceHandle` and `targetHandle` IDs so ReactFlow uses the correct handles
-  - [ ] Assign unique IDs to each handle in node components (e.g., `id="top-target"`, `id="right-source"`) so they can be targeted programmatically
+- [x] Fix connector handle positioning and smart routing
+  - [x] Implement a `getSmartHandlePositions` utility that, given source and target node positions, determines the optimal handle pair (top/bottom/left/right) to minimize edge crossings and path length
+  - [x] Apply this in `onConnect` handler in `canvas-store.ts`: when creating a new edge, store `sourceHandle` and `targetHandle` IDs so ReactFlow uses the correct handles
+  - [x] Assign unique IDs to each handle in node components (e.g., `id="top-target"`, `id="right-source"`) so they can be targeted programmatically
   - [ ] Consider switching from `getBezierPath` to `getSmoothStepPath` for cleaner orthogonal routing, or implement custom pathfinding that avoids nodes
-  - [ ] Ensure handles on all four sides are functional: verify the `type` (source/target) assignment — currently top/left are target-only and bottom/right are source-only, which prevents some connection directions. Either make all handles bidirectional (`type="source"` on all, or use two overlapping handles per side) or explain the design constraint to users visually
-- [ ] Improve edge label rendering and interaction
-  - [ ] Add **inline label editing**: double-click on an edge label to enter edit mode (replace the label `<div>` with an `<input>` or `<textarea>`). On blur or Enter, commit the change to `canvas-store` and `model-store`
-  - [ ] Support editing both `protocol` and `data[]` fields inline: show "protocol · data1, data2" as the display, and split the edit into two inputs (or one smart input with a separator)
-  - [ ] Add edge label background styling that matches the edge color: selected edges should have `bg-tf-signal/10` label background, unselected edges keep `bg-card`
-  - [ ] Show a "+" add label button on edge hover when no label is present (for edges with empty protocol and data)
+  - [x] Ensure handles on all four sides are functional: verify the `type` (source/target) assignment — currently top/left are target-only and bottom/right are source-only, which prevents some connection directions. Either make all handles bidirectional (`type="source"` on all, or use two overlapping handles per side) or explain the design constraint to users visually
+- [x] Improve edge label rendering and interaction
+  - [x] Add **inline label editing**: double-click on an edge label to enter edit mode (replace the label `<div>` with an `<input>` or `<textarea>`). On blur or Enter, commit the change to `canvas-store` and `model-store`
+  - [x] Support editing both `protocol` and `data[]` fields inline: show "protocol · data1, data2" as the display, and split the edit into two inputs (or one smart input with a separator)
+  - [x] Add edge label background styling that matches the edge color: selected edges should have `bg-tf-signal/10` label background, unselected edges keep `bg-card`
+  - [x] Show a "+" add label button on edge hover when no label is present (for edges with empty protocol and data)
   - [ ] Make edge labels draggable to adjust position offset from the midpoint (store a `labelOffset` in edge data) — this is an advanced feature, can be deferred
-- [ ] Improve edge selection and interaction UX
-  - [ ] Increase the clickable/hoverable area of edges (currently 2px stroke is hard to click) — use an invisible wider stroke (10-12px) behind the visible edge for hit testing
-  - [ ] Add hover state: change edge color to a lighter version of the theme accent on hover (before click-to-select)
-  - [ ] Show animated flow direction indicator on hover or selection (a moving dot along the edge path, or animated dashes)
+- [x] Improve edge selection and interaction UX
+  - [x] Increase the clickable/hoverable area of edges (currently 2px stroke is hard to click) — use an invisible wider stroke (10-12px) behind the visible edge for hit testing
+  - [x] Add hover state: change edge color to a lighter version of the theme accent on hover (before click-to-select)
+  - [x] Show animated flow direction indicator on hover or selection (a moving dot along the edge path, or animated dashes)
   - [ ] When an edge is selected, highlight the connected source and target nodes with a subtle glow
-- [ ] Enhance node features and interactivity
-  - [ ] Add **inline node label editing**: double-click on a node label to edit the name in-place (replace the label `<div>` with an `<input>`). Commit on blur or Enter, updating both canvas-store and model-store
-  - [ ] Add resize handles to trust boundary nodes (they're group containers and need to be resizable to contain child elements)
-  - [ ] Add a visual indicator on nodes showing the count of linked threats (a small badge in the corner, e.g., "3 threats" with severity color)
-  - [ ] Add context menu on right-click for nodes: Edit Properties, Delete, Duplicate, Change Type (for element nodes), View Threats
-  - [ ] Add context menu on right-click for edges: Edit Properties, Delete, Reverse Direction
-  - [ ] Show technology badges on nodes: if `technologies[]` is populated, display small pills/tags below the node label
+- [x] Enhance node features and interactivity
+  - [x] Add **inline node label editing**: double-click on a node label to edit the name in-place (replace the label `<div>` with an `<input>`). Commit on blur or Enter, updating both canvas-store and model-store
+  - [x] Add resize handles to trust boundary nodes (they're group containers and need to be resizable to contain child elements)
+  - [x] Add a visual indicator on nodes showing the count of linked threats (a small badge in the corner, e.g., "3 threats" with severity color)
+  - [x] Add context menu on right-click for nodes: Edit Properties, Delete, Duplicate, Change Type (for element nodes), View Threats
+  - [x] Add context menu on right-click for edges: Edit Properties, Delete, Reverse Direction
+  - [x] Show technology badges on nodes: if `technologies[]` is populated, display small pills/tags below the node label
   - [ ] Add port/handle labels showing the connected flow's protocol on hover (so you can see what's connected without selecting)
 - [ ] Improve drag-and-drop from palette
   - [ ] Add visual feedback during drag: show a ghost preview of the node being dragged onto the canvas
   - [ ] Add drop zone highlighting: when dragging over a trust boundary, highlight it to indicate the element will be added inside it
-  - [ ] Auto-assign elements to a trust boundary if dropped inside one (update `TrustBoundary.contains` array)
-- [ ] Edge validation and constraints
-  - [ ] Prevent duplicate edges: don't allow two edges between the same source→target pair (show a toast/notification explaining why)
-  - [ ] Prevent self-loops: don't allow connecting a node to itself
-  - [ ] Visual feedback on invalid connections: show a red highlight or "not allowed" cursor when hovering over an invalid target during edge creation
-- [ ] Testing
-  - [ ] Unit test smart handle position calculation
-  - [ ] Unit test edge validation (no duplicates, no self-loops)
+  - [x] Auto-assign elements to a trust boundary if dropped inside one (update `TrustBoundary.contains` array)
+- [x] Edge validation and constraints
+  - [x] Allow multiple edges between same pair: threat models require back-and-forth flows (e.g., "1. Login Request", "1b. Auth Token") — removed `isDuplicateEdge` blocking from `addDataFlow` and `isValidConnection`
+  - [x] Prevent self-loops: don't allow connecting a node to itself
+  - [x] Visual feedback on invalid connections: show a red highlight or "not allowed" cursor when hovering over an invalid target during edge creation
+  - [x] Parallel edge offset rendering: multiple edges between same pair fan out with perpendicular offset (20px spacing) so they don't overlap
+- [x] Edge naming support
+  - [x] Added `name` field to `DataFlow` in Rust schema (`#[serde(default)]` for backward compat) and TypeScript types
+  - [x] Edge label shows `name` as primary label with protocol/data as secondary detail
+  - [x] `EdgeLabelEditor` includes a name input field (autoFocus, commits to model store and canvas edges)
+  - [x] `addDataFlow` accepts optional `{ sourceHandle?, targetHandle?, name? }` — smart routing only as fallback when user hasn't explicitly chosen handles
+- [x] Testing
+  - [x] Unit test smart handle position calculation
+  - [x] Unit test edge validation (no self-loops)
+  - [x] Unit test multiple edges between same pair allowed
+  - [x] Unit test handle and name opts passed through to addDataFlow
   - [ ] Component test inline editing on nodes and edges
   - [ ] Component test context menus render with correct actions
   - [ ] Visual regression test: verify node/edge renders haven't changed unexpectedly
+
+### Notes
+
+- Implemented smart handle positioning in `src/lib/canvas-utils.ts` with `getSmartHandlePair()` — selects optimal handle pair based on relative node positions
+- All nodes now use bidirectional handles via shared `NodeHandles` component (`shared-handles.tsx`) — each side has both source and target handles with hidden overlapping handles
+- Edge validation (no self-loops) in both `canvas-store.addDataFlow()` and ReactFlow's `isValidConnection` callback
+- Multiple edges between the same pair are allowed — `isDuplicateEdge` removed from blocking paths
+- Parallel edges rendered with perpendicular offset via `computeParallelOffset()` in `DataFlowEdge`
+- `DataFlow` has a `name` field (Rust: `#[serde(default)]`, TS: defaults to `""`) for backward compat with existing files
+- `addDataFlow` accepts optional `{ sourceHandle?, targetHandle?, name? }` opts; smart routing via `getSmartHandlePair()` is only a fallback when handles not provided by user drag
+- `onConnect` in `dfd-canvas.tsx` passes `connection.sourceHandle/targetHandle` through to `addDataFlow`
+- Inline editing on all node types via double-click → input, with sync to both canvas-store and model-store
+- Edge inline editing supports two fields (protocol + data) in a compact editor overlay
+- Context menus built as a standalone `CanvasContextMenu` component with builder functions for node/edge-specific items
+- Added `duplicateElement()` and `reverseEdge()` actions to canvas-store
+- Auto-assign to trust boundary checks boundary positions on element drop
+- Trust boundaries now have `NodeResizeControl` from `@xyflow/react`
+- Threat count badges use a `useThreatCount(elementId)` hook that selects from model-store
+- Deferred items: orthogonal routing (`getSmoothStepPath`), draggable edge labels, connected node glow on edge select, drag ghost previews, drop zone highlighting, component tests for inline editing/context menus, visual regression tests
 
 ## 2026-02-27 - Editor improvements and settings modal
 
@@ -355,3 +431,28 @@ The overall editor needs to be more tuned for keyboard accessibility / shortcuts
   - [ ] Component test keytip rendering: visible when setting is on, hidden when off
   - [ ] Integration test: change a setting → close/reopen app → setting persists
   - [ ] Keyboard navigation test: Tab through all controls, verify focus is visible and reachable
+
+## 2026-02-28 - Canvas Improvements: Edge UX & Properties Panel
+
+**Current state:** Completed on branch `feat/canvas-improvements`.
+
+### Plan
+
+- [x] Scale handles from 8 to 6 connection points (left/right midpoints + 4 corners)
+- [x] Remove parallel edge offset computation (caused handle detachment)
+- [x] Add `selectedEdgeId` state + `setSelectedEdge` action to model-store
+- [x] Add `updateDataFlow` action to model-store
+- [x] Add `onNodeClick`/`onEdgeClick` handlers to DFD canvas
+- [x] Build edge properties panel (Name, Protocol, Data, Authenticated, Flip Direction)
+- [x] Show "+" label button on selected edges (not just hover)
+- [x] Single-click on selected edge label opens editor
+- [x] Update smart handle routing for 6-handle corner layout
+- [x] Update canvas-utils tests for new handle IDs
+- [x] Lint (Biome + tsc) + all 93 tests pass
+- [x] Commit and push (`c83e0a0`)
+
+### Notes
+
+- Edge selection clears element selection and vice versa
+- Corner handles use `Position.Top`/`Position.Bottom` with `style={{ left: 0 }}` / `style={{ left: "100%" }}`
+- Smart routing picks `bottom-right`/`top-left` for target-below when dx >= 0

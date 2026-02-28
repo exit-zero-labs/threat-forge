@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { getStrideAdapter } from "@/lib/adapters/get-stride-adapter";
-import type { Element, Threat, ThreatModel } from "@/types/threat-model";
+import type { DataFlow, Element, Threat, ThreatModel, TrustBoundary } from "@/types/threat-model";
 
 interface ModelState {
 	/** The currently loaded threat model, or null if no model is open */
@@ -11,6 +11,10 @@ interface ModelState {
 	isDirty: boolean;
 	/** Currently selected element ID */
 	selectedElementId: string | null;
+	/** Currently selected edge/flow ID */
+	selectedEdgeId: string | null;
+	/** Currently selected trust boundary ID */
+	selectedBoundaryId: string | null;
 	/** Currently selected threat ID */
 	selectedThreatId: string | null;
 	/** Whether STRIDE analysis is running */
@@ -22,10 +26,18 @@ interface ModelState {
 	markDirty: () => void;
 	markClean: () => void;
 	setSelectedElement: (id: string | null) => void;
+	setSelectedEdge: (id: string | null) => void;
+	setSelectedBoundary: (id: string | null) => void;
 	setSelectedThreat: (id: string | null) => void;
 
 	// Element editing
 	updateElement: (id: string, updates: Partial<Element>) => void;
+
+	// Data flow editing
+	updateDataFlow: (id: string, updates: Partial<DataFlow>) => void;
+
+	// Trust boundary editing
+	updateTrustBoundary: (id: string, updates: Partial<TrustBoundary>) => void;
 
 	// Threat CRUD
 	addThreat: (threat: Threat) => void;
@@ -42,6 +54,8 @@ export const useModelStore = create<ModelState>((set, get) => ({
 	filePath: null,
 	isDirty: false,
 	selectedElementId: null,
+	selectedEdgeId: null,
+	selectedBoundaryId: null,
 	selectedThreatId: null,
 	isAnalyzing: false,
 
@@ -51,6 +65,8 @@ export const useModelStore = create<ModelState>((set, get) => ({
 			filePath,
 			isDirty: false,
 			selectedElementId: null,
+			selectedEdgeId: null,
+			selectedBoundaryId: null,
 			selectedThreatId: null,
 		}),
 
@@ -60,12 +76,31 @@ export const useModelStore = create<ModelState>((set, get) => ({
 			filePath: null,
 			isDirty: false,
 			selectedElementId: null,
+			selectedEdgeId: null,
+			selectedBoundaryId: null,
 			selectedThreatId: null,
 		}),
 
 	markDirty: () => set({ isDirty: true }),
 	markClean: () => set({ isDirty: false }),
-	setSelectedElement: (id) => set({ selectedElementId: id }),
+	setSelectedElement: (id) =>
+		set({
+			selectedElementId: id,
+			selectedEdgeId: null,
+			selectedBoundaryId: null,
+		}),
+	setSelectedEdge: (id) =>
+		set({
+			selectedEdgeId: id,
+			selectedElementId: null,
+			selectedBoundaryId: null,
+		}),
+	setSelectedBoundary: (id) =>
+		set({
+			selectedBoundaryId: id,
+			selectedElementId: null,
+			selectedEdgeId: null,
+		}),
 	setSelectedThreat: (id) => set({ selectedThreatId: id }),
 
 	updateElement: (id, updates) => {
@@ -75,6 +110,30 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const updatedElements = model.elements.map((e) => (e.id === id ? { ...e, ...updates } : e));
 		set({
 			model: { ...model, elements: updatedElements },
+			isDirty: true,
+		});
+	},
+
+	updateDataFlow: (id, updates) => {
+		const { model } = get();
+		if (!model) return;
+
+		const updatedFlows = model.data_flows.map((f) => (f.id === id ? { ...f, ...updates } : f));
+		set({
+			model: { ...model, data_flows: updatedFlows },
+			isDirty: true,
+		});
+	},
+
+	updateTrustBoundary: (id, updates) => {
+		const { model } = get();
+		if (!model) return;
+
+		const updatedBoundaries = model.trust_boundaries.map((b) =>
+			b.id === id ? { ...b, ...updates } : b,
+		);
+		set({
+			model: { ...model, trust_boundaries: updatedBoundaries },
 			isDirty: true,
 		});
 	},

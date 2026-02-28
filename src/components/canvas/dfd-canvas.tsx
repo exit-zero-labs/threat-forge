@@ -4,16 +4,19 @@ import {
 	type Connection,
 	Controls,
 	MiniMap,
+	type OnConnectStart,
 	ReactFlow,
 	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isSelfLoop } from "@/lib/canvas-utils";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
 import type { ElementType } from "@/types/threat-model";
+import { buildEdgeMenuItems, buildNodeMenuItems, CanvasContextMenu } from "./canvas-context-menu";
 import { DataFlowEdge } from "./edges/data-flow-edge";
 import { DataStoreNode } from "./nodes/data-store-node";
 import { ExternalEntityNode } from "./nodes/external-entity-node";
@@ -50,6 +53,8 @@ export function DfdCanvas() {
 	const addDataFlow = useCanvasStore((s) => s.addDataFlow);
 	const addTrustBoundary = useCanvasStore((s) => s.addTrustBoundary);
 	const deleteSelected = useCanvasStore((s) => s.deleteSelected);
+	const duplicateElement = useCanvasStore((s) => s.duplicateElement);
+	const reverseEdge = useCanvasStore((s) => s.reverseEdge);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
 	const {
@@ -58,33 +63,72 @@ export function DfdCanvas() {
 		fitView: fitViewFn,
 	} = useReactFlow();
 
+	// Context menu state
+	const [contextMenu, setContextMenu] = useState<{
+		x: number;
+		y: number;
+		nodeId?: string;
+		edgeId?: string;
+	} | null>(null);
+
+	// Track connection source for validation feedback
+	const connectingNodeId = useRef<string | null>(null);
+
+	// Track whether the initial sync has happened (file open / new model)
+	const initialSyncDone = useRef(false);
+
 	// Sync canvas from model when it changes (new model loaded, file opened).
 	// `model` is intentionally in deps — syncFromModel reads from model-store internally,
 	// but we need the effect to re-run when the model reference changes.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: model triggers re-sync
 	useEffect(() => {
 		const hadPendingLayout = useCanvasStore.getState().pendingLayout != null;
+		// A pending layout means a file was just loaded — reset so we adjust viewport
+		if (hadPendingLayout) initialSyncDone.current = false;
+
 		syncFromModel();
 
-		// After nodes are set, restore saved viewport or fit to new content
-		requestAnimationFrame(() => {
-			if (hadPendingLayout) {
-				const { viewport } = useCanvasStore.getState();
-				setReactFlowViewport(viewport);
-			} else {
-				fitViewFn();
-			}
-		});
+		// Only adjust viewport on initial load (file open / new model), not on property edits
+		if (!initialSyncDone.current) {
+			initialSyncDone.current = true;
+			requestAnimationFrame(() => {
+				if (hadPendingLayout) {
+					const { viewport } = useCanvasStore.getState();
+					setReactFlowViewport(viewport);
+				} else {
+					fitViewFn();
+				}
+			});
+		}
 	}, [syncFromModel, model, setReactFlowViewport, fitViewFn]);
 
 	const onConnect = useCallback(
 		(connection: Connection) => {
 			if (connection.source && connection.target) {
-				addDataFlow(connection.source, connection.target);
+				addDataFlow(connection.source, connection.target, {
+					sourceHandle: connection.sourceHandle ?? undefined,
+					targetHandle: connection.targetHandle ?? undefined,
+				});
 			}
+			connectingNodeId.current = null;
 		},
 		[addDataFlow],
 	);
+
+	const onConnectStart: OnConnectStart = useCallback((_event, params) => {
+		connectingNodeId.current = params.nodeId ?? null;
+	}, []);
+
+	const onConnectEnd = useCallback(() => {
+		connectingNodeId.current = null;
+	}, []);
+
+	/** Validates whether a connection is allowed (no self-loops) */
+	const isValidConnection = useCallback((connection: Connection | DfdEdge) => {
+		if (!connection.source || !connection.target) return false;
+		if (isSelfLoop(connection.source, connection.target)) return false;
+		return true;
+	}, []);
 
 	const onDragOver = useCallback((event: React.DragEvent) => {
 		event.preventDefault();
@@ -128,7 +172,91 @@ export function DfdCanvas() {
 
 	const onPaneClick = useCallback(() => {
 		useModelStore.getState().setSelectedElement(null);
+		useModelStore.getState().setSelectedEdge(null);
+		useModelStore.getState().setSelectedBoundary(null);
+		setContextMenu(null);
 	}, []);
+
+	const onNodeClick = useCallback((_event: React.MouseEvent, node: DfdNode) => {
+		if (node.data.isBoundary) {
+			useModelStore.getState().setSelectedBoundary(node.id);
+		} else {
+			useModelStore.getState().setSelectedElement(node.id);
+		}
+		useUiStore.getState().setRightPanelTab("properties");
+	}, []);
+
+	const onEdgeClick = useCallback((_event: React.MouseEvent, edge: DfdEdge) => {
+		useModelStore.getState().setSelectedEdge(edge.id);
+		useUiStore.getState().setRightPanelTab("properties");
+	}, []);
+
+	const onNodeContextMenu = useCallback((event: React.MouseEvent, node: DfdNode) => {
+		event.preventDefault();
+		if (node.data.isBoundary) return;
+		setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+	}, []);
+
+	const onEdgeContextMenu = useCallback((event: React.MouseEvent, edge: DfdEdge) => {
+		event.preventDefault();
+		setContextMenu({ x: event.clientX, y: event.clientY, edgeId: edge.id });
+	}, []);
+
+	const contextMenuItems = useMemo(() => {
+		if (!contextMenu) return [];
+		if (contextMenu.nodeId) {
+			return buildNodeMenuItems({
+				onEditProperties: () => {
+					useModelStore.getState().setSelectedElement(contextMenu.nodeId ?? null);
+					useUiStore.getState().setRightPanelTab("properties");
+				},
+				onDelete: () => {
+					// Select the node then delete
+					const nodeId = contextMenu.nodeId;
+					if (nodeId) {
+						const nodes = useCanvasStore.getState().nodes;
+						const updated = nodes.map((n) => ({
+							...n,
+							selected: n.id === nodeId,
+						}));
+						useCanvasStore.setState({ nodes: updated });
+						useCanvasStore.getState().deleteSelected();
+					}
+				},
+				onDuplicate: () => {
+					if (contextMenu.nodeId) duplicateElement(contextMenu.nodeId);
+				},
+				onViewThreats: () => {
+					useModelStore.getState().setSelectedElement(contextMenu.nodeId ?? null);
+					useUiStore.getState().setRightPanelTab("threats");
+				},
+			});
+		}
+		if (contextMenu.edgeId) {
+			return buildEdgeMenuItems({
+				onEditProperties: () => {
+					useModelStore.getState().setSelectedEdge(contextMenu.edgeId ?? null);
+					useUiStore.getState().setRightPanelTab("properties");
+				},
+				onDelete: () => {
+					const edgeId = contextMenu.edgeId;
+					if (edgeId) {
+						const edges = useCanvasStore.getState().edges;
+						const updated = edges.map((e) => ({
+							...e,
+							selected: e.id === edgeId,
+						}));
+						useCanvasStore.setState({ edges: updated });
+						useCanvasStore.getState().deleteSelected();
+					}
+				},
+				onReverseDirection: () => {
+					if (contextMenu.edgeId) reverseEdge(contextMenu.edgeId);
+				},
+			});
+		}
+		return [];
+	}, [contextMenu, duplicateElement, reverseEdge]);
 
 	// Subscribe to themePresetId so canvas re-renders when theme changes,
 	// picking up the new CSS variable values for ReactFlow sub-components.
@@ -155,10 +283,17 @@ export function DfdCanvas() {
 				onNodesChange={onNodesChange}
 				onEdgesChange={onEdgesChange}
 				onConnect={onConnect}
+				onConnectStart={onConnectStart}
+				onConnectEnd={onConnectEnd}
+				isValidConnection={isValidConnection}
 				onMoveEnd={(_event, viewport) => setViewport(viewport)}
 				onDragOver={onDragOver}
 				onDrop={onDrop}
 				onPaneClick={onPaneClick}
+				onNodeClick={onNodeClick}
+				onEdgeClick={onEdgeClick}
+				onNodeContextMenu={onNodeContextMenu}
+				onEdgeContextMenu={onEdgeContextMenu}
 				nodeTypes={nodeTypes}
 				edgeTypes={edgeTypes}
 				defaultEdgeOptions={defaultEdgeOptions}
@@ -182,6 +317,14 @@ export function DfdCanvas() {
 					maskColor={canvasColors.minimapMaskColor}
 				/>
 			</ReactFlow>
+			{contextMenu && contextMenuItems.length > 0 && (
+				<CanvasContextMenu
+					x={contextMenu.x}
+					y={contextMenu.y}
+					items={contextMenuItems}
+					onClose={() => setContextMenu(null)}
+				/>
+			)}
 		</div>
 	);
 }

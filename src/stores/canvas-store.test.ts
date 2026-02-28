@@ -34,6 +34,7 @@ function createTestModel(): ThreatModel {
 		data_flows: [
 			{
 				id: "flow-1",
+				name: "DB Query",
 				from: "process-1",
 				to: "data-store-1",
 				protocol: "PostgreSQL/TLS",
@@ -55,7 +56,11 @@ function createTestModel(): ThreatModel {
 
 describe("canvas-store", () => {
 	beforeEach(() => {
-		useCanvasStore.setState({ nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
+		useCanvasStore.setState({
+			nodes: [],
+			edges: [],
+			viewport: { x: 0, y: 0, zoom: 1 },
+		});
 		useModelStore.setState({ model: null, filePath: null, isDirty: false });
 	});
 
@@ -107,13 +112,14 @@ describe("canvas-store", () => {
 		useModelStore.getState().setModel(createTestModel(), null);
 		useCanvasStore.getState().syncFromModel();
 
-		useCanvasStore.getState().addElement("external_entity", { x: 200, y: 300 });
+		// Drop outside any boundary so position isn't adjusted
+		useCanvasStore.getState().addElement("external_entity", { x: 600, y: 600 });
 
 		const { nodes } = useCanvasStore.getState();
 		const newNode = nodes.find((n) => n.type === "externalEntity");
 		expect(newNode).toBeDefined();
 		expect(newNode?.data.label).toBe("New External Entity");
-		expect(newNode?.position).toEqual({ x: 200, y: 300 });
+		expect(newNode?.position).toEqual({ x: 600, y: 600 });
 
 		// Model store should also have the new element
 		const model = useModelStore.getState().model;
@@ -187,5 +193,96 @@ describe("canvas-store", () => {
 		const model = useModelStore.getState().model;
 		const newElement = model?.elements[model.elements.length - 1];
 		expect(newElement?.id).toBe("process-2");
+	});
+
+	it("prevents self-loop when adding data flow", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		const result = useCanvasStore.getState().addDataFlow("process-1", "process-1");
+		expect(result).toBeNull();
+
+		// Edge count should remain the same
+		expect(useCanvasStore.getState().edges).toHaveLength(1);
+	});
+
+	it("allows multiple edges between same pair", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		// flow-1 already exists: process-1 → data-store-1
+		const result = useCanvasStore.getState().addDataFlow("process-1", "data-store-1");
+		expect(result).not.toBeNull();
+		expect(useCanvasStore.getState().edges).toHaveLength(2);
+
+		// Model store should also have both flows
+		const model = useModelStore.getState().model;
+		expect(model?.data_flows).toHaveLength(2);
+	});
+
+	it("passes source and target handles when provided", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		useCanvasStore.getState().addDataFlow("data-store-1", "process-1", {
+			sourceHandle: "bottom",
+			targetHandle: "top",
+			name: "Query Response",
+		});
+
+		const { edges } = useCanvasStore.getState();
+		const newEdge = edges.find((e) => e.source === "data-store-1" && e.target === "process-1");
+		expect(newEdge).toBeDefined();
+		expect(newEdge?.sourceHandle).toBe("bottom");
+		expect(newEdge?.targetHandle).toBe("top");
+
+		// Model store should have the name
+		const model = useModelStore.getState().model;
+		const flow = model?.data_flows.find((f) => f.from === "data-store-1" && f.to === "process-1");
+		expect(flow?.name).toBe("Query Response");
+	});
+
+	it("duplicates an element", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		useCanvasStore.getState().duplicateElement("process-1");
+
+		const { nodes } = useCanvasStore.getState();
+		const copies = nodes.filter((n) => n.data.label.includes("copy"));
+		expect(copies).toHaveLength(1);
+		expect(copies[0].data.label).toBe("Web App (copy)");
+
+		const model = useModelStore.getState().model;
+		expect(model?.elements).toHaveLength(3);
+	});
+
+	it("reverses an edge direction", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		useCanvasStore.getState().reverseEdge("flow-1");
+
+		const edge = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
+		expect(edge?.source).toBe("data-store-1");
+		expect(edge?.target).toBe("process-1");
+
+		const model = useModelStore.getState().model;
+		const flow = model?.data_flows.find((f) => f.id === "flow-1");
+		expect(flow?.from).toBe("data-store-1");
+		expect(flow?.to).toBe("process-1");
+	});
+
+	it("auto-assigns element to boundary when dropped inside", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		// Boundary-1 is at default position (50, 50) with size 400x300
+		// Drop a new element inside it
+		useCanvasStore.getState().addElement("process", { x: 100, y: 100 });
+
+		const model = useModelStore.getState().model;
+		const boundary = model?.trust_boundaries.find((b) => b.id === "boundary-1");
+		expect(boundary?.contains).toContain("process-2");
 	});
 });

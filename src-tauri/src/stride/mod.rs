@@ -327,6 +327,7 @@ mod tests {
             ],
             data_flows: vec![DataFlow {
                 id: "flow-1".to_string(),
+                name: String::new(),
                 from: "web-app".to_string(),
                 to: "db".to_string(),
                 protocol: "PostgreSQL/TLS".to_string(),
@@ -458,6 +459,7 @@ mod tests {
         // Add a flow from internal to external (crosses boundary)
         model.data_flows.push(DataFlow {
             id: "flow-2".to_string(),
+            name: String::new(),
             from: "web-app".to_string(),
             to: "user".to_string(),
             protocol: "HTTPS".to_string(),

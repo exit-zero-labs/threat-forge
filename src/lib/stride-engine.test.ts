@@ -41,6 +41,7 @@ function sampleModel(): ThreatModel {
 		data_flows: [
 			{
 				id: "flow-1",
+				name: "",
 				from: "web-app",
 				to: "db",
 				protocol: "PostgreSQL/TLS",
@@ -124,6 +125,7 @@ describe("analyzeStride", () => {
 		const model = sampleModel();
 		model.data_flows.push({
 			id: "flow-2",
+			name: "",
 			from: "web-app",
 			to: "user",
 			protocol: "HTTPS",

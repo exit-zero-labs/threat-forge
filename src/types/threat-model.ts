@@ -44,6 +44,7 @@ export interface Element {
 
 export interface DataFlow {
 	id: string;
+	name: string;
 	from: string;
 	to: string;
 	protocol: string;

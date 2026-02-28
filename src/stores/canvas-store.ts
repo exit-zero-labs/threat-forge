@@ -1,6 +1,7 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { create } from "zustand";
+import { getSmartHandlePair, isSelfLoop, nodeToRect } from "@/lib/canvas-utils";
 import type {
 	DataFlow,
 	DiagramLayout,
@@ -22,15 +23,28 @@ export type DfdNodeData = {
 	/** For trust boundary group nodes */
 	isBoundary?: boolean;
 	boundaryName?: string;
+	/** Trust boundary fill color (CSS color with opacity) */
+	boundaryFillColor?: string;
+	/** Trust boundary stroke color (CSS color with opacity) */
+	boundaryStrokeColor?: string;
+	/** Trust boundary fill opacity (0-1) */
+	boundaryFillOpacity?: number;
+	/** Trust boundary stroke opacity (0-1) */
+	boundaryStrokeOpacity?: number;
 };
 
 /** ReactFlow edge data payload for data flows.
  *  Uses `type` + index signature to satisfy ReactFlow's `Record<string, unknown>` constraint. */
 export type DfdEdgeData = {
 	[key: string]: unknown;
+	name: string;
 	protocol: string;
 	data: string[];
 	authenticated: boolean;
+	/** Dragged label X offset from default position */
+	labelOffsetX?: number;
+	/** Dragged label Y offset from default position */
+	labelOffsetY?: number;
 };
 
 export type DfdNode = Node<DfdNodeData>;
@@ -58,9 +72,15 @@ interface CanvasState {
 
 	// Canvas actions
 	addElement: (type: ElementType, position: { x: number; y: number }) => void;
-	addDataFlow: (sourceId: string, targetId: string) => void;
+	addDataFlow: (
+		sourceId: string,
+		targetId: string,
+		opts?: { sourceHandle?: string; targetHandle?: string; name?: string },
+	) => string | null;
 	addTrustBoundary: (name: string, position: { x: number; y: number }) => void;
 	deleteSelected: () => void;
+	duplicateElement: (nodeId: string) => void;
+	reverseEdge: (edgeId: string) => void;
 
 	// Sync from model store
 	syncFromModel: () => void;
@@ -120,7 +140,10 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 		position,
 		width: 400,
 		height: 300,
-		style: { width: 400, height: 300 },
+		// pointerEvents:none on the ReactFlow wrapper so clicks inside the boundary
+		// pass through to child nodes and edges. The label and resize handle inside
+		// TrustBoundaryNode opt back in with pointer-events:auto.
+		style: { width: 400, height: 300, pointerEvents: "none" as const },
 		data: {
 			label: boundary.name,
 			elementType: "process", // unused for boundaries
@@ -139,8 +162,8 @@ function flowToEdge(flow: DataFlow): DfdEdge {
 		source: flow.from,
 		target: flow.to,
 		type: "dataFlow",
-		animated: flow.authenticated,
 		data: {
+			name: flow.name ?? "",
 			protocol: flow.protocol,
 			data: flow.data,
 			authenticated: flow.authenticated,
@@ -179,7 +202,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const selectionChange = changes.find((c) => c.type === "select" && c.selected);
 		if (selectionChange && selectionChange.type === "select") {
 			const node = get().nodes.find((n) => n.id === selectionChange.id);
-			if (node && !node.data.isBoundary) {
+			if (node?.data.isBoundary) {
+				useModelStore.getState().setSelectedBoundary(selectionChange.id);
+			} else if (node && !node.data.isBoundary) {
 				useModelStore.getState().setSelectedElement(selectionChange.id);
 			}
 		}
@@ -188,6 +213,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const deselection = changes.find((c) => c.type === "select" && !c.selected);
 		if (deselection && !changes.some((c) => c.type === "select" && c.selected)) {
 			useModelStore.getState().setSelectedElement(null);
+			useModelStore.getState().setSelectedBoundary(null);
 		}
 	},
 
@@ -232,18 +258,50 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		const newNode = elementToNode(newElement, position);
 
+		// Check if the drop position is inside a trust boundary
+		const boundaryNode = get().nodes.find((n) => {
+			if (!n.data.isBoundary) return false;
+			const bw = n.width ?? (n.style as Record<string, number> | undefined)?.width ?? 400;
+			const bh = n.height ?? (n.style as Record<string, number> | undefined)?.height ?? 300;
+			return (
+				position.x >= n.position.x &&
+				position.x <= n.position.x + bw &&
+				position.y >= n.position.y &&
+				position.y <= n.position.y + bh
+			);
+		});
+
+		if (boundaryNode) {
+			newNode.parentId = boundaryNode.id;
+			newNode.extent = "parent";
+			// Adjust position to be relative to the boundary
+			newNode.position = {
+				x: position.x - boundaryNode.position.x,
+				y: position.y - boundaryNode.position.y,
+			};
+		}
+
 		// Update canvas
 		set({ nodes: [...get().nodes, newNode] });
 
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
-			useModelStore
-				.getState()
-				.setModel(
-					{ ...model, elements: [...model.elements, newElement] },
-					useModelStore.getState().filePath,
+			// If dropped inside boundary, add to its contains array
+			let updatedBoundaries = model.trust_boundaries;
+			if (boundaryNode) {
+				updatedBoundaries = model.trust_boundaries.map((b) =>
+					b.id === boundaryNode.id ? { ...b, contains: [...b.contains, id] } : b,
 				);
+			}
+			useModelStore.getState().setModel(
+				{
+					...model,
+					elements: [...model.elements, newElement],
+					trust_boundaries: updatedBoundaries,
+				},
+				useModelStore.getState().filePath,
+			);
 			useModelStore.getState().markDirty();
 		}
 
@@ -251,10 +309,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		useModelStore.getState().setSelectedElement(id);
 	},
 
-	addDataFlow: (sourceId, targetId) => {
+	addDataFlow: (sourceId, targetId, opts) => {
+		// Prevent self-loops
+		if (isSelfLoop(sourceId, targetId)) {
+			return null;
+		}
+
 		const id = generateFlowId();
 		const newFlow: DataFlow = {
 			id,
+			name: opts?.name ?? "",
 			from: sourceId,
 			to: targetId,
 			protocol: "",
@@ -263,6 +327,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		};
 
 		const newEdge = flowToEdge(newFlow);
+
+		// Use explicitly provided handles (from user drag), or fall back to smart routing
+		if (opts?.sourceHandle && opts?.targetHandle) {
+			newEdge.sourceHandle = opts.sourceHandle;
+			newEdge.targetHandle = opts.targetHandle;
+		} else {
+			const sourceNode = get().nodes.find((n) => n.id === sourceId);
+			const targetNode = get().nodes.find((n) => n.id === targetId);
+			if (sourceNode && targetNode) {
+				const handlePair = getSmartHandlePair(nodeToRect(sourceNode), nodeToRect(targetNode));
+				newEdge.sourceHandle = handlePair.sourceHandle;
+				newEdge.targetHandle = handlePair.targetHandle;
+			}
+		}
+
 		set({ edges: [...get().edges, newEdge] });
 
 		// Update model store
@@ -276,6 +355,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 				);
 			useModelStore.getState().markDirty();
 		}
+
+		return id;
 	},
 
 	addTrustBoundary: (name, position) => {
@@ -349,6 +430,69 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		}
 	},
 
+	duplicateElement: (nodeId) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+
+		const element = model.elements.find((e) => e.id === nodeId);
+		if (!element) return;
+
+		const sourceNode = get().nodes.find((n) => n.id === nodeId);
+		const offsetX = sourceNode ? sourceNode.position.x + 50 : 200;
+		const offsetY = sourceNode ? sourceNode.position.y + 50 : 200;
+
+		const newId = generateElementId(element.type);
+		const newElement: Element = {
+			...element,
+			id: newId,
+			name: `${element.name} (copy)`,
+		};
+
+		const newNode = elementToNode(newElement, { x: offsetX, y: offsetY });
+		set({ nodes: [...get().nodes, newNode] });
+
+		useModelStore
+			.getState()
+			.setModel(
+				{ ...model, elements: [...model.elements, newElement] },
+				useModelStore.getState().filePath,
+			);
+		useModelStore.getState().markDirty();
+		useModelStore.getState().setSelectedElement(newId);
+	},
+
+	reverseEdge: (edgeId) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+
+		const flow = model.data_flows.find((f) => f.id === edgeId);
+		if (!flow) return;
+
+		// Update model: swap from/to (use direct set to preserve selection state)
+		const updatedFlows = model.data_flows.map((f) =>
+			f.id === edgeId ? { ...f, from: f.to, to: f.from } : f,
+		);
+		useModelStore.setState({
+			model: { ...model, data_flows: updatedFlows },
+			isDirty: true,
+		});
+
+		// Update canvas edge: swap source/target
+		const currentEdges = get().edges;
+		const updatedEdges = currentEdges.map((e) =>
+			e.id === edgeId
+				? {
+						...e,
+						source: e.target,
+						target: e.source,
+						sourceHandle: e.targetHandle?.replace("target", "source"),
+						targetHandle: e.sourceHandle?.replace("source", "target"),
+					}
+				: e,
+		);
+		set({ edges: updatedEdges });
+	},
+
 	syncFromModel: () => {
 		const model = useModelStore.getState().model;
 		if (!model) {
@@ -377,7 +521,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		flowCounter = maxFlowNum;
 		boundaryCounter = maxBoundaryNum;
 
-		// Keep existing positions for nodes that still exist (used when model changes in-place)
+		// Keep existing node state for nodes that still exist (used when model changes in-place)
+		const existingNodes = new Map(get().nodes.map((n) => [n.id, n]));
 		const existingPositions = new Map(get().nodes.map((n) => [n.id, n.position]));
 
 		// Position priority: saved layout > existing canvas positions > default grid
@@ -394,12 +539,21 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const boundaryNodes: DfdNode[] = model.trust_boundaries.map((b, i) => {
 			const pos = resolvePosition(b.id, { x: 50 + i * 450, y: 50 });
 			const node = boundaryToNode(b, pos);
-			// Restore saved dimensions for boundaries
+			// Restore dimensions: saved layout > existing canvas > default
 			const saved = layoutPositions?.get(b.id);
-			if (saved?.width != null && saved?.height != null) {
-				node.width = saved.width;
-				node.height = saved.height;
-				node.style = { ...node.style, width: saved.width, height: saved.height };
+			const existing = existingNodes.get(b.id);
+			const w =
+				saved?.width ?? existing?.width ?? (existing?.style as Record<string, unknown>)?.width;
+			const h =
+				saved?.height ?? existing?.height ?? (existing?.style as Record<string, unknown>)?.height;
+			if (w != null && h != null) {
+				node.width = w as number;
+				node.height = h as number;
+				node.style = {
+					...node.style,
+					width: w as number,
+					height: h as number,
+				};
 			}
 			return node;
 		});
@@ -430,8 +584,23 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			return node;
 		});
 
-		// Convert flows to edges
-		const edges: DfdEdge[] = model.data_flows.map(flowToEdge);
+		// Convert flows to edges, preserving handle assignments and label offsets from existing edges
+		const existingEdgeMap = new Map(get().edges.map((e) => [e.id, e]));
+		const edges: DfdEdge[] = model.data_flows.map((flow) => {
+			const edge = flowToEdge(flow);
+			const existing = existingEdgeMap.get(flow.id);
+			if (existing?.sourceHandle) edge.sourceHandle = existing.sourceHandle;
+			if (existing?.targetHandle) edge.targetHandle = existing.targetHandle;
+			// Preserve dragged label position
+			if (existing?.data?.labelOffsetX != null || existing?.data?.labelOffsetY != null) {
+				edge.data = {
+					...(edge.data as DfdEdgeData),
+					labelOffsetX: existing.data.labelOffsetX,
+					labelOffsetY: existing.data.labelOffsetY,
+				};
+			}
+			return edge;
+		});
 
 		// Boundaries first (rendered behind), then elements
 		set({
