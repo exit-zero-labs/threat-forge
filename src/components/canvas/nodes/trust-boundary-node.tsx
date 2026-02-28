@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import type { DfdNodeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
+import { useUiStore } from "@/stores/ui-store";
 
 /**
  * Convert a hex color (#rrggbb) + opacity (0-1) to an rgba string.
@@ -62,16 +63,27 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 		[id, nodeData.boundaryName, nodeData.label],
 	);
 
+	const selectBoundary = useCallback(() => {
+		useModelStore.getState().setSelectedBoundary(id);
+		useUiStore.getState().setRightPanelTab("properties");
+	}, [id]);
+
 	return (
 		<>
-			<NodeResizeControl minWidth={200} minHeight={150} className="!bg-transparent !border-none">
+			<NodeResizeControl
+				minWidth={200}
+				minHeight={150}
+				className="!bg-transparent !border-none"
+				style={{ pointerEvents: "auto" }}
+			>
 				<ResizeIcon />
 			</NodeResizeControl>
-			{/* Outer wrapper: only the border zone (8px inset) captures pointer events.
-          The interior is pointer-events:none so clicks fall through to edges/nodes. */}
+			{/* Content wrapper: pointer-events:none so interior clicks pass through.
+          The ReactFlow node wrapper also has pointer-events:none (set via node.style).
+          Border strips and label opt back in with pointer-events:auto. */}
 			<div
 				className={cn(
-					"h-full w-full rounded-lg border-2 border-dashed transition-colors",
+					"h-full w-full relative rounded-lg border-2 border-dashed transition-colors",
 					!hasCustomColors &&
 						(selected
 							? "border-tf-ember/60 bg-tf-ember/5"
@@ -85,8 +97,46 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 					...(hasCustomColors ? customStyle : {}),
 				}}
 			>
-				{/* Name label — always clickable */}
-				<div className="relative p-2" style={{ pointerEvents: "auto" }}>
+				{/* Clickable border overlay — 4 thin strips along the edges */}
+				{/* Top */}
+				<button
+					type="button"
+					className="absolute inset-x-0 top-0 h-2 cursor-pointer bg-transparent border-none p-0"
+					style={{ pointerEvents: "auto" }}
+					onClick={selectBoundary}
+					aria-label="Select boundary"
+				/>
+				{/* Bottom */}
+				<button
+					type="button"
+					className="absolute inset-x-0 bottom-0 h-2 cursor-pointer bg-transparent border-none p-0"
+					style={{ pointerEvents: "auto" }}
+					onClick={selectBoundary}
+					aria-label="Select boundary"
+				/>
+				{/* Left */}
+				<button
+					type="button"
+					className="absolute inset-y-0 left-0 w-2 cursor-pointer bg-transparent border-none p-0"
+					style={{ pointerEvents: "auto" }}
+					onClick={selectBoundary}
+					aria-label="Select boundary"
+				/>
+				{/* Right */}
+				<button
+					type="button"
+					className="absolute inset-y-0 right-0 w-2 cursor-pointer bg-transparent border-none p-0"
+					style={{ pointerEvents: "auto" }}
+					onClick={selectBoundary}
+					aria-label="Select boundary"
+				/>
+				{/* Name label — clickable, selects boundary */}
+				<button
+					type="button"
+					className="relative w-full p-2 bg-transparent border-none text-left"
+					style={{ pointerEvents: "auto" }}
+					onClick={selectBoundary}
+				>
 					{isEditing ? (
 						<input
 							ref={inputRef}
@@ -95,6 +145,8 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 							className="bg-transparent text-xs font-semibold uppercase tracking-wider text-muted-foreground outline-none"
 							onBlur={(e) => commitLabel(e.target.value)}
 							onKeyDown={(e) => {
+								// Stop propagation so Backspace doesn't trigger canvas node deletion
+								e.stopPropagation();
 								if (e.key === "Enter") commitLabel(e.currentTarget.value);
 								if (e.key === "Escape") setIsEditing(false);
 							}}
@@ -107,7 +159,7 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 							{nodeData.boundaryName ?? nodeData.label}
 						</div>
 					)}
-				</div>
+				</button>
 			</div>
 		</>
 	);

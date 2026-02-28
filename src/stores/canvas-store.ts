@@ -140,7 +140,10 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 		position,
 		width: 400,
 		height: 300,
-		style: { width: 400, height: 300 },
+		// pointerEvents:none on the ReactFlow wrapper so clicks inside the boundary
+		// pass through to child nodes and edges. The label and resize handle inside
+		// TrustBoundaryNode opt back in with pointer-events:auto.
+		style: { width: 400, height: 300, pointerEvents: "none" as const },
 		data: {
 			label: boundary.name,
 			elementType: "process", // unused for boundaries

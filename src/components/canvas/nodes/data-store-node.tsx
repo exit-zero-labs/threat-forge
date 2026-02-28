@@ -43,6 +43,7 @@ export function DataStoreNode({ id, data, selected }: NodeProps) {
 						className="w-full bg-transparent text-center text-sm font-medium text-foreground outline-none"
 						onBlur={(e) => commitLabel(e.target.value)}
 						onKeyDown={(e) => {
+							e.stopPropagation();
 							if (e.key === "Enter") commitLabel(e.currentTarget.value);
 							if (e.key === "Escape") setIsEditing(false);
 						}}

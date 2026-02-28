@@ -361,6 +361,7 @@ function EdgeLabelEditor({
 				autoFocus
 				className="w-44 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
 				onKeyDown={(e) => {
+					e.stopPropagation();
 					if (e.key === "Enter") commit();
 					if (e.key === "Escape") onClose();
 				}}
@@ -371,6 +372,7 @@ function EdgeLabelEditor({
 				placeholder="Protocol (e.g. HTTPS)"
 				className="w-44 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
 				onKeyDown={(e) => {
+					e.stopPropagation();
 					if (e.key === "Enter") commit();
 					if (e.key === "Escape") onClose();
 				}}
@@ -381,6 +383,7 @@ function EdgeLabelEditor({
 				placeholder="Data (comma-separated)"
 				className="w-44 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
 				onKeyDown={(e) => {
+					e.stopPropagation();
 					if (e.key === "Enter") commit();
 					if (e.key === "Escape") onClose();
 				}}
