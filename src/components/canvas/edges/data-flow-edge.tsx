@@ -76,6 +76,7 @@ export function DataFlowEdge({
 
 	// --- Draggable label logic ---
 	const isDragging = useRef(false);
+	const didDrag = useRef(false);
 	const dragStartPos = useRef({ x: 0, y: 0 });
 	const dragStartOffset = useRef({ x: 0, y: 0 });
 
@@ -84,8 +85,8 @@ export function DataFlowEdge({
 			// Only start drag on primary button and when selected
 			if (e.button !== 0 || !selected) return;
 			e.stopPropagation();
-			e.preventDefault();
 			isDragging.current = true;
+			didDrag.current = false;
 			dragStartPos.current = { x: e.clientX, y: e.clientY };
 			dragStartOffset.current = { x: offsetX, y: offsetY };
 
@@ -93,6 +94,9 @@ export function DataFlowEdge({
 				if (!isDragging.current) return;
 				const dx = ev.clientX - dragStartPos.current.x;
 				const dy = ev.clientY - dragStartPos.current.y;
+				// Only start dragging after a small threshold to distinguish from clicks
+				if (!didDrag.current && Math.abs(dx) + Math.abs(dy) < 4) return;
+				didDrag.current = true;
 				// Update edge data with new offset
 				setEdges((edges) =>
 					edges.map((edge) =>
@@ -114,7 +118,9 @@ export function DataFlowEdge({
 				isDragging.current = false;
 				document.removeEventListener("mousemove", onMouseMove);
 				document.removeEventListener("mouseup", onMouseUp);
-				useModelStore.getState().markDirty();
+				if (didDrag.current) {
+					useModelStore.getState().markDirty();
+				}
 			};
 
 			document.addEventListener("mousemove", onMouseMove);
@@ -122,6 +128,13 @@ export function DataFlowEdge({
 		},
 		[id, selected, offsetX, offsetY, setEdges],
 	);
+
+	const onLabelClick = useCallback(() => {
+		// Only open editor on a pure click (no drag occurred)
+		if (selected && !didDrag.current) {
+			setIsEditing(true);
+		}
+	}, [selected]);
 
 	return (
 		<>
@@ -181,9 +194,7 @@ export function DataFlowEdge({
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}
 						onDoubleClick={() => setIsEditing(true)}
-						onClick={() => {
-							if (selected) setIsEditing(true);
-						}}
+						onClick={onLabelClick}
 						onMouseDown={onLabelMouseDown}
 					>
 						{edgeData?.name && (

@@ -7,6 +7,7 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 ## 2026-02-28 — Boundary click fix + Draggable edge labels
 
 ### Plan
+
 - [x] Fix trust boundary click stealing — make interior `pointer-events: none`, only border zone (8px inset) and name label capture clicks
 - [x] Replace parallel offset bezier with draggable label waypoint system
   - [x] Remove `computeParallelOffset` / `getOffsetBezierPath` code
@@ -17,6 +18,7 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 - [x] Validate: tsc, biome, vitest all pass (92 tests)
 
 ### Notes
+
 - Boundary interior is now `pointer-events: none` — only a thin border ring + the name label are clickable. This lets edges and inner nodes be selected without the boundary stealing the click.
 - Edge labels become movable waypoints: drag them when selected to reshape the edge path. The edge draws two quadratic bezier segments through the label position. When not dragged, the default bezier path is used.
 

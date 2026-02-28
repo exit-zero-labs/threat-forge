@@ -88,7 +88,11 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 				{/* Border click zone: an 8px inset ring that captures clicks on the border */}
 				<div
 					className="absolute inset-0 rounded-lg"
-					style={{ pointerEvents: "auto", padding: 8, background: "transparent" }}
+					style={{
+						pointerEvents: "auto",
+						padding: 8,
+						background: "transparent",
+					}}
 					onMouseDown={(e) => e.stopPropagation()}
 				>
 					{/* Inner transparent area — clicks pass through */}
