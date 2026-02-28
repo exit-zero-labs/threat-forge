@@ -6,7 +6,6 @@ import {
 	PanelRight,
 	Save,
 	Settings,
-	Shield,
 } from "lucide-react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
@@ -33,7 +32,7 @@ export function TopMenuBar() {
 		<header className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3">
 			{/* App title / branding */}
 			<div className="flex items-center gap-2">
-				<Shield className="h-4 w-4 text-tf-signal" />
+				<img src="/logo_square.png" alt="ThreatForge" className="h-5 w-5" />
 				<span className="text-sm font-semibold tracking-tight">{displayTitle}</span>
 			</div>
 

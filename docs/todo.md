@@ -4,6 +4,30 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-02-28 — Replace logos with new branding assets
+
+### Plan
+
+- [x] Inventory new media assets (square logo, long logo, compressed variants, favicons)
+- [x] Regenerate all Tauri app icons (16 PNG sizes + .icns + .ico) from `media/logo_square_v1.png`
+- [x] Copy favicon assets to `public/` for web serving
+- [x] Update `index.html` — replace old SVG favicon with proper favicon set (PNG 16/32, ICO, apple-touch-icon, webmanifest)
+- [x] Create `public/site.webmanifest` with ThreatForge name and theme colors
+- [x] Update `media/favicon/site.webmanifest` with name and theme colors
+- [x] Update `top-menu-bar.tsx` — replace Shield lucide icon with actual logo image
+- [x] Update `README.md` — add long logo at top
+- [x] Remove old `public/threatforge.svg`
+- [x] Validate: biome check + tsc both pass
+
+### Notes
+
+- Used `sips` + `iconutil` (macOS built-in) for PNG resizing and `.icns` generation
+- Used `npx png-to-ico` for Windows `.ico` generation
+- Compressed logo variants (`_compressed`) used for web-served assets to minimize bundle size
+- Old SVG favicon removed since the new PNG favicon set provides better cross-browser/platform coverage
+
+---
+
 ## 2026-02-28 — Boundary click fix + Draggable edge labels
 
 ### Plan
@@ -305,7 +329,7 @@ The canvas connector system requires significant improvements for better usabili
   - [x] Support editing both `protocol` and `data[]` fields inline: show "protocol · data1, data2" as the display, and split the edit into two inputs (or one smart input with a separator)
   - [x] Add edge label background styling that matches the edge color: selected edges should have `bg-tf-signal/10` label background, unselected edges keep `bg-card`
   - [x] Show a "+" add label button on edge hover when no label is present (for edges with empty protocol and data)
-  - [ ] Make edge labels draggable to adjust position offset from the midpoint (store a `labelOffset` in edge data) — this is an advanced feature, can be deferred
+  - [x] Make edge labels draggable to adjust position offset from the midpoint (store a `labelOffset` in edge data) — implemented in 2026-02-28 "Draggable edge labels" task
 - [x] Improve edge selection and interaction UX
   - [x] Increase the clickable/hoverable area of edges (currently 2px stroke is hard to click) — use an invisible wider stroke (10-12px) behind the visible edge for hit testing
   - [x] Add hover state: change edge color to a lighter version of the theme accent on hover (before click-to-select)
@@ -421,7 +445,7 @@ The overall editor needs to be more tuned for keyboard accessibility / shortcuts
   - [x] Add a Help menu button (? icon) next to the settings gear: links to docs, keyboard shortcuts, and onboarding guides (see Onboarding section)
   - [x] Consider moving panel toggles to a "View" dropdown or keeping them as icon buttons — decided to keep as icon buttons with a divider separator
 - [x] Migrate AI settings into the main settings modal
-  - [ ] Move the content of `ai-settings-dialog.tsx` into the AI section of the settings modal
+  - [x] Move the content of `ai-settings-dialog.tsx` into the AI section of the settings modal — extracted to `ai-settings-content.tsx`, rendered in settings dialog AI tab
   - [ ] Update the AI chat tab's settings button to open the main settings modal with the AI tab pre-selected
   - [ ] Keep `ai-settings-dialog.tsx` as a component but have it render inside the settings modal rather than as a standalone dialog
 - [ ] Testing

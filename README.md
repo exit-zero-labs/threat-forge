@@ -1,5 +1,9 @@
 # ThreatForge
 
+<p align="center">
+  <img src="media/logo_long_v1_compressed.png" alt="ThreatForge" width="400" />
+</p>
+
 Open-source, AI-enhanced threat modeling for modern development teams.
 
 ThreatForge is a cross-platform desktop application that makes threat modeling fast, collaborative, and developer-friendly. It produces human-readable, git-diffable YAML files instead of opaque binaries, and uses AI to accelerate the most tedious parts of threat analysis.
@@ -73,15 +77,15 @@ cargo clippy --manifest-path src-tauri/Cargo.toml       # Rust
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Desktop framework | Tauri v2 (Rust) |
-| Frontend | React 19, TypeScript, Tailwind CSS 4, shadcn/ui |
-| Diagramming | ReactFlow / xyflow |
-| State management | Zustand |
-| File format | Custom YAML schema (serde_yaml) |
-| Testing | Vitest, React Testing Library, Playwright, cargo test |
-| CI/CD | GitHub Actions |
+| Layer             | Technology                                            |
+| ----------------- | ----------------------------------------------------- |
+| Desktop framework | Tauri v2 (Rust)                                       |
+| Frontend          | React 19, TypeScript, Tailwind CSS 4, shadcn/ui       |
+| Diagramming       | ReactFlow / xyflow                                    |
+| State management  | Zustand                                               |
+| File format       | Custom YAML schema (serde_yaml)                       |
+| Testing           | Vitest, React Testing Library, Playwright, cargo test |
+| CI/CD             | GitHub Actions                                        |
 
 ## File Format
 
