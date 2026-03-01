@@ -13,9 +13,9 @@ export interface FileAdapter {
 	openThreatModel(): Promise<{ model: ThreatModel; path: string | null } | null>;
 	/** Save a threat model to YAML. If no path provided, show save dialog. */
 	saveThreatModel(model: ThreatModel, path: string | null): Promise<string | null>;
-	/** Load layout data for a diagram. */
+	/** @deprecated Layout data is now inline in the YAML. Kept for old-format fallback. */
 	openLayout(modelPath: string, layoutFile: string): Promise<DiagramLayout | null>;
-	/** Save layout data alongside the model. */
+	/** @deprecated Layout data is now inline in the YAML. Will be removed in a future release. */
 	saveLayout(modelPath: string, layoutFile: string, layout: DiagramLayout): Promise<void>;
 	/** Show a confirmation dialog for discarding unsaved changes. */
 	confirmDiscard(): Promise<boolean>;

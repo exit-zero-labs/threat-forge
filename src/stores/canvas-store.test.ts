@@ -285,4 +285,81 @@ describe("canvas-store", () => {
 		const boundary = model?.trust_boundaries.find((b) => b.id === "boundary-1");
 		expect(boundary?.contains).toContain("process-2");
 	});
+
+	it("reads inline positions from model via pending layout", () => {
+		const model = createTestModel();
+		// Set inline positions on elements
+		model.elements[0].position = { x: 150, y: 250 };
+		model.elements[1].position = { x: 350, y: 450 };
+		model.trust_boundaries[0].position = { x: 20, y: 30 };
+		model.trust_boundaries[0].size = { width: 600, height: 500 };
+
+		// Build a layout from inline positions (simulating what openModel does)
+		const nodes = [
+			...model.elements
+				.filter((e) => e.position)
+				.map((e) => ({
+					id: e.id,
+					x: e.position?.x ?? 0,
+					y: e.position?.y ?? 0,
+				})),
+			...model.trust_boundaries
+				.filter((b) => b.position)
+				.map((b) => ({
+					id: b.id,
+					x: b.position?.x ?? 0,
+					y: b.position?.y ?? 0,
+					width: b.size?.width,
+					height: b.size?.height,
+				})),
+		];
+
+		useCanvasStore.getState().setPendingLayout({
+			diagram_id: "main-dfd",
+			viewport: { x: 0, y: 0, zoom: 1 },
+			nodes,
+		});
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		const processNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
+		expect(processNode?.position).toEqual({ x: 150, y: 250 });
+
+		const dataStoreNode = useCanvasStore.getState().nodes.find((n) => n.id === "data-store-1");
+		expect(dataStoreNode?.position).toEqual({ x: 350, y: 450 });
+
+		const boundaryNode = useCanvasStore.getState().nodes.find((n) => n.id === "boundary-1");
+		expect(boundaryNode?.position).toEqual({ x: 20, y: 30 });
+		expect(boundaryNode?.width).toBe(600);
+		expect(boundaryNode?.height).toBe(500);
+	});
+
+	it("reads boundary colors from model fields", () => {
+		const model = createTestModel();
+		model.trust_boundaries[0].fill_color = "#3b82f6";
+		model.trust_boundaries[0].stroke_color = "#1e40af";
+		model.trust_boundaries[0].fill_opacity = 0.15;
+		model.trust_boundaries[0].stroke_opacity = 0.7;
+
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		const boundaryNode = useCanvasStore.getState().nodes.find((n) => n.id === "boundary-1");
+		expect(boundaryNode?.data.boundaryFillColor).toBe("#3b82f6");
+		expect(boundaryNode?.data.boundaryStrokeColor).toBe("#1e40af");
+		expect(boundaryNode?.data.boundaryFillOpacity).toBe(0.15);
+		expect(boundaryNode?.data.boundaryStrokeOpacity).toBe(0.7);
+	});
+
+	it("reads label offset from data flow model fields", () => {
+		const model = createTestModel();
+		model.data_flows[0].label_offset = { x: 15, y: -10 };
+
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		const edge = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
+		expect(edge?.data?.labelOffsetX).toBe(15);
+		expect(edge?.data?.labelOffsetY).toBe(-10);
+	});
 });

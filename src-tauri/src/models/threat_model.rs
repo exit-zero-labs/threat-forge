@@ -4,7 +4,6 @@ use uuid::Uuid;
 
 /// Root threat model document — maps to `.threatforge.yaml`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct ThreatModel {
     pub version: String,
     pub metadata: Metadata,
@@ -39,14 +38,14 @@ impl ThreatModel {
             diagrams: vec![Diagram {
                 id: "main-dfd".to_string(),
                 name: "Level 0 DFD".to_string(),
-                layout_file: ".threatforge/layouts/main-dfd.json".to_string(),
+                layout_file: None,
+                viewport: None,
             }],
         }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Metadata {
     pub title: String,
     pub author: String,
@@ -66,7 +65,6 @@ pub enum ElementType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Element {
     pub id: String,
     #[serde(rename = "type")]
@@ -84,10 +82,11 @@ pub struct Element {
     pub stores: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encryption: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct DataFlow {
     pub id: String,
     #[serde(default)]
@@ -100,15 +99,28 @@ pub struct DataFlow {
     pub data: Vec<String>,
     #[serde(default)]
     pub authenticated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_offset: Option<Position>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct TrustBoundary {
     pub id: String,
     pub name: String,
     #[serde(default)]
     pub contains: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<Size>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_opacity: Option<f64>,
 }
 
 /// STRIDE threat categories
@@ -146,7 +158,6 @@ pub enum MitigationStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Mitigation {
     pub status: MitigationStatus,
     #[serde(default)]
@@ -154,7 +165,6 @@ pub struct Mitigation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Threat {
     pub id: String,
     pub title: String,
@@ -171,11 +181,13 @@ pub struct Threat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
 pub struct Diagram {
     pub id: String,
     pub name: String,
-    pub layout_file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewport: Option<Viewport>,
 }
 
 /// Layout data stored in `.threatforge/layouts/*.json`
@@ -192,6 +204,18 @@ pub struct Viewport {
     pub x: f64,
     pub y: f64,
     pub zoom: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Size {
+    pub width: f64,
+    pub height: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -335,7 +359,132 @@ diagrams:
     }
 
     #[test]
-    fn test_rejects_unknown_fields() {
+    fn test_inline_position_round_trip() {
+        let yaml = r##"
+version: "1.0"
+metadata:
+  title: "Position Test"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: web-app
+    type: process
+    name: "Web App"
+    position:
+      x: 100.0
+      y: 200.0
+trust_boundaries:
+  - id: boundary-1
+    name: "Internal"
+    contains: [web-app]
+    position:
+      x: 50.0
+      y: 50.0
+    size:
+      width: 500.0
+      height: 400.0
+    fill_color: "#3b82f6"
+    stroke_color: "#1e40af"
+    fill_opacity: 0.1
+    stroke_opacity: 0.6
+data_flows:
+  - id: flow-1
+    from: web-app
+    to: web-app
+    label_offset:
+      x: 10.0
+      y: -5.0
+diagrams:
+  - id: main-dfd
+    name: "Level 0 DFD"
+    viewport:
+      x: 0.0
+      y: 0.0
+      zoom: 1.5
+"##;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Failed to parse");
+        assert_eq!(
+            model.elements[0].position,
+            Some(Position { x: 100.0, y: 200.0 })
+        );
+        assert_eq!(
+            model.trust_boundaries[0].position,
+            Some(Position { x: 50.0, y: 50.0 })
+        );
+        assert_eq!(
+            model.trust_boundaries[0].size,
+            Some(Size {
+                width: 500.0,
+                height: 400.0
+            })
+        );
+        assert_eq!(
+            model.trust_boundaries[0].fill_color,
+            Some(String::from("#3b82f6"))
+        );
+        assert_eq!(model.trust_boundaries[0].fill_opacity, Some(0.1));
+        assert_eq!(
+            model.data_flows[0].label_offset,
+            Some(Position { x: 10.0, y: -5.0 })
+        );
+        assert_eq!(
+            model.diagrams[0].viewport,
+            Some(Viewport {
+                x: 0.0,
+                y: 0.0,
+                zoom: 1.5
+            })
+        );
+        assert!(model.diagrams[0].layout_file.is_none());
+
+        // Round-trip
+        let reserialized = serde_yaml::to_string(&model).expect("Failed to serialize");
+        let reparsed: ThreatModel = serde_yaml::from_str(&reserialized).expect("Failed to reparse");
+        assert_eq!(model, reparsed, "Round-trip should produce equal models");
+    }
+
+    #[test]
+    fn test_old_yaml_without_positions_parses() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "Old Format"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: app
+    type: process
+    name: "App"
+trust_boundaries:
+  - id: boundary-1
+    name: "Internal"
+    contains: [app]
+data_flows:
+  - id: flow-1
+    from: app
+    to: app
+diagrams:
+  - id: main-dfd
+    name: "Level 0 DFD"
+    layout_file: ".threatforge/layouts/main-dfd.json"
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Old format should parse");
+        assert!(model.elements[0].position.is_none());
+        assert!(model.trust_boundaries[0].position.is_none());
+        assert!(model.trust_boundaries[0].size.is_none());
+        assert!(model.trust_boundaries[0].fill_color.is_none());
+        assert!(model.data_flows[0].label_offset.is_none());
+        assert_eq!(
+            model.diagrams[0].layout_file,
+            Some(".threatforge/layouts/main-dfd.json".to_string())
+        );
+        assert!(model.diagrams[0].viewport.is_none());
+    }
+
+    #[test]
+    fn test_unknown_fields_are_tolerated() {
         let yaml = r#"
 version: "1.0"
 metadata:
@@ -343,10 +492,13 @@ metadata:
   author: "Test"
   created: 2026-03-15
   modified: 2026-03-15
-unknown_field: "should fail"
+unknown_field: "should be tolerated"
 "#;
         let result = serde_yaml::from_str::<ThreatModel>(yaml);
-        assert!(result.is_err(), "Should reject unknown top-level fields");
+        assert!(
+            result.is_ok(),
+            "Unknown fields should be tolerated for forward compatibility"
+        );
     }
 
     #[test]

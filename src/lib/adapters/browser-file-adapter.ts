@@ -33,7 +33,6 @@ export class BrowserFileAdapter implements FileAdapter {
 				{
 					id: "main-dfd",
 					name: "Level 0 DFD",
-					layout_file: ".threatforge/layouts/main-dfd.json",
 				},
 			],
 		};

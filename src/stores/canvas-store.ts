@@ -134,16 +134,18 @@ function elementToNode(element: Element, position: { x: number; y: number }): Df
 }
 
 function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: number }): DfdNode {
+	const w = boundary.size?.width ?? 400;
+	const h = boundary.size?.height ?? 300;
 	return {
 		id: boundary.id,
 		type: "trustBoundary",
 		position,
-		width: 400,
-		height: 300,
+		width: w,
+		height: h,
 		// pointerEvents:none on the ReactFlow wrapper so clicks inside the boundary
 		// pass through to child nodes and edges. The label and resize handle inside
 		// TrustBoundaryNode opt back in with pointer-events:auto.
-		style: { width: 400, height: 300, pointerEvents: "none" as const },
+		style: { width: w, height: h, pointerEvents: "none" as const },
 		data: {
 			label: boundary.name,
 			elementType: "process", // unused for boundaries
@@ -152,6 +154,10 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 			technologies: [],
 			isBoundary: true,
 			boundaryName: boundary.name,
+			boundaryFillColor: boundary.fill_color,
+			boundaryStrokeColor: boundary.stroke_color,
+			boundaryFillOpacity: boundary.fill_opacity,
+			boundaryStrokeOpacity: boundary.stroke_opacity,
 		},
 	};
 }
@@ -167,6 +173,8 @@ function flowToEdge(flow: DataFlow): DfdEdge {
 			protocol: flow.protocol,
 			data: flow.data,
 			authenticated: flow.authenticated,
+			labelOffsetX: flow.label_offset?.x,
+			labelOffsetY: flow.label_offset?.y,
 		},
 	};
 }
