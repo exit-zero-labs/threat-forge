@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Threat, ThreatModel } from "@/types/threat-model";
 import { useHistoryStore } from "./history-store";
-import { useModelStore } from "./model-store";
+import { resetCaptureDebounce, useModelStore } from "./model-store";
 
 /** Helper that asserts a value is not null and returns it typed. */
 function assertDefined<T>(value: T | null | undefined): T {
@@ -65,6 +65,7 @@ describe("useModelStore", () => {
 			isAnalyzing: false,
 		});
 		useHistoryStore.setState({ past: [], future: [] });
+		resetCaptureDebounce();
 	});
 
 	it("starts with no model loaded", () => {

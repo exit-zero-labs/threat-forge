@@ -53,10 +53,37 @@ interface ModelState {
 	analyzeThreats: () => Promise<void>;
 }
 
-/** Capture a history snapshot of the current model before a mutation. */
+let lastDebouncedCaptureTime = 0;
+let lastDebouncedCaptureKey = "";
+const CAPTURE_DEBOUNCE_MS = 300;
+
+/** Capture a history snapshot for a discrete action. Always pushes. Resets debounce state. */
 function captureHistory(model: ThreatModel | null): void {
 	if (!model) return;
+	lastDebouncedCaptureTime = 0;
+	lastDebouncedCaptureKey = "";
 	useHistoryStore.getState().pushSnapshot(model);
+}
+
+/**
+ * Capture a history snapshot with key-based debouncing for rapid property edits.
+ * Consecutive calls with the same key within CAPTURE_DEBOUNCE_MS are grouped
+ * into a single undo step (only the first push is recorded).
+ */
+function captureHistoryDebounced(model: ThreatModel | null, key: string): void {
+	if (!model) return;
+	const now = Date.now();
+	if (key === lastDebouncedCaptureKey && now - lastDebouncedCaptureTime < CAPTURE_DEBOUNCE_MS)
+		return;
+	lastDebouncedCaptureTime = now;
+	lastDebouncedCaptureKey = key;
+	useHistoryStore.getState().pushSnapshot(model);
+}
+
+/** Reset the debounce state. Exported for testing. */
+export function resetCaptureDebounce(): void {
+	lastDebouncedCaptureTime = 0;
+	lastDebouncedCaptureKey = "";
 }
 
 export const useModelStore = create<ModelState>((set, get) => ({
@@ -117,7 +144,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
-		captureHistory(model);
+		captureHistoryDebounced(model, `element:${id}`);
 		const updatedElements = model.elements.map((e) => (e.id === id ? { ...e, ...updates } : e));
 		set({
 			model: { ...model, elements: updatedElements },
@@ -129,7 +156,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
-		captureHistory(model);
+		captureHistoryDebounced(model, `flow:${id}`);
 		const updatedFlows = model.data_flows.map((f) => (f.id === id ? { ...f, ...updates } : f));
 		set({
 			model: { ...model, data_flows: updatedFlows },
@@ -141,7 +168,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
-		captureHistory(model);
+		captureHistoryDebounced(model, `boundary:${id}`);
 		const updatedBoundaries = model.trust_boundaries.map((b) =>
 			b.id === id ? { ...b, ...updates } : b,
 		);
@@ -178,7 +205,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
-		captureHistory(model);
+		captureHistoryDebounced(model, `threat:${id}`);
 		const updatedThreats = model.threats.map((t) => (t.id === id ? { ...t, ...updates } : t));
 		set({
 			model: { ...model, threats: updatedThreats },
@@ -199,6 +226,8 @@ export const useModelStore = create<ModelState>((set, get) => ({
 	},
 
 	restoreSnapshot: (snapshot) => {
+		lastDebouncedCaptureTime = 0;
+		lastDebouncedCaptureKey = "";
 		set({
 			model: snapshot,
 			isDirty: true,

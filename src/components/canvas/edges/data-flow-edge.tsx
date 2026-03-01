@@ -9,9 +9,11 @@ import {
 import { Lock, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import type { DfdEdgeData } from "@/stores/canvas-store";
+import { type DfdEdgeData, useCanvasStore } from "@/stores/canvas-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
+import type { ThreatModel } from "@/types/threat-model";
 
 /**
  * Build a quadratic bezier from source to target that passes through the waypoint.
@@ -109,6 +111,18 @@ export function DataFlowEdge({
 			const { offsetX: ox, offsetY: oy, zoom: z, selected: sel } = stateRef.current;
 			wasSelectedBefore.current = sel;
 
+			// Capture pre-drag model with current label offset baked in (for undo)
+			let preDragModel: ThreatModel | null = null;
+			const currentModel = useModelStore.getState().model;
+			if (currentModel) {
+				preDragModel = {
+					...currentModel,
+					data_flows: currentModel.data_flows.map((f) =>
+						f.id === id ? { ...f, label_offset: { x: ox, y: oy } } : f,
+					),
+				};
+			}
+
 			// Always select the edge when clicking its label
 			useModelStore.getState().setSelectedEdge(id);
 			useUiStore.getState().setRightPanelTab("properties");
@@ -147,7 +161,26 @@ export function DataFlowEdge({
 				document.removeEventListener("pointermove", onPointerMove);
 				document.removeEventListener("pointerup", onPointerUp);
 				if (didDrag.current) {
-					useModelStore.getState().markDirty();
+					// Push pre-drag snapshot to history for undo
+					if (preDragModel) {
+						useHistoryStore.getState().pushSnapshot(preDragModel);
+					}
+					// Write new label offset into model
+					const model = useModelStore.getState().model;
+					if (model) {
+						const edges = useCanvasStore.getState().edges;
+						const edge = edges.find((e) => e.id === id);
+						const edgeData = edge?.data as DfdEdgeData | undefined;
+						const newOffsetX = edgeData?.labelOffsetX ?? 0;
+						const newOffsetY = edgeData?.labelOffsetY ?? 0;
+						const updatedFlows = model.data_flows.map((f) =>
+							f.id === id ? { ...f, label_offset: { x: newOffsetX, y: newOffsetY } } : f,
+						);
+						useModelStore.setState({
+							model: { ...model, data_flows: updatedFlows },
+							isDirty: true,
+						});
+					}
 					useModelStore.getState().setSelectedEdge(id);
 				} else if (wasSelectedBefore.current) {
 					// Pure click on already-selected edge → open editor

@@ -142,3 +142,32 @@ Consolidate layout data from separate `.threatforge/layouts/*.json` sidecar file
 - `setModel()` itself does NOT clear history — only file operations (new/open/close) call `clear()`
 - 112 frontend tests (up from 95), 37 Rust tests — all passing
 - Playwright targets web build on port 3000 (`npm run dev:web`), Chromium only for speed
+
+---
+
+## 2026-03-01 — Fix undo/redo for edge label drags + per-keystroke history pollution
+
+### Problem
+1. Typing in property panel fields (Name, Protocol, etc.) pushes one history snapshot per keystroke — Cmd+Z undoes one character at a time
+2. Edge label drags don't push to history at all — Cmd+Z skips the drag entirely
+3. `syncFromModel` preserves stale canvas label offsets over model data during undo
+
+### Plan
+- [x] Step 1: Add key-based debounced `captureHistory` to `model-store.ts`
+  - [x] `captureHistoryDebounced(model, key)` — skips if same key within 300ms
+  - [x] `captureHistory(model)` (discrete) — always pushes + resets debounce state
+  - [x] `restoreSnapshot` — resets debounce state
+  - [x] Export `resetCaptureDebounce()` for tests
+  - [x] Use debounced for: `updateElement`, `updateDataFlow`, `updateTrustBoundary`, `updateThreat`
+  - [x] Use always-push for: `addThreat`, `addThreats`, `deleteThreat`
+- [x] Step 2: Add edge label drag history capture in `data-flow-edge.tsx`
+  - [x] Import `useHistoryStore`, `useCanvasStore`, `ThreatModel`
+  - [x] In `handlePointerDown`: capture pre-drag model with current label offset baked in
+  - [x] In `onPointerUp`: push pre-drag model to history + write new offset to model store
+- [x] Step 3: Fix `syncFromModel` in `canvas-store.ts`
+  - [x] Only preserve existing canvas label offsets when model has no `label_offset`
+  - [x] When model has `label_offset`, use it (from `flowToEdge`)
+- [x] Step 4: Update `model-store.test.ts`
+  - [x] Import + call `resetCaptureDebounce()` in `beforeEach`
+- [x] Validate: `npx vitest --run` — 114 tests passing
+- [x] Validate: `npm run ci:local` — all checks passed
