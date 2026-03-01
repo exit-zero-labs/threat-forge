@@ -153,6 +153,7 @@ mod tests {
             technologies: vec!["nginx".to_string()],
             stores: None,
             encryption: None,
+            position: None,
         });
 
         let prompt = build_system_prompt(&model);
@@ -178,6 +179,7 @@ mod tests {
             protocol: "HTTPS".to_string(),
             data: vec!["user_input".to_string()],
             authenticated: true,
+            label_offset: None,
         });
 
         let prompt = build_system_prompt(&model);

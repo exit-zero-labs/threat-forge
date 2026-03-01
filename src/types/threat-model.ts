@@ -30,6 +30,16 @@ export interface Metadata {
 	description: string;
 }
 
+export interface Position {
+	x: number;
+	y: number;
+}
+
+export interface Size {
+	width: number;
+	height: number;
+}
+
 export interface Element {
 	id: string;
 	type: ElementType;
@@ -40,6 +50,7 @@ export interface Element {
 	technologies: string[];
 	stores?: string[];
 	encryption?: string;
+	position?: Position;
 }
 
 export interface DataFlow {
@@ -50,12 +61,19 @@ export interface DataFlow {
 	protocol: string;
 	data: string[];
 	authenticated: boolean;
+	label_offset?: Position;
 }
 
 export interface TrustBoundary {
 	id: string;
 	name: string;
 	contains: string[];
+	position?: Position;
+	size?: Size;
+	fill_color?: string;
+	stroke_color?: string;
+	fill_opacity?: number;
+	stroke_opacity?: number;
 }
 
 export interface Mitigation {
@@ -77,7 +95,8 @@ export interface Threat {
 export interface Diagram {
 	id: string;
 	name: string;
-	layout_file: string;
+	layout_file?: string;
+	viewport?: Viewport;
 }
 
 export interface ThreatModel {

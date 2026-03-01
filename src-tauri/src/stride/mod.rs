@@ -301,6 +301,7 @@ mod tests {
                     technologies: vec![],
                     stores: None,
                     encryption: None,
+                    position: None,
                 },
                 Element {
                     id: "db".to_string(),
@@ -312,6 +313,7 @@ mod tests {
                     technologies: vec!["PostgreSQL".to_string()],
                     stores: None,
                     encryption: None,
+                    position: None,
                 },
                 Element {
                     id: "user".to_string(),
@@ -323,6 +325,7 @@ mod tests {
                     technologies: vec![],
                     stores: None,
                     encryption: None,
+                    position: None,
                 },
             ],
             data_flows: vec![DataFlow {
@@ -333,11 +336,18 @@ mod tests {
                 protocol: "PostgreSQL/TLS".to_string(),
                 data: vec!["user_records".to_string()],
                 authenticated: true,
+                label_offset: None,
             }],
             trust_boundaries: vec![TrustBoundary {
                 id: "boundary-1".to_string(),
                 name: "Internal Network".to_string(),
                 contains: vec!["web-app".to_string(), "db".to_string()],
+                position: None,
+                size: None,
+                fill_color: None,
+                stroke_color: None,
+                fill_opacity: None,
+                stroke_opacity: None,
             }],
             threats: vec![],
             diagrams: vec![],
@@ -465,6 +475,7 @@ mod tests {
             protocol: "HTTPS".to_string(),
             data: vec!["response".to_string()],
             authenticated: false,
+            label_offset: None,
         });
 
         let threats = analyze(&model);

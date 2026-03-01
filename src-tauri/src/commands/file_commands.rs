@@ -10,7 +10,9 @@ pub fn create_new_model(title: String, author: String) -> Result<ThreatModel, St
 #[tauri::command]
 pub fn open_threat_model(path: String) -> Result<ThreatModel, String> {
     let path = PathBuf::from(path);
-    file_io::read_threat_model(&path).map_err(|e| e.to_string())
+    let mut model = file_io::read_threat_model(&path).map_err(|e| e.to_string())?;
+    file_io::merge_layout_into_model(&mut model, &path);
+    Ok(model)
 }
 
 #[tauri::command]
