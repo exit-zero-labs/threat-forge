@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
@@ -78,6 +79,8 @@ export function useKeyboardShortcuts() {
 						// Redo (Cmd+Shift+Z)
 						const snapshot = useHistoryStore.getState().redo(currentModel);
 						if (snapshot) {
+							const layout = buildLayoutFromModel(snapshot);
+							if (layout) useCanvasStore.getState().setPendingLayout(layout);
 							useModelStore.getState().restoreSnapshot(snapshot);
 							useCanvasStore.getState().syncFromModel();
 						}
@@ -85,6 +88,8 @@ export function useKeyboardShortcuts() {
 						// Undo (Cmd+Z)
 						const snapshot = useHistoryStore.getState().undo(currentModel);
 						if (snapshot) {
+							const layout = buildLayoutFromModel(snapshot);
+							if (layout) useCanvasStore.getState().setPendingLayout(layout);
 							useModelStore.getState().restoreSnapshot(snapshot);
 							useCanvasStore.getState().syncFromModel();
 						}
@@ -98,6 +103,8 @@ export function useKeyboardShortcuts() {
 					if (!currentModel) break;
 					const snapshot = useHistoryStore.getState().redo(currentModel);
 					if (snapshot) {
+						const layout = buildLayoutFromModel(snapshot);
+						if (layout) useCanvasStore.getState().setPendingLayout(layout);
 						useModelStore.getState().restoreSnapshot(snapshot);
 						useCanvasStore.getState().syncFromModel();
 					}

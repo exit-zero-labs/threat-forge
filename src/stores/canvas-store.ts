@@ -7,6 +7,7 @@ import type {
 	DiagramLayout,
 	Element,
 	ElementType,
+	ThreatModel,
 	TrustBoundary,
 } from "@/types/threat-model";
 import { useHistoryStore } from "./history-store";
@@ -85,6 +86,33 @@ interface CanvasState {
 
 	// Sync from model store
 	syncFromModel: () => void;
+}
+
+/** Model snapshot captured at the start of a drag (with pre-drag canvas positions baked in). */
+let preDragSnapshot: ThreatModel | null = null;
+
+/** Write current canvas node positions into the model's inline position fields. */
+function writePositionsToModel(model: ThreatModel, nodes: DfdNode[]): ThreatModel {
+	const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+	return {
+		...model,
+		elements: model.elements.map((el) => {
+			const node = nodeMap.get(el.id);
+			if (!node) return el;
+			return { ...el, position: { x: node.position.x, y: node.position.y } };
+		}),
+		trust_boundaries: model.trust_boundaries.map((b) => {
+			const node = nodeMap.get(b.id);
+			if (!node) return b;
+			const w = node.width ?? (node.style as Record<string, number> | undefined)?.width ?? 400;
+			const h = node.height ?? (node.style as Record<string, number> | undefined)?.height ?? 300;
+			return {
+				...b,
+				position: { x: node.position.x, y: node.position.y },
+				size: { width: w, height: h },
+			};
+		}),
+	};
 }
 
 let elementCounter = 0;
@@ -199,16 +227,28 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	pendingLayout: null,
 
 	onNodesChange: (changes) => {
-		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
-
-		// Propagate position changes to keep model aware of dirty state
-		const hasPositionChange = changes.some((c) => c.type === "position" && c.dragging === false);
-		if (hasPositionChange) {
+		// Capture pre-drag model snapshot BEFORE applying changes (nodes still have old positions)
+		const hasDragStart = changes.some((c) => c.type === "position" && c.dragging === true);
+		if (hasDragStart && !preDragSnapshot) {
 			const model = useModelStore.getState().model;
 			if (model) {
-				useHistoryStore.getState().pushSnapshot(model);
+				preDragSnapshot = writePositionsToModel(model, get().nodes);
 			}
-			useModelStore.getState().markDirty();
+		}
+
+		// Apply node changes (positions update here)
+		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
+
+		// Handle drag end: push pre-drag snapshot to history, write new positions to model
+		const hasDragEnd = changes.some((c) => c.type === "position" && c.dragging === false);
+		if (hasDragEnd && preDragSnapshot) {
+			useHistoryStore.getState().pushSnapshot(preDragSnapshot);
+			preDragSnapshot = null;
+			const model = useModelStore.getState().model;
+			if (model) {
+				const updated = writePositionsToModel(model, get().nodes);
+				useModelStore.setState({ model: updated, isDirty: true });
+			}
 		}
 
 		// Handle selection changes
