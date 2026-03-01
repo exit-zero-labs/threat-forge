@@ -9,6 +9,7 @@ import type {
 	ElementType,
 	TrustBoundary,
 } from "@/types/threat-model";
+import { useHistoryStore } from "./history-store";
 import { useModelStore } from "./model-store";
 
 /** ReactFlow node data payload for DFD elements.
@@ -203,6 +204,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Propagate position changes to keep model aware of dirty state
 		const hasPositionChange = changes.some((c) => c.type === "position" && c.dragging === false);
 		if (hasPositionChange) {
+			const model = useModelStore.getState().model;
+			if (model) {
+				useHistoryStore.getState().pushSnapshot(model);
+			}
 			useModelStore.getState().markDirty();
 		}
 
@@ -237,6 +242,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		if (removals.length > 0) {
 			const model = useModelStore.getState().model;
 			if (model) {
+				useHistoryStore.getState().pushSnapshot(model);
 				const removedIds = new Set(removals.map((r) => r.id));
 				const updatedFlows = model.data_flows.filter((f) => !removedIds.has(f.id));
 				useModelStore
@@ -295,6 +301,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			// If dropped inside boundary, add to its contains array
 			let updatedBoundaries = model.trust_boundaries;
 			if (boundaryNode) {
@@ -355,6 +362,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			useModelStore
 				.getState()
 				.setModel(
@@ -382,6 +390,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			useModelStore.getState().setModel(
 				{
 					...model,
@@ -419,6 +428,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			useModelStore.getState().setModel(
 				{
 					...model,
@@ -459,6 +469,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const newNode = elementToNode(newElement, { x: offsetX, y: offsetY });
 		set({ nodes: [...get().nodes, newNode] });
 
+		useHistoryStore.getState().pushSnapshot(model);
 		useModelStore
 			.getState()
 			.setModel(
@@ -475,6 +486,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		const flow = model.data_flows.find((f) => f.id === edgeId);
 		if (!flow) return;
+
+		useHistoryStore.getState().pushSnapshot(model);
 
 		// Update model: swap from/to (use direct set to preserve selection state)
 		const updatedFlows = model.data_flows.map((f) =>

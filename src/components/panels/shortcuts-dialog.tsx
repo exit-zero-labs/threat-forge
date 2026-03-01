@@ -6,9 +6,10 @@ export function ShortcutsDialog() {
 	const closeShortcutsDialog = useSettingsStore((s) => s.closeShortcutsDialog);
 	const isMac = navigator.platform.includes("Mac");
 
-	const categories = ["file", "view", "canvas"] as const;
+	const categories = ["file", "edit", "view", "canvas"] as const;
 	const categoryLabels = {
 		file: "File",
+		edit: "Edit",
 		view: "View",
 		canvas: "Canvas",
 	} as const;
@@ -28,6 +29,7 @@ export function ShortcutsDialog() {
 			}}
 		>
 			<div
+				data-testid="shortcuts-dialog"
 				className="w-full max-w-sm rounded-lg border border-border bg-background p-4 shadow-lg"
 				onKeyDown={handleKeyDown}
 			>

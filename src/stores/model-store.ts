@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getStrideAdapter } from "@/lib/adapters/get-stride-adapter";
 import type { DataFlow, Element, Threat, ThreatModel, TrustBoundary } from "@/types/threat-model";
+import { useHistoryStore } from "./history-store";
 
 interface ModelState {
 	/** The currently loaded threat model, or null if no model is open */
@@ -45,8 +46,17 @@ interface ModelState {
 	updateThreat: (id: string, updates: Partial<Threat>) => void;
 	deleteThreat: (id: string) => void;
 
+	// Undo/redo
+	restoreSnapshot: (snapshot: ThreatModel) => void;
+
 	// STRIDE analysis
 	analyzeThreats: () => Promise<void>;
+}
+
+/** Capture a history snapshot of the current model before a mutation. */
+function captureHistory(model: ThreatModel | null): void {
+	if (!model) return;
+	useHistoryStore.getState().pushSnapshot(model);
 }
 
 export const useModelStore = create<ModelState>((set, get) => ({
@@ -107,6 +117,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		const updatedElements = model.elements.map((e) => (e.id === id ? { ...e, ...updates } : e));
 		set({
 			model: { ...model, elements: updatedElements },
@@ -118,6 +129,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		const updatedFlows = model.data_flows.map((f) => (f.id === id ? { ...f, ...updates } : f));
 		set({
 			model: { ...model, data_flows: updatedFlows },
@@ -129,6 +141,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		const updatedBoundaries = model.trust_boundaries.map((b) =>
 			b.id === id ? { ...b, ...updates } : b,
 		);
@@ -142,6 +155,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		set({
 			model: { ...model, threats: [...model.threats, threat] },
 			isDirty: true,
@@ -153,6 +167,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		if (!model) return;
 		if (threats.length === 0) return;
 
+		captureHistory(model);
 		set({
 			model: { ...model, threats: [...model.threats, ...threats] },
 			isDirty: true,
@@ -163,6 +178,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		const updatedThreats = model.threats.map((t) => (t.id === id ? { ...t, ...updates } : t));
 		set({
 			model: { ...model, threats: updatedThreats },
@@ -174,10 +190,18 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model, selectedThreatId } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		set({
 			model: { ...model, threats: model.threats.filter((t) => t.id !== id) },
 			isDirty: true,
 			selectedThreatId: selectedThreatId === id ? null : selectedThreatId,
+		});
+	},
+
+	restoreSnapshot: (snapshot) => {
+		set({
+			model: snapshot,
+			isDirty: true,
 		});
 	},
 

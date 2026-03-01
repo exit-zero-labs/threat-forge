@@ -125,6 +125,20 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 		category: "view",
 	},
 	{
+		id: "undo",
+		label: "Undo",
+		macKeys: "\u2318Z",
+		winKeys: "Ctrl+Z",
+		category: "edit",
+	},
+	{
+		id: "redo",
+		label: "Redo",
+		macKeys: "\u2318\u21e7Z",
+		winKeys: "Ctrl+Shift+Z",
+		category: "edit",
+	},
+	{
 		id: "escape",
 		label: "Deselect / Close Dialog",
 		macKeys: "Esc",

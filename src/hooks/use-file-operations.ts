@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { getFileAdapter } from "@/lib/adapters/get-file-adapter";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 
@@ -117,6 +118,7 @@ export function useFileOperations() {
 		// No pending layout for new models — use default positions
 		useCanvasStore.getState().setPendingLayout(null);
 		setModel(created, null);
+		useHistoryStore.getState().clear();
 		// syncFromModel is called by the useEffect in DfdCanvas when model changes
 	}, [isDirty, setModel]);
 
@@ -146,6 +148,7 @@ export function useFileOperations() {
 		}
 
 		setModel(loaded, path);
+		useHistoryStore.getState().clear();
 		// syncFromModel is called by the useEffect in DfdCanvas when model changes
 	}, [isDirty, setModel]);
 
@@ -186,6 +189,7 @@ export function useFileOperations() {
 			if (!discard) return;
 		}
 		clearModel();
+		useHistoryStore.getState().clear();
 		// DfdCanvas unmounts when model is null, so useEffect won't fire — clear canvas directly
 		useCanvasStore.getState().syncFromModel();
 	}, [isDirty, clearModel]);

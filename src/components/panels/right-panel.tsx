@@ -11,13 +11,21 @@ export function RightPanel() {
 	const model = useModelStore((s) => s.model);
 
 	return (
-		<div className="flex h-full flex-col">
+		<div data-testid="right-panel" className="flex h-full flex-col">
 			{/* Tab bar */}
 			<div className="flex border-b border-border">
-				<TabButton active={tab === "properties"} onClick={() => setTab("properties")}>
+				<TabButton
+					testId="tab-properties"
+					active={tab === "properties"}
+					onClick={() => setTab("properties")}
+				>
 					Properties
 				</TabButton>
-				<TabButton active={tab === "threats"} onClick={() => setTab("threats")}>
+				<TabButton
+					testId="tab-threats"
+					active={tab === "threats"}
+					onClick={() => setTab("threats")}
+				>
 					Threats
 					{model && model.threats.length > 0 && (
 						<span className="ml-1.5 rounded-full bg-secondary px-1.5 text-xs">
@@ -25,7 +33,7 @@ export function RightPanel() {
 						</span>
 					)}
 				</TabButton>
-				<TabButton active={tab === "ai"} onClick={() => setTab("ai")}>
+				<TabButton testId="tab-ai" active={tab === "ai"} onClick={() => setTab("ai")}>
 					AI
 				</TabButton>
 			</div>
@@ -41,10 +49,12 @@ export function RightPanel() {
 }
 
 function TabButton({
+	testId,
 	active,
 	onClick,
 	children,
 }: {
+	testId?: string;
 	active: boolean;
 	onClick: () => void;
 	children: React.ReactNode;
@@ -52,6 +62,7 @@ function TabButton({
 	return (
 		<button
 			type="button"
+			data-testid={testId}
 			onClick={onClick}
 			className={cn(
 				"flex-1 px-3 py-2 text-xs font-medium transition-colors",
