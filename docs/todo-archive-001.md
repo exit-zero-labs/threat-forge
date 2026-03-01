@@ -112,11 +112,13 @@ Branch: `feat/reactflow-canvas`
 ### Plan
 
 **Architecture: Store ↔ Canvas sync**
+
 - [x] Create `canvas-store.ts` — manages ReactFlow nodes/edges, viewport, derived from model-store
 - [x] Conversion functions: model elements → ReactFlow nodes, data flows → ReactFlow edges
 - [x] Bidirectional sync: canvas changes propagate to model-store, model changes update canvas
 
 **Custom DFD Node Types**
+
 - [x] `ProcessNode` — rounded rectangle with name + icon (DFD process)
 - [x] `DataStoreNode` — parallel-line style rectangle (DFD data store)
 - [x] `ExternalEntityNode` — squared rectangle (DFD external entity)
@@ -124,16 +126,19 @@ Branch: `feat/reactflow-canvas`
 - [x] Register custom node types with ReactFlow
 
 **Custom Edge Type**
+
 - [x] `DataFlowEdge` — labeled edge with protocol and data info
 - [x] Edge labels showing protocol (e.g., "HTTPS/TLS")
 - [x] Animated edge style for authenticated flows
 
 **Trust Boundaries**
+
 - [x] Trust boundary rendered as ReactFlow group node
 - [x] Visual: dashed border, label, contains child elements
 - [x] Update palette to include trust boundary creation
 
 **Canvas Integration**
+
 - [x] Replace canvas placeholder with ReactFlow canvas (`DfdCanvas` component)
 - [x] `ReactFlowProvider` wrapper in app layout
 - [x] Canvas background (dots pattern)
@@ -141,25 +146,30 @@ Branch: `feat/reactflow-canvas`
 - [x] Canvas controls (zoom in/out/fit)
 
 **Palette → Canvas drag-drop**
+
 - [x] Handle drop events on canvas to create new elements
 - [x] Auto-generate element IDs from type + counter
 - [x] Place element at drop position
 - [x] Mark model dirty after any canvas change
 
 **Selection + Properties sync**
+
 - [x] Node click → update selectedElementId in model-store
 - [x] Right panel properties tab shows selected element (wired via existing right-panel component)
 - [x] Click canvas background → deselect
 
 **Edge Creation**
+
 - [x] Connect two nodes by dragging from handle to handle
 - [x] Create DataFlow in model-store on connection
 - [x] Auto-generate flow IDs
 
 **Testing**
+
 - [x] Canvas store tests: 8 tests (sync, add element, add flow, add boundary, parent assignment, dirty tracking, ID counter reset)
 
 **Validation**
+
 - [x] Validate: `npx biome check .` passes — 31 files, 0 errors
 - [x] Validate: `npx vitest --run` passes — 19 tests in 3 files
 - [x] Validate: `npx tsc --noEmit` passes — no type errors
@@ -190,6 +200,7 @@ Branch: `feat/stride-engine`
 ### Plan
 
 **Rust STRIDE Engine**
+
 - [x] Implement STRIDE rule engine in `src-tauri/src/stride/mod.rs`
   - [x] Define `ThreatRule` struct with hardcoded rules
   - [x] Rules per element type: Process (S,T,R,ID,DoS,EoP), DataStore (T,ID,DoS), ExternalEntity (S,R)
@@ -199,11 +210,13 @@ Branch: `feat/stride-engine`
   - [x] Unit tests: 9 tests (per-element-type counts, total count, dedup, titles, cross-boundary boost)
 
 **Tauri Command**
+
 - [x] Create `src-tauri/src/commands/stride_commands.rs` with `analyze_stride` command
 - [x] Register command in `lib.rs`
 - [x] Wire up in `commands/mod.rs`
 
 **Frontend: Model Store + Threat CRUD**
+
 - [x] Add `addThreat`, `addThreats`, `updateThreat`, `deleteThreat` actions to model-store
 - [x] Add `updateElement` action for property editing
 - [x] Add `analyzeThreats` action that calls Tauri IPC `analyze_stride`
@@ -211,6 +224,7 @@ Branch: `feat/stride-engine`
 - [x] Unit tests: 7 new tests (add, add-bulk, add-zero, update, delete, delete-clears-selection, updateElement)
 
 **Frontend: Threat Analysis Panel**
+
 - [x] Rewrite ThreatsTab: clickable threat cards, "Analyze" button, empty state with CTA
 - [x] Threat detail editing: inline edit for title, severity, category, description, mitigation
 - [x] Threat-to-element linking: click threat → navigate to linked element in properties
@@ -218,11 +232,13 @@ Branch: `feat/stride-engine`
 - [x] Mitigation tracking: status select + description textarea
 
 **Frontend: Element Properties Editing**
+
 - [x] Rewrite PropertiesTab: editable fields for name, trust zone, description, technologies
 - [x] Changes propagate to model-store (`updateElement`) and canvas-store (node label + trust zone sync)
 - [x] Related threats section: shows threats linked to the selected element with clickable links
 
 **Validation**
+
 - [x] Validate: `npx biome check .` passes — 33 files, 0 errors
 - [x] Validate: `npx vitest --run` passes — 26 tests in 3 files
 - [x] Validate: `npx tsc --noEmit` passes — no type errors
@@ -251,10 +267,12 @@ Branch: `feat/integration-polish`
 ### Plan
 
 **Dependencies**
+
 - [x] Install `@tauri-apps/plugin-dialog` (npm) + `tauri-plugin-dialog` (Cargo)
 - [x] Add `dialog:default` permission to capabilities
 
 **File Operations Hook**
+
 - [x] Create `src/hooks/use-file-operations.ts` with `newModel`, `openModel`, `saveModel`, `saveModelAs`, `closeModel`
 - [x] Wire Tauri dialog for open/save file pickers (`.threatforge.yaml` filter)
 - [x] Update `modified` timestamp before save
@@ -262,19 +280,23 @@ Branch: `feat/integration-polish`
 - [x] Sync canvas store after model load (deferred via setTimeout)
 
 **Top Menu Bar**
+
 - [x] Add file operation buttons: New, Open, Save
 - [x] Show keyboard shortcut hints in tooltips (platform-aware: ⌘ on Mac, Ctrl+ on Windows/Linux)
 
 **Welcome Screen**
+
 - [x] Add "Open Existing" button to empty canvas
 - [x] Wire to file open dialog
 
 **Keyboard Shortcuts**
+
 - [x] Create `src/hooks/use-keyboard-shortcuts.ts`
 - [x] Cmd/Ctrl+N → new model, Cmd/Ctrl+O → open, Cmd/Ctrl+S → save
 - [x] Register in app layout
 
 **Validation**
+
 - [x] Validate: `npx biome check .` passes — 35 files, 0 errors
 - [x] Validate: `npx vitest --run` passes — 26 tests in 3 files
 - [x] Validate: `npx tsc --noEmit` passes — no type errors
@@ -327,6 +349,7 @@ Branch: `feat/ai-chat-pane`
 ### Plan
 
 **Phase A: Rust Foundation + Keychain**
+
 - [x] Add deps to Cargo.toml: `reqwest`, `keyring`, `tokio`, `tokio-stream`, `futures`
 - [x] Create `src-tauri/src/ai/mod.rs` — module declarations
 - [x] Create `src-tauri/src/ai/types.rs` — `AiProvider` enum, `ChatMessage`, `ChatRole`
@@ -337,28 +360,33 @@ Branch: `feat/ai-chat-pane`
 - [x] Update `src-tauri/src/commands/mod.rs` — re-export ai commands
 
 **Phase B: LLM Providers + Streaming**
+
 - [x] Create `src-tauri/src/ai/providers.rs` — Anthropic + OpenAI streaming HTTP clients
 - [x] Create `src-tauri/src/ai/prompt.rs` — system prompt construction from ThreatModel
 - [x] Add `send_chat_message` command with SSE parsing + Tauri event emission
 - [x] Unit tests for prompt construction and SSE parsing (7 new Rust tests)
 
 **Phase C: Frontend Store**
+
 - [x] Create `src/stores/chat-store.ts` — Zustand store for chat state
 - [x] Create `src/lib/ai-utils.ts` — parse AI responses, extract threats
 - [x] Create `src/lib/ai-utils.test.ts` — 11 tests for threat extraction
 - [x] Update `src/stores/ui-store.ts` — add "ai" tab type (exported `RightPanelTab`)
 
 **Phase D: Frontend UI**
+
 - [x] Create `src/components/panels/ai-chat-tab.tsx` — chat tab component
 - [x] Create `src/components/panels/ai-settings-dialog.tsx` — API key config dialog
 - [x] Update `src/components/panels/right-panel.tsx` — add AI tab
 
 **Phase E: Integration + Polish**
+
 - [x] Wire "Accept Threat" to `model-store.addThreat()` (in ai-chat-tab.tsx)
 - [x] Add `Cmd/Ctrl+L` keyboard shortcut to focus AI chat input
 - [x] Update CSP for external LLM API calls (`connect-src` for api.anthropic.com + api.openai.com)
 
 **Validation**
+
 - [x] `cargo test` — 33 tests pass (11 new AI tests)
 - [x] `cargo clippy` — clean (1 pre-existing dead_code warning)
 - [x] `npx vitest --run` — 37 tests pass in 4 files (11 new ai-utils tests)
@@ -391,6 +419,7 @@ Branch: `chore/ci-release-workflows`
 ### Plan
 
 **Phase A: CI Workflow (PR gating)**
+
 - [ ] Create `.github/workflows/ci.yml`
   - [ ] lint job (ubuntu-only): biome check, tsc --noEmit, cargo clippy, cargo fmt --check
   - [ ] test job (ubuntu-only): vitest --run, cargo test
@@ -401,6 +430,7 @@ Branch: `chore/ci-release-workflows`
   - [ ] Cargo + npm caching
 
 **Phase B: Release Workflow (tag-triggered)**
+
 - [ ] Create `.github/workflows/release.yml`
   - [ ] Trigger on `v*` tags
   - [ ] Matrix build via tauri-apps/tauri-action
@@ -409,10 +439,12 @@ Branch: `chore/ci-release-workflows`
   - [ ] permissions: contents: write
 
 **Phase C: Build Optimizations**
+
 - [ ] Create `.node-version` (pin Node 20)
 - [ ] Add `[profile.release]` to `src-tauri/Cargo.toml` (strip, lto, codegen-units, panic, opt-level)
 
 **Validation**
+
 - [x] `cargo test` — 33 Rust tests pass
 - [x] `npx vitest --run` — 37 frontend tests pass (4 files)
 - [x] `npx biome check .` — 40 files, 0 errors
@@ -421,6 +453,7 @@ Branch: `chore/ci-release-workflows`
 - [x] `cargo fmt --check` — clean
 
 ### Notes
+
 - Added `#[allow(dead_code)]` to `generate_element_id` in `threat_model.rs` — utility function for future use, already tested, but CI uses `-D warnings` which treats dead_code as an error
 - GitHub Actions SHAs pinned to: checkout v4.3.1, setup-node v4.4.0, rust-toolchain master 2026-02-13, cache v4.2.3, upload-artifact v4.6.2, tauri-action action-v0.6.1
 - Linux system deps: libwebkit2gtk-4.1-dev, libappindicator3-dev, librsvg2-dev, patchelf, libdbus-1-dev, libssl-dev
@@ -436,6 +469,7 @@ Branch: `chore/ci-release-workflows` (continuing)
 ### Plan
 
 **New files**
+
 - [x] Create `Dockerfile.ci` — Ubuntu 22.04 + Node 20 + Rust stable + Tauri deps
 - [x] Create `compose.yml` — Docker Compose with cargo cache volumes
 - [x] Create `.dockerignore` — exclude node_modules, target, .git, etc.
@@ -444,6 +478,7 @@ Branch: `chore/ci-release-workflows` (continuing)
 - [x] Create `scripts/setup-hooks.sh` — auto-install hooks on `npm install`
 
 **Modified files**
+
 - [x] Update `package.json` — add `ci:local`, `ci:docker`, `ci:docker:build`, `prepare` scripts
 - [x] Update `.github/workflows/ci.yml` — change trigger to `workflow_dispatch` only
 - [x] Update `.claude/rules/workflow.md` — add local CI requirements
@@ -451,6 +486,7 @@ Branch: `chore/ci-release-workflows` (continuing)
 - [x] Update `docs/todo.md` — this plan
 
 **Validation**
+
 - [x] `npm run ci:local` runs lint + test and exits 0 (37 frontend + 33 Rust tests)
 - [ ] `npm run ci:docker` builds Docker image and runs lint + test in container (needs manual)
 - [x] Pre-push hook is installed and runnable
@@ -474,12 +510,14 @@ Branch: `feat/browser-support`
 ### Plan
 
 **Step 1: Foundation**
+
 - [x] Install `js-yaml` + `@types/js-yaml`
 - [x] Create `src/lib/platform.ts` — `isTauri()` detection via `window.__TAURI_INTERNALS__`
 - [x] Create 4 adapter interfaces: `file-adapter.ts`, `stride-adapter.ts`, `chat-adapter.ts`, `keychain-adapter.ts`
 - [x] Create 4 factory files: `get-file-adapter.ts`, `get-stride-adapter.ts`, `get-chat-adapter.ts`, `get-keychain-adapter.ts`
 
 **Step 2: STRIDE Adapter**
+
 - [x] Port 14 STRIDE rules from Rust to TypeScript (`src/lib/stride-engine.ts`)
 - [x] Port all 8 Rust tests + add 1 more (`src/lib/stride-engine.test.ts`) — 9 tests pass
 - [x] Create `browser-stride-adapter.ts` (delegates to TS engine)
@@ -487,17 +525,20 @@ Branch: `feat/browser-support`
 - [x] Refactor `model-store.ts` — remove `invoke` import, use `getStrideAdapter()`
 
 **Step 3: Keychain Adapter**
+
 - [x] Create `browser-keychain-adapter.ts` (localStorage with `tf-api-key-{provider}` keys)
 - [x] Create `tauri-keychain-adapter.ts` (wraps `invoke()` for OS keychain)
 - [x] Refactor `ai-settings-dialog.tsx` — use `getKeychainAdapter()`, conditional security note text
 - [x] Refactor `chat-store.ts` — use `getKeychainAdapter()` for `checkApiKey`
 
 **Step 4: File Ops Adapter**
+
 - [x] Create `browser-file-adapter.ts` (File API + js-yaml + Blob download)
 - [x] Create `tauri-file-adapter.ts` (wraps `invoke()` + native dialogs)
 - [x] Refactor `use-file-operations.ts` — remove `@tauri-apps/api` imports, use `getFileAdapter()`
 
 **Step 5: Chat Adapter**
+
 - [x] Port `build_system_prompt()` from Rust (`src/lib/ai-prompt.ts`)
 - [x] Write 4 tests for prompt builder (`src/lib/ai-prompt.test.ts`)
 - [x] Create `browser-chat-adapter.ts` (direct `fetch()` with SSE streaming to Anthropic/OpenAI)
@@ -505,11 +546,13 @@ Branch: `feat/browser-support`
 - [x] Refactor `chat-store.ts` — use `getChatAdapter()` with callback pattern
 
 **Step 6: Build Config**
+
 - [x] Update `vite.config.ts` — externalize `@tauri-apps/*` when not in Tauri build
 - [x] Add `dev:web` and `build:web` scripts to `package.json`
 - [x] Create `vercel.json` (SPA rewrite, output dir, build command)
 
 **Step 7: Validation**
+
 - [x] `npx vitest --run` — 50 tests pass in 6 files (13 new: 9 STRIDE + 4 AI prompt)
 - [x] `npx tsc --noEmit` — no type errors
 - [x] `npx biome check .` — 62 files, 0 issues
