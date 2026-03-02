@@ -201,15 +201,15 @@ describe("canvas-store", () => {
 		expect(newElement?.id).toBe("comp-2");
 	});
 
-	it("prevents self-loop when adding data flow", () => {
+	it("allows self-loop when adding data flow", () => {
 		useModelStore.getState().setModel(createTestModel(), null);
 		useCanvasStore.getState().syncFromModel();
 
 		const result = useCanvasStore.getState().addDataFlow("process-1", "process-1");
-		expect(result).toBeNull();
+		expect(result).not.toBeNull();
 
-		// Edge count should remain the same
-		expect(useCanvasStore.getState().edges).toHaveLength(1);
+		// Edge count should increase by one (self-loop added)
+		expect(useCanvasStore.getState().edges).toHaveLength(2);
 	});
 
 	it("allows multiple edges between same pair", () => {

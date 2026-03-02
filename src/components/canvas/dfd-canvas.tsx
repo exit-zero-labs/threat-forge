@@ -10,11 +10,12 @@ import {
 	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { EyeOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isSelfLoop } from "@/lib/canvas-utils";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { buildEdgeMenuItems, buildNodeMenuItems, CanvasContextMenu } from "./canvas-context-menu";
 import { DataFlowEdge } from "./edges/data-flow-edge";
@@ -56,6 +57,7 @@ export function DfdCanvas() {
 	const {
 		screenToFlowPosition,
 		setViewport: setReactFlowViewport,
+		getViewport: getReactFlowViewport,
 		fitView: fitViewFn,
 		zoomIn: zoomInFn,
 		zoomOut: zoomOutFn,
@@ -63,14 +65,24 @@ export function DfdCanvas() {
 
 	const canvasLocked = useUiStore((s) => s.canvasLocked);
 
+	// panBy is not exposed by useReactFlow in this version — implement via viewport manipulation
+	const panByFn = useCallback(
+		(delta: { x: number; y: number }) => {
+			const vp = getReactFlowViewport();
+			setReactFlowViewport({ x: vp.x + delta.x, y: vp.y + delta.y, zoom: vp.zoom });
+		},
+		[getReactFlowViewport, setReactFlowViewport],
+	);
+
 	// Expose ReactFlow actions to the canvas store so keyboard shortcuts can use them
 	useEffect(() => {
 		useCanvasStore.getState().setReactFlowActions({
 			fitView: () => fitViewFn(),
 			zoomIn: () => zoomInFn(),
 			zoomOut: () => zoomOutFn(),
+			panBy: (delta) => panByFn(delta),
 		});
-	}, [fitViewFn, zoomInFn, zoomOutFn]);
+	}, [fitViewFn, zoomInFn, zoomOutFn, panByFn]);
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{
@@ -132,10 +144,9 @@ export function DfdCanvas() {
 		connectingNodeId.current = null;
 	}, []);
 
-	/** Validates whether a connection is allowed (no self-loops) */
+	/** Validates whether a connection is allowed */
 	const isValidConnection = useCallback((connection: Connection | DfdEdge) => {
 		if (!connection.source || !connection.target) return false;
-		if (isSelfLoop(connection.source, connection.target)) return false;
 		return true;
 	}, []);
 
@@ -286,12 +297,15 @@ export function DfdCanvas() {
 		return [];
 	}, [contextMenu, duplicateElement, reverseEdge]);
 
-	// Subscribe to themePresetId so canvas re-renders when theme changes,
+	const minimapVisible = useSettingsStore((s) => s.settings.minimapVisible);
+	const [minimapHovered, setMinimapHovered] = useState(false);
+
+	// Subscribe to effective preset so canvas re-renders when theme changes,
 	// picking up the new CSS variable values for ReactFlow sub-components.
-	const themePresetId = useUiStore((s) => s.themePresetId);
+	const effectivePresetId = useUiStore((s) => s.getEffectivePresetId());
 
 	// Read resolved CSS variable values so ReactFlow prop-based colors update on theme change
-	// biome-ignore lint/correctness/useExhaustiveDependencies: themePresetId triggers recalculation when theme changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: effectivePresetId triggers recalculation when theme changes
 	const canvasColors = useMemo(() => {
 		const style = getComputedStyle(document.documentElement);
 		return {
@@ -301,7 +315,7 @@ export function DfdCanvas() {
 			minimapMaskColor:
 				style.getPropertyValue("--color-background").trim() || "oklch(0.1 0 0 / 0.7)",
 		};
-	}, [themePresetId]);
+	}, [effectivePresetId]);
 
 	return (
 		<div className="h-full w-full" onKeyDown={onKeyDown}>
@@ -345,11 +359,37 @@ export function DfdCanvas() {
 					color={canvasColors.dotColor}
 				/>
 				<Controls className="!bg-card !border-border !shadow-md [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-accent" />
-				<MiniMap
-					className="!bg-card !border-border"
-					nodeColor={canvasColors.minimapNodeColor}
-					maskColor={canvasColors.minimapMaskColor}
-				/>
+				{minimapVisible && (
+					<MiniMap
+						className="!bg-card !border !border-border !rounded-md !shadow-sm"
+						nodeColor={canvasColors.minimapNodeColor}
+						maskColor={canvasColors.minimapMaskColor}
+						style={{ width: 160, height: 120 }}
+					/>
+				)}
+				{/* Minimap hide button — overlaid in bottom-right corner */}
+				{minimapVisible && (
+					<div
+						className="absolute bottom-1 right-1 z-10"
+						style={{ pointerEvents: "none" }}
+						onMouseEnter={() => setMinimapHovered(true)}
+						onMouseLeave={() => setMinimapHovered(false)}
+					>
+						<div style={{ width: 160, height: 120, position: "relative", pointerEvents: "auto" }}>
+							{minimapHovered && (
+								<button
+									type="button"
+									className="absolute right-1 top-1 z-20 rounded bg-card/80 p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+									style={{ pointerEvents: "auto" }}
+									title="Hide minimap"
+									onClick={() => useSettingsStore.getState().updateSetting("minimapVisible", false)}
+								>
+									<EyeOff className="h-3.5 w-3.5" />
+								</button>
+							)}
+						</div>
+					</div>
+				)}
 			</ReactFlow>
 			{contextMenu && contextMenuItems.length > 0 && (
 				<CanvasContextMenu

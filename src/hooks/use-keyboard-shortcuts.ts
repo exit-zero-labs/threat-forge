@@ -66,13 +66,16 @@ export function useKeyboardShortcuts() {
 					case "ArrowDown":
 					case "ArrowLeft":
 					case "ArrowRight": {
+						e.preventDefault();
 						const gridSize = 16;
 						const dx = e.key === "ArrowRight" ? gridSize : e.key === "ArrowLeft" ? -gridSize : 0;
 						const dy = e.key === "ArrowDown" ? gridSize : e.key === "ArrowUp" ? -gridSize : 0;
 						const hasSelection = useCanvasStore.getState().nodes.some((n) => n.selected);
 						if (hasSelection) {
-							e.preventDefault();
 							useCanvasStore.getState().nudgeSelected(dx, dy);
+						} else {
+							// Pan canvas when nothing is selected
+							useCanvasStore.getState().rfPanBy?.({ x: -dx, y: -dy });
 						}
 						return;
 					}

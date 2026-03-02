@@ -3,7 +3,7 @@ use crate::models::{DiagramLayout, Position, Size, ThreatModel, Viewport};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Read and parse a `.threatforge.yaml` file
+/// Read and parse a `.thf` file
 pub fn read_threat_model(path: &Path) -> Result<ThreatModel, ThreatForgeError> {
     let contents = std::fs::read_to_string(path).map_err(|e| ThreatForgeError::FileRead {
         path: path.display().to_string(),
@@ -278,7 +278,7 @@ elements:
     #[test]
     fn test_merge_layout_into_model() {
         let dir = TempDir::new().unwrap();
-        let model_path = dir.path().join("test.threatforge.yaml");
+        let model_path = dir.path().join("test.thf");
         let layout_dir = dir.path().join(".threatforge/layouts");
         std::fs::create_dir_all(&layout_dir).unwrap();
 
@@ -362,7 +362,7 @@ diagrams:
     #[test]
     fn test_merge_layout_skips_when_no_layout_file() {
         let dir = TempDir::new().unwrap();
-        let model_path = dir.path().join("test.threatforge.yaml");
+        let model_path = dir.path().join("test.thf");
 
         // Write a model without layout_file (new format)
         let yaml = r#"

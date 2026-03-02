@@ -37,6 +37,9 @@ export interface Metadata {
 	created: string; // ISO date string (YYYY-MM-DD)
 	modified: string;
 	description: string;
+	created_by?: string;
+	modified_by?: string;
+	last_edit_timestamp?: number;
 	settings?: FileSettings;
 }
 
@@ -83,6 +86,8 @@ export interface DataFlow {
 	data: string[];
 	authenticated: boolean;
 	label_offset?: Position;
+	source_handle?: string;
+	target_handle?: string;
 }
 
 export interface TrustBoundary {

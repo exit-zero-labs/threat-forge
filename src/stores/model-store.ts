@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import { getStrideAdapter } from "@/lib/adapters/get-stride-adapter";
-import type { DataFlow, Element, Threat, ThreatModel, TrustBoundary } from "@/types/threat-model";
+import type {
+	DataFlow,
+	Element,
+	Metadata,
+	Threat,
+	ThreatModel,
+	TrustBoundary,
+} from "@/types/threat-model";
 import { useHistoryStore } from "./history-store";
 
 interface ModelState {
@@ -30,6 +37,9 @@ interface ModelState {
 	setSelectedEdge: (id: string | null) => void;
 	setSelectedBoundary: (id: string | null) => void;
 	setSelectedThreat: (id: string | null) => void;
+
+	// Metadata editing
+	updateMetadata: (updates: Partial<Metadata>) => void;
 
 	// Element editing
 	updateElement: (id: string, updates: Partial<Element>) => void;
@@ -139,6 +149,15 @@ export const useModelStore = create<ModelState>((set, get) => ({
 			selectedEdgeId: null,
 		}),
 	setSelectedThreat: (id) => set({ selectedThreatId: id }),
+
+	updateMetadata: (updates) => {
+		const { model } = get();
+		if (!model) return;
+		set({
+			model: { ...model, metadata: { ...model.metadata, ...updates } },
+			isDirty: true,
+		});
+	},
 
 	updateElement: (id, updates) => {
 		const { model } = get();

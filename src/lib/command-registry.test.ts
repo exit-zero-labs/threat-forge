@@ -34,6 +34,7 @@ describe("command-registry", () => {
 			openModel: vi.fn(),
 			saveModel: vi.fn(),
 			saveModelAs: vi.fn(),
+			hasModel: false,
 		};
 
 		it("returns non-empty command list", () => {
@@ -74,6 +75,26 @@ describe("command-registry", () => {
 			newCmd?.action();
 			expect(mockDeps.newModel).toHaveBeenCalled();
 		});
+
+		it("excludes component commands when hasModel is false", () => {
+			const commands = buildCommands({ ...mockDeps, hasModel: false });
+			const componentCmds = commands.filter((c) => c.category === "component");
+			expect(componentCmds).toHaveLength(0);
+		});
+
+		it("includes component commands when hasModel is true", () => {
+			const commands = buildCommands({ ...mockDeps, hasModel: true });
+			const componentCmds = commands.filter((c) => c.category === "component");
+			expect(componentCmds.length).toBeGreaterThan(20);
+			expect(componentCmds.every((c) => c.id.startsWith("component:"))).toBe(true);
+			expect(componentCmds.every((c) => c.label.startsWith("Add "))).toBe(true);
+		});
+
+		it("component commands have unique IDs", () => {
+			const commands = buildCommands({ ...mockDeps, hasModel: true });
+			const componentIds = commands.filter((c) => c.category === "component").map((c) => c.id);
+			expect(new Set(componentIds).size).toBe(componentIds.length);
+		});
 	});
 
 	describe("searchCommands", () => {
@@ -82,6 +103,7 @@ describe("command-registry", () => {
 			openModel: vi.fn(),
 			saveModel: vi.fn(),
 			saveModelAs: vi.fn(),
+			hasModel: false,
 		};
 
 		it("returns all commands for empty query", () => {

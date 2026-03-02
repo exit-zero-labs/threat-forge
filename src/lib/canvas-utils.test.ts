@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getSmartHandlePair, isDuplicateEdge, isSelfLoop, nodeToRect } from "./canvas-utils";
+import {
+	getSelfLoopHandlePair,
+	getSmartHandlePair,
+	isDuplicateEdge,
+	isSelfLoop,
+	nodeToRect,
+} from "./canvas-utils";
 
 describe("getSmartHandlePair", () => {
 	it("returns right-source → left-target when target is to the right", () => {
@@ -96,6 +102,20 @@ describe("isDuplicateEdge", () => {
 	it("returns false for empty edges array", () => {
 		expect(isDuplicateEdge([], "a", "b")).toBe(false);
 	});
+
+	it("detects duplicate self-loops with same handles", () => {
+		const selfEdges = [
+			{ source: "a", target: "a", sourceHandle: "right-source", targetHandle: "top-target" },
+		];
+		expect(isDuplicateEdge(selfEdges, "a", "a", "right-source", "top-target")).toBe(true);
+	});
+
+	it("allows self-loops with different handles", () => {
+		const selfEdges = [
+			{ source: "a", target: "a", sourceHandle: "right-source", targetHandle: "top-target" },
+		];
+		expect(isDuplicateEdge(selfEdges, "a", "a", "bottom-source", "left-target")).toBe(false);
+	});
 });
 
 describe("isSelfLoop", () => {
@@ -105,5 +125,13 @@ describe("isSelfLoop", () => {
 
 	it("returns false when source differs from target", () => {
 		expect(isSelfLoop("node-1", "node-2")).toBe(false);
+	});
+});
+
+describe("getSelfLoopHandlePair", () => {
+	it("returns right-source and top-target as defaults", () => {
+		const pair = getSelfLoopHandlePair();
+		expect(pair.sourceHandle).toBe("right-source");
+		expect(pair.targetHandle).toBe("top-target");
 	});
 });

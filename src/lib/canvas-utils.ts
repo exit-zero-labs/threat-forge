@@ -83,18 +83,40 @@ export function nodeToRect(node: {
 	};
 }
 
-/** Checks whether an edge between source and target already exists. */
+/** Checks whether an edge between source and target already exists.
+ *  For self-loops, also checks handle pairs to allow multiple self-loops with different handles. */
 export function isDuplicateEdge(
-	edges: ReadonlyArray<{ source: string; target: string }>,
+	edges: ReadonlyArray<{
+		source: string;
+		target: string;
+		sourceHandle?: string | null;
+		targetHandle?: string | null;
+	}>,
 	sourceId: string,
 	targetId: string,
+	sourceHandle?: string,
+	targetHandle?: string,
 ): boolean {
-	return edges.some((e) => e.source === sourceId && e.target === targetId);
+	return edges.some(
+		(e) =>
+			e.source === sourceId &&
+			e.target === targetId &&
+			(sourceId !== targetId ||
+				(e.sourceHandle === sourceHandle && e.targetHandle === targetHandle)),
+	);
 }
 
 /** Checks whether source and target are the same node. */
 export function isSelfLoop(sourceId: string, targetId: string): boolean {
 	return sourceId === targetId;
+}
+
+/** Returns a default handle pair for self-loop edges (right-source → top-target). */
+export function getSelfLoopHandlePair(): HandlePair {
+	return {
+		sourceHandle: "right-source",
+		targetHandle: "top-target",
+	};
 }
 
 export { POSITION_MAP, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT };

@@ -35,6 +35,8 @@ function getWaypointPath(
 
 export function DataFlowEdge({
 	id,
+	source,
+	target,
 	sourceX,
 	sourceY,
 	targetX,
@@ -48,15 +50,27 @@ export function DataFlowEdge({
 	const edgeData = data as DfdEdgeData | undefined;
 	const { setEdges } = useReactFlow();
 
+	const isSelfLoop = source === target;
+
+	// Self-loop: custom cubic bezier path that arcs out from the node
+	const selfLoopOffset = 70;
+	const selfLoopPath = isSelfLoop
+		? `M ${sourceX},${sourceY} C ${sourceX + selfLoopOffset},${sourceY - selfLoopOffset} ${targetX + selfLoopOffset},${targetY - selfLoopOffset} ${targetX},${targetY}`
+		: "";
+	const selfLoopLabelX = isSelfLoop ? sourceX + selfLoopOffset * 0.8 : 0;
+	const selfLoopLabelY = isSelfLoop ? sourceY - selfLoopOffset * 0.8 : 0;
+
 	// Default label position (midpoint of standard bezier)
-	const [defaultPath, defaultLabelX, defaultLabelY] = getBezierPath({
-		sourceX,
-		sourceY,
-		sourcePosition,
-		targetX,
-		targetY,
-		targetPosition,
-	});
+	const [defaultPath, defaultLabelX, defaultLabelY] = isSelfLoop
+		? [selfLoopPath, selfLoopLabelX, selfLoopLabelY]
+		: getBezierPath({
+				sourceX,
+				sourceY,
+				sourcePosition,
+				targetX,
+				targetY,
+				targetPosition,
+			});
 
 	const isAuthenticated = edgeData?.authenticated === true;
 	const hasTextLabel =

@@ -17,12 +17,12 @@ fn stride_category_for_type(element_type: &str) -> ComponentStrideCategory {
     match element_type {
         // Databases / stores
         "sql_database" | "nosql_database" | "cache" | "search_index" | "object_storage"
-        | "secret_manager" | "data_store" => ComponentStrideCategory::Store,
+        | "secret_manager" | "data_store" | "file_storage" | "data_lake" | "backup_service"
+        | "key_management" | "container_registry" => ComponentStrideCategory::Store,
         // Clients / actors
-        "web_browser" | "mobile_app" | "desktop_app" | "iot_device" | "external_entity" => {
-            ComponentStrideCategory::Actor
-        }
-        // Everything else is a service (services, messaging, infra, security, generic, process)
+        "web_browser" | "mobile_app" | "desktop_app" | "iot_device" | "external_entity"
+        | "api_client" | "cli_tool" => ComponentStrideCategory::Actor,
+        // Everything else is a service (services, messaging, infra, security, networking, cloud, generic, process)
         _ => ComponentStrideCategory::Service,
     }
 }
@@ -313,6 +313,9 @@ mod tests {
                 created: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
                 modified: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
                 description: String::new(),
+                created_by: None,
+                modified_by: None,
+                last_edit_timestamp: None,
                 settings: None,
             },
             elements: vec![
@@ -377,6 +380,8 @@ mod tests {
                 data: vec!["user_records".to_string()],
                 authenticated: true,
                 label_offset: None,
+                source_handle: None,
+                target_handle: None,
             }],
             trust_boundaries: vec![TrustBoundary {
                 id: "boundary-1".to_string(),
@@ -516,6 +521,8 @@ mod tests {
             data: vec!["response".to_string()],
             authenticated: false,
             label_offset: None,
+            source_handle: None,
+            target_handle: None,
         });
 
         let threats = analyze(&model);
@@ -557,17 +564,10 @@ mod tests {
 
     #[test]
     fn test_stride_category_mapping() {
+        // Services
         assert_eq!(
             stride_category_for_type("api_gateway"),
             ComponentStrideCategory::Service
-        );
-        assert_eq!(
-            stride_category_for_type("sql_database"),
-            ComponentStrideCategory::Store
-        );
-        assert_eq!(
-            stride_category_for_type("web_browser"),
-            ComponentStrideCategory::Actor
         );
         assert_eq!(
             stride_category_for_type("generic"),
@@ -577,12 +577,73 @@ mod tests {
             stride_category_for_type("process"),
             ComponentStrideCategory::Service
         );
+        // Networking / Cloud services
+        assert_eq!(
+            stride_category_for_type("vpn_gateway"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("webhook"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("service_mesh"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("kubernetes"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("ci_cd_pipeline"),
+            ComponentStrideCategory::Service
+        );
+
+        // Stores
+        assert_eq!(
+            stride_category_for_type("sql_database"),
+            ComponentStrideCategory::Store
+        );
         assert_eq!(
             stride_category_for_type("data_store"),
             ComponentStrideCategory::Store
         );
         assert_eq!(
+            stride_category_for_type("file_storage"),
+            ComponentStrideCategory::Store
+        );
+        assert_eq!(
+            stride_category_for_type("data_lake"),
+            ComponentStrideCategory::Store
+        );
+        assert_eq!(
+            stride_category_for_type("backup_service"),
+            ComponentStrideCategory::Store
+        );
+        assert_eq!(
+            stride_category_for_type("key_management"),
+            ComponentStrideCategory::Store
+        );
+        assert_eq!(
+            stride_category_for_type("container_registry"),
+            ComponentStrideCategory::Store
+        );
+
+        // Actors
+        assert_eq!(
+            stride_category_for_type("web_browser"),
+            ComponentStrideCategory::Actor
+        );
+        assert_eq!(
             stride_category_for_type("external_entity"),
+            ComponentStrideCategory::Actor
+        );
+        assert_eq!(
+            stride_category_for_type("api_client"),
+            ComponentStrideCategory::Actor
+        );
+        assert_eq!(
+            stride_category_for_type("cli_tool"),
             ComponentStrideCategory::Actor
         );
     }

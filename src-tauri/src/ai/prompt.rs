@@ -188,6 +188,8 @@ mod tests {
             data: vec!["user_input".to_string()],
             authenticated: true,
             label_offset: None,
+            source_handle: None,
+            target_handle: None,
         });
 
         let prompt = build_system_prompt(&model);

@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Root threat model document — maps to `.threatforge.yaml`
+/// Root threat model document — maps to `.thf`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ThreatModel {
     pub version: String,
@@ -30,6 +30,9 @@ impl ThreatModel {
                 created: today,
                 modified: today,
                 description: String::new(),
+                created_by: None,
+                modified_by: None,
+                last_edit_timestamp: None,
                 settings: None,
             },
             elements: Vec::new(),
@@ -54,6 +57,12 @@ pub struct Metadata {
     pub modified: NaiveDate,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_edit_timestamp: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<FileSettings>,
 }
@@ -121,6 +130,10 @@ pub struct DataFlow {
     pub authenticated: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_offset: Option<Position>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_handle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_handle: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

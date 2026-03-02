@@ -21,6 +21,12 @@ export interface UserSettings {
 	gridSize: number;
 	/** Reduce motion/animations */
 	reduceMotion: boolean;
+	/** Show minimap on canvas */
+	minimapVisible: boolean;
+	/** Author name for edit tracking */
+	authorName: string;
+	/** Author email for edit tracking */
+	authorEmail: string;
 }
 
 /** File-level settings stored alongside the threat model (re-exported from threat-model.ts) */
@@ -48,6 +54,9 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
 	gridSnap: true,
 	gridSize: 16,
 	reduceMotion: false,
+	minimapVisible: true,
+	authorName: "",
+	authorEmail: "",
 };
 
 export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [

@@ -99,7 +99,7 @@ Open a [bug report](https://github.com/exit-zero-labs/threat-forge/issues/new?te
 - Steps to reproduce
 - Expected vs actual behavior
 - Your OS and ThreatForge version
-- The `.threatforge.yaml` file (if relevant and non-sensitive)
+- The `.thf` file (if relevant and non-sensitive)
 
 ## Requesting Features
 

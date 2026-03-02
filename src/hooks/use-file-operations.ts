@@ -12,6 +12,15 @@ function todayString(): string {
 	return new Date().toISOString().split("T")[0];
 }
 
+/** Build an author string like "Jane Doe <jane@example.com>" from settings. */
+function getAuthorIdentity(): string {
+	const { authorName, authorEmail } = useSettingsStore.getState().settings;
+	if (authorName && authorEmail) return `${authorName} <${authorEmail}>`;
+	if (authorName) return authorName;
+	if (authorEmail) return authorEmail;
+	return "";
+}
+
 /** Write current canvas positions, boundary colors, and label offsets back into the model. */
 function captureCanvasIntoModel(model: ThreatModel): ThreatModel {
 	const { nodes, edges, viewport } = useCanvasStore.getState();
@@ -44,13 +53,15 @@ function captureCanvasIntoModel(model: ThreatModel): ThreatModel {
 	const data_flows = model.data_flows.map((f) => {
 		const edge = edgeMap.get(f.id);
 		const edgeData = edge?.data as DfdEdgeData | undefined;
-		if (!edgeData) return f;
-		const hasOffset = edgeData.labelOffsetX != null || edgeData.labelOffsetY != null;
+		if (!edge) return f;
+		const hasOffset = edgeData && (edgeData.labelOffsetX != null || edgeData.labelOffsetY != null);
 		return {
 			...f,
 			label_offset: hasOffset
 				? { x: edgeData.labelOffsetX ?? 0, y: edgeData.labelOffsetY ?? 0 }
 				: f.label_offset,
+			source_handle: edge.sourceHandle ?? f.source_handle,
+			target_handle: edge.targetHandle ?? f.target_handle,
 		};
 	});
 
@@ -78,7 +89,13 @@ export function useFileOperations() {
 		}
 
 		const adapter = await getFileAdapter();
-		const created = await adapter.createNewModel("Untitled Threat Model", "");
+		const identity = getAuthorIdentity();
+		const { authorName } = useSettingsStore.getState().settings;
+		const created = await adapter.createNewModel("Untitled Threat Model", authorName || "");
+		// Populate created_by from settings
+		if (identity) {
+			created.metadata.created_by = identity;
+		}
 		// No pending layout for new models — use default positions
 		useCanvasStore.getState().setPendingLayout(null);
 		setModel(created, null);
@@ -121,9 +138,15 @@ export function useFileOperations() {
 	const saveModel = useCallback(async () => {
 		if (!model) return;
 
+		const identity = getAuthorIdentity();
 		const captured = captureCanvasIntoModel({
 			...model,
-			metadata: { ...model.metadata, modified: todayString() },
+			metadata: {
+				...model.metadata,
+				modified: todayString(),
+				modified_by: identity || model.metadata.modified_by,
+				last_edit_timestamp: Math.floor(Date.now() / 1000),
+			},
 		});
 
 		const adapter = await getFileAdapter();
@@ -136,9 +159,15 @@ export function useFileOperations() {
 	const saveModelAs = useCallback(async () => {
 		if (!model) return;
 
+		const identity = getAuthorIdentity();
 		const captured = captureCanvasIntoModel({
 			...model,
-			metadata: { ...model.metadata, modified: todayString() },
+			metadata: {
+				...model.metadata,
+				modified: todayString(),
+				modified_by: identity || model.metadata.modified_by,
+				last_edit_timestamp: Math.floor(Date.now() / 1000),
+			},
 		});
 
 		const adapter = await getFileAdapter();
