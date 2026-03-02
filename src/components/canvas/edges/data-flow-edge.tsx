@@ -275,6 +275,17 @@ export function DataFlowEdge({
 				</path>
 			)}
 			<EdgeLabelRenderer>
+				{/* Flow number badge near source end */}
+				{edgeData?.flowNumber != null && (
+					<div
+						className="pointer-events-none absolute flex h-4 min-w-4 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground"
+						style={{
+							transform: `translate(-50%, -50%) translate(${sourceX + (targetX - sourceX) * 0.15}px,${sourceY + (targetY - sourceY) * 0.15}px)`,
+						}}
+					>
+						{edgeData.flowNumber}
+					</div>
+				)}
 				{hasLabel && !isEditing && (
 					<button
 						ref={labelRef}

@@ -1,5 +1,6 @@
 use crate::file_io;
 use crate::models::{DiagramLayout, ThreatModel};
+use std::fs;
 use std::path::PathBuf;
 
 #[tauri::command]
@@ -31,4 +32,10 @@ pub fn open_layout(path: String) -> Result<DiagramLayout, String> {
 pub fn save_layout(path: String, layout: DiagramLayout) -> Result<(), String> {
     let path = PathBuf::from(path);
     file_io::write_layout(&path, &layout).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    fs::write(&path, content).map_err(|e| e.to_string())
 }

@@ -89,11 +89,13 @@ threat-forge/
 ├── e2e/                        # Playwright E2E tests
 ├── docs/                       # Documentation
 │   ├── knowledge/              # Reference docs (architecture, format, market, etc.)
-│   └── plans/                  # Todo tracking and roadmap
+│   ├── plans/                  # Todo tracking and roadmap
+│   └── runbooks/               # Operational guides (adding features, releases, migrations, etc.)
 └── public/                     # Static assets
 ```
 
 See @docs/knowledge/architecture.md for the full system architecture and ADRs.
+See @docs/runbooks/ for operational guides (adding features, releasing, schema migration, etc.).
 
 ## Key Architecture Decisions
 

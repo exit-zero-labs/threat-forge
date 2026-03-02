@@ -3,6 +3,7 @@ import {
 	Bot,
 	Check,
 	Loader2,
+	Play,
 	Send,
 	Settings,
 	Sparkles,
@@ -10,8 +11,11 @@ import {
 	User,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { executeActions } from "@/lib/ai-action-executor";
+import { type AiAction, describeAction, extractActions } from "@/lib/ai-actions";
 import { extractThreats, suggestionToThreat } from "@/lib/ai-utils";
 import { cn } from "@/lib/utils";
+import { useCanvasStore } from "@/stores/canvas-store";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -211,6 +215,7 @@ function AssistantContent({
 	const [acceptedIds, setAcceptedIds] = useState<Set<number>>(new Set());
 
 	const threats = isLast && !isStreaming ? extractThreats(content) : [];
+	const actions = isLast && !isStreaming ? extractActions(content) : [];
 
 	const handleAccept = useCallback(
 		(index: number, threat: Threat) => {
@@ -220,13 +225,18 @@ function AssistantContent({
 		[addThreat],
 	);
 
-	// Render content with threats extracted as actionable cards
-	const displayContent = content.replace(/```threats\n[\s\S]*?```/g, "").trim();
+	// Render content with threats and actions blocks removed
+	const displayContent = content
+		.replace(/```threats\n[\s\S]*?```/g, "")
+		.replace(/```actions\n[\s\S]*?```/g, "")
+		.trim();
 
 	return (
 		<div className="flex flex-col gap-2">
 			{displayContent && <p className="whitespace-pre-wrap">{displayContent}</p>}
 			{isStreaming && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+
+			{actions.length > 0 && <ActionPreview actions={actions} />}
 
 			{threats.length > 0 && (
 				<div className="flex flex-col gap-1.5 border-t border-border/30 pt-1.5">
@@ -246,6 +256,57 @@ function AssistantContent({
 					))}
 				</div>
 			)}
+		</div>
+	);
+}
+
+/** Preview and apply AI-suggested model actions. */
+function ActionPreview({ actions }: { actions: AiAction[] }) {
+	const [applied, setApplied] = useState(false);
+	const [result, setResult] = useState<{ applied: number; failed: number } | null>(null);
+
+	const handleApplyAll = useCallback(() => {
+		const res = executeActions(actions);
+		setResult(res);
+		setApplied(true);
+		// Re-sync canvas after model changes
+		useCanvasStore.getState().syncFromModel();
+	}, [actions]);
+
+	return (
+		<div className="flex flex-col gap-1.5 border-t border-border/30 pt-1.5">
+			<div className="flex items-center justify-between">
+				<span className="text-[10px] font-medium text-muted-foreground">
+					Suggested changes ({actions.length}):
+				</span>
+				{!applied && (
+					<button
+						type="button"
+						onClick={handleApplyAll}
+						className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
+					>
+						<Play className="h-2.5 w-2.5" />
+						Apply All
+					</button>
+				)}
+				{result && (
+					<span className="text-[10px] text-muted-foreground">
+						{result.applied} applied{result.failed > 0 ? `, ${result.failed} failed` : ""}
+					</span>
+				)}
+			</div>
+			{actions.map((action, i) => (
+				<div
+					// biome-ignore lint/suspicious/noArrayIndexKey: action index is stable after streaming
+					key={i}
+					className={cn(
+						"rounded border border-border/50 bg-background/50 px-2 py-1 text-[10px]",
+						applied && "opacity-60",
+					)}
+				>
+					{describeAction(action)}
+				</div>
+			))}
 		</div>
 	);
 }

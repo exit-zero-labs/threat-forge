@@ -118,6 +118,8 @@ pub struct Element {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DataFlow {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_number: Option<u32>,
     #[serde(default)]
     pub name: String,
     pub from: String,
@@ -649,6 +651,73 @@ metadata:
         assert!(
             !yaml.contains("settings"),
             "settings should be omitted from YAML when None"
+        );
+    }
+
+    #[test]
+    fn test_flow_number_round_trip() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "Flow Number Test"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: app
+    type: process
+    name: "App"
+  - id: db
+    type: data_store
+    name: "DB"
+data_flows:
+  - id: flow-1
+    flow_number: 1
+    from: app
+    to: db
+  - id: flow-2
+    flow_number: 2
+    from: db
+    to: app
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Failed to parse");
+        assert_eq!(model.data_flows[0].flow_number, Some(1));
+        assert_eq!(model.data_flows[1].flow_number, Some(2));
+
+        // Round-trip
+        let reserialized = serde_yaml::to_string(&model).expect("Failed to serialize");
+        let reparsed: ThreatModel = serde_yaml::from_str(&reserialized).expect("Failed to reparse");
+        assert_eq!(model, reparsed, "Round-trip should produce equal models");
+    }
+
+    #[test]
+    fn test_flow_number_backward_compat() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "No Flow Number"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+data_flows:
+  - id: flow-1
+    from: app
+    to: db
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Old format should parse");
+        assert!(
+            model.data_flows[0].flow_number.is_none(),
+            "flow_number should be None for old files"
+        );
+    }
+
+    #[test]
+    fn test_flow_number_omitted_when_none() {
+        let model = ThreatModel::new("Test", "Author");
+        let yaml = serde_yaml::to_string(&model).expect("Failed to serialize");
+        assert!(
+            !yaml.contains("flow_number"),
+            "flow_number should be omitted from YAML when None"
         );
     }
 

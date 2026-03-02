@@ -1,5 +1,6 @@
 import {
 	BookOpen,
+	FileOutput,
 	FilePlus,
 	FolderOpen,
 	LayoutPanelLeft,
@@ -23,7 +24,7 @@ export function TopMenuBar() {
 	const toggleRightPanel = useUiStore((s) => s.toggleRightPanel);
 	const openSettingsDialog = useSettingsStore((s) => s.openSettingsDialog);
 	const keytipsVisible = useSettingsStore((s) => s.settings.keytipsVisible);
-	const { newModel, openModel, saveModel, saveModelAs } = useFileOperations();
+	const { newModel, openModel, saveModel, saveModelAs, exportAsHtml } = useFileOperations();
 	const [guidePickerOpen, setGuidePickerOpen] = useState(false);
 	const [editingTitle, setEditingTitle] = useState(false);
 	const titleInputRef = useRef<HTMLInputElement>(null);
@@ -112,6 +113,13 @@ export function TopMenuBar() {
 					tooltip={`Save (${modKey}S)`}
 					keytip={keytipsVisible ? `${modKey}S` : undefined}
 					onClick={() => void saveModel()}
+					disabled={!model}
+				/>
+				<MenuButton
+					testId="btn-export"
+					icon={<FileOutput className="h-3.5 w-3.5" />}
+					tooltip={`Export HTML (${modKey}${isMac ? "⇧" : "Shift+"}E)`}
+					onClick={() => void exportAsHtml()}
 					disabled={!model}
 				/>
 			</div>

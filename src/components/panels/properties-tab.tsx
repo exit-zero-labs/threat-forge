@@ -102,6 +102,22 @@ function EdgeProperties({ flow }: { flow: DataFlow }) {
 				Flip Direction
 			</button>
 
+			<label className="block">
+				<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">Flow #</span>
+				<input
+					type="number"
+					min="1"
+					value={flow.flow_number ?? ""}
+					placeholder="Auto"
+					onChange={(e) => {
+						const val = e.target.value ? Number.parseInt(e.target.value, 10) : undefined;
+						updateDataFlow(flow.id, { flow_number: val });
+						syncEdgeData({ flowNumber: val });
+					}}
+					className="w-full rounded border border-border bg-background px-2 py-1 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+				/>
+			</label>
+
 			<EditableField
 				label="Name"
 				value={flow.name}

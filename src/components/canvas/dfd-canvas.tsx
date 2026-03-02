@@ -138,10 +138,12 @@ export function DfdCanvas() {
 
 	const onConnectStart: OnConnectStart = useCallback((_event, params) => {
 		connectingNodeId.current = params.nodeId ?? null;
+		useCanvasStore.getState().setIsConnecting(true);
 	}, []);
 
 	const onConnectEnd = useCallback(() => {
 		connectingNodeId.current = null;
+		useCanvasStore.getState().setIsConnecting(false);
 	}, []);
 
 	/** Validates whether a connection is allowed */
@@ -160,9 +162,14 @@ export function DfdCanvas() {
 			event.preventDefault();
 
 			// Read type from Zustand store — workaround for WKWebView dataTransfer issues
-			// where getData() returns empty for custom MIME types during drop events
+			// where getData() returns empty for custom MIME types during drop events.
+			// Clear immediately after reading to prevent onDragEnd fallback from double-creating.
 			const store = useCanvasStore.getState();
 			const draggedType = store.draggedType;
+			const draggedSubtype = store.draggedSubtype;
+			const draggedIcon = store.draggedIcon;
+			const draggedName = store.draggedName;
+			useCanvasStore.getState().setDraggedComponent(null);
 			if (!draggedType) return;
 
 			// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
@@ -175,17 +182,15 @@ export function DfdCanvas() {
 				addTrustBoundary("New Boundary", position);
 			} else {
 				const opts =
-					store.draggedSubtype || store.draggedIcon || store.draggedName
+					draggedSubtype || draggedIcon || draggedName
 						? {
-								subtype: store.draggedSubtype ?? undefined,
-								icon: store.draggedIcon ?? undefined,
-								name: store.draggedName ?? undefined,
+								subtype: draggedSubtype ?? undefined,
+								icon: draggedIcon ?? undefined,
+								name: draggedName ?? undefined,
 							}
 						: undefined;
 				addElement(draggedType, position, opts);
 			}
-
-			useCanvasStore.getState().setDraggedComponent(null);
 		},
 		[addElement, addTrustBoundary, screenToFlowPosition],
 	);

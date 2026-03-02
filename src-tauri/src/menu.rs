@@ -20,6 +20,13 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
         true,
         Some("CmdOrCtrl+Shift+S"),
     )?;
+    let file_export_html = MenuItem::with_id(
+        handle,
+        "file-export-html",
+        "Export as HTML…",
+        true,
+        Some("CmdOrCtrl+Shift+E"),
+    )?;
     let file_close = MenuItem::with_id(
         handle,
         "file-close",
@@ -38,6 +45,7 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
             &PredefinedMenuItem::separator(handle)?,
             &file_save,
             &file_save_as,
+            &file_export_html,
             &PredefinedMenuItem::separator(handle)?,
             &file_close,
         ],

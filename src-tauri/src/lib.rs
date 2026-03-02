@@ -2,13 +2,15 @@ mod ai;
 mod commands;
 mod errors;
 mod file_io;
+pub mod mcp;
 mod menu;
-mod models;
+pub mod models;
 mod stride;
 
 use commands::{
-    analyze_stride, create_new_model, delete_api_key, get_api_key_status, open_layout,
-    open_threat_model, save_layout, save_threat_model, send_chat_message, set_api_key,
+    analyze_stride, check_for_update, create_new_model, delete_api_key, get_api_key_status,
+    install_update, open_layout, open_threat_model, save_layout, save_threat_model,
+    send_chat_message, set_api_key, write_text_file,
 };
 use tauri::{Emitter, Manager};
 
@@ -17,6 +19,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let menu = menu::build_menu(app)?;
             app.set_menu(menu)?;
@@ -69,6 +72,9 @@ pub fn run() {
             get_api_key_status,
             delete_api_key,
             send_chat_message,
+            write_text_file,
+            check_for_update,
+            install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

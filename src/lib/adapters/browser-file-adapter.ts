@@ -83,6 +83,12 @@ export class BrowserFileAdapter implements FileAdapter {
 		// Browser version doesn't persist layout
 	}
 
+	async exportAsHtml(htmlContent: string, defaultName: string): Promise<string | null> {
+		const blob = new Blob([htmlContent], { type: "text/html" });
+		downloadBlob(blob, `${defaultName}.html`);
+		return defaultName;
+	}
+
 	async confirmDiscard(): Promise<boolean> {
 		return window.confirm("You have unsaved changes. Discard them?");
 	}

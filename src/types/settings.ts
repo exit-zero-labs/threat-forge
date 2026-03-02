@@ -89,6 +89,13 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 		category: "file",
 	},
 	{
+		id: "export-html",
+		label: "Export HTML Report",
+		macKeys: "⌘⇧E",
+		winKeys: "Ctrl+Shift+E",
+		category: "file",
+	},
+	{
 		id: "settings",
 		label: "Open Settings",
 		macKeys: "⌘,",

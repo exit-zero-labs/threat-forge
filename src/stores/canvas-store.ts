@@ -58,6 +58,8 @@ export type DfdEdgeData = {
 	protocol: string;
 	data: string[];
 	authenticated: boolean;
+	/** User-facing flow number displayed on the edge */
+	flowNumber?: number;
 	/** Dragged label X offset from default position */
 	labelOffsetX?: number;
 	/** Dragged label Y offset from default position */
@@ -85,6 +87,9 @@ interface CanvasState {
 	/** Display name for the element being dragged from the library */
 	draggedName: string | null;
 
+	/** Whether a connection drag is in progress (used to show handles on all nodes) */
+	isConnecting: boolean;
+
 	/** Layout to apply on next syncFromModel (set before loading a model) */
 	pendingLayout: DiagramLayout | null;
 
@@ -103,6 +108,7 @@ interface CanvasState {
 			name?: string;
 		} | null,
 	) => void;
+	setIsConnecting: (connecting: boolean) => void;
 	setPendingLayout: (layout: DiagramLayout | null) => void;
 
 	// Canvas actions
@@ -271,6 +277,7 @@ export function flowToEdge(flow: DataFlow): DfdEdge {
 			protocol: flow.protocol,
 			data: flow.data,
 			authenticated: flow.authenticated,
+			flowNumber: flow.flow_number,
 			labelOffsetX: flow.label_offset?.x,
 			labelOffsetY: flow.label_offset?.y,
 			strokeColor: flow.stroke_color,
@@ -291,6 +298,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	draggedSubtype: null,
 	draggedIcon: null,
 	draggedName: null,
+	isConnecting: false,
 	pendingLayout: null,
 
 	onNodesChange: (changes) => {
@@ -382,6 +390,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			set({ draggedType: null, draggedSubtype: null, draggedIcon: null, draggedName: null });
 		}
 	},
+	setIsConnecting: (connecting) => set({ isConnecting: connecting }),
 	setPendingLayout: (layout) => set({ pendingLayout: layout }),
 
 	addElement: (type, position, opts) => {
@@ -397,6 +406,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			icon: opts?.icon,
 			description: "",
 			technologies: [],
+			position: { x: position.x, y: position.y },
 		};
 
 		const newNode = elementToNode(newElement, position);
@@ -456,6 +466,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	addDataFlow: (sourceId, targetId, opts) => {
 		const id = generateFlowId();
 
+		// Compute next flow number from current model
+		const currentModel = useModelStore.getState().model;
+		const maxFlowNumber = currentModel
+			? currentModel.data_flows.reduce((max, f) => Math.max(max, f.flow_number ?? 0), 0)
+			: 0;
+		const nextFlowNumber = maxFlowNumber + 1;
+
 		// Determine handles: explicit from user drag, smart routing, or self-loop defaults
 		let resolvedSourceHandle: string | undefined;
 		let resolvedTargetHandle: string | undefined;
@@ -479,6 +496,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		const newFlow: DataFlow = {
 			id,
+			flow_number: nextFlowNumber,
 			name: opts?.name ?? "",
 			from: sourceId,
 			to: targetId,
@@ -515,6 +533,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			id,
 			name,
 			contains: [],
+			position: { x: position.x, y: position.y },
 		};
 
 		const newNode = boundaryToNode(newBoundary, position);
@@ -754,19 +773,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const existingNodes = new Map(get().nodes.map((n) => [n.id, n]));
 		const existingPositions = new Map(get().nodes.map((n) => [n.id, n.position]));
 
-		// Position priority: saved layout > existing canvas positions > default grid
+		// Position priority: saved layout > existing canvas positions > inline model position > default grid
 		function resolvePosition(
 			id: string,
+			inlinePos: { x: number; y: number } | undefined,
 			defaultPos: { x: number; y: number },
 		): { x: number; y: number } {
 			const saved = layoutPositions?.get(id);
 			if (saved) return { x: saved.x, y: saved.y };
-			return existingPositions.get(id) ?? defaultPos;
+			return existingPositions.get(id) ?? inlinePos ?? defaultPos;
 		}
 
 		// Convert trust boundaries to group nodes
 		const boundaryNodes: DfdNode[] = model.trust_boundaries.map((b, i) => {
-			const pos = resolvePosition(b.id, { x: 50 + i * 450, y: 50 });
+			const pos = resolvePosition(b.id, b.position, { x: 50 + i * 450, y: 50 });
 			const node = boundaryToNode(b, pos);
 			// Restore dimensions: saved layout > existing canvas > default
 			const saved = layoutPositions?.get(b.id);
@@ -797,7 +817,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		// Convert elements to nodes
 		const elementNodes: DfdNode[] = model.elements.map((e, i) => {
-			const pos = resolvePosition(e.id, {
+			const pos = resolvePosition(e.id, e.position, {
 				x: 100 + (i % 4) * 250,
 				y: 100 + Math.floor(i / 4) * 200,
 			});

@@ -1,11 +1,12 @@
 import { ReactFlowProvider } from "@xyflow/react";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useNativeMenu } from "@/hooks/use-native-menu";
 import { useOnboardingTriggers } from "@/hooks/use-onboarding-triggers";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
+import { checkOnLaunch } from "@/stores/update-store";
 import { Canvas } from "../canvas/canvas";
 import { CommandPalette } from "../command-palette";
 import { GuideProvider } from "../onboarding/guide-provider";
@@ -18,6 +19,7 @@ import { ShortcutsDialog } from "../panels/shortcuts-dialog";
 import { ResizeHandle } from "../ui/resize-handle";
 import { StatusBar } from "./status-bar";
 import { TopMenuBar } from "./top-menu-bar";
+import { UpdateBar } from "./update-bar";
 
 export function AppLayout() {
 	const leftPanelOpen = useUiStore((s) => s.leftPanelOpen);
@@ -33,6 +35,7 @@ export function AppLayout() {
 	useNativeMenu();
 	useAutosave();
 	useOnboardingTriggers();
+	useEffect(() => checkOnLaunch(), []);
 
 	const handleLeftResize = useCallback((delta: number) => {
 		const current = useUiStore.getState().leftPanelWidth;
@@ -51,6 +54,7 @@ export function AppLayout() {
 				className="flex h-full w-full flex-col bg-background text-foreground"
 			>
 				<TopMenuBar />
+				<UpdateBar />
 
 				<div className="flex flex-1 overflow-hidden">
 					{/* Left sidebar — Component palette */}

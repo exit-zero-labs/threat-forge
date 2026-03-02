@@ -58,6 +58,17 @@ export class TauriFileAdapter implements FileAdapter {
 		}
 	}
 
+	async exportAsHtml(htmlContent: string, defaultName: string): Promise<string | null> {
+		const selected = await save({
+			filters: [{ name: "HTML Report", extensions: ["html"] }],
+			defaultPath: `${defaultName}.html`,
+		});
+		if (!selected) return null;
+
+		await invoke("write_text_file", { path: selected, content: htmlContent });
+		return selected;
+	}
+
 	async confirmDiscard(): Promise<boolean> {
 		return confirm("You have unsaved changes. Discard them?", {
 			title: "Unsaved Changes",

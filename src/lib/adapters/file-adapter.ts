@@ -17,6 +17,8 @@ export interface FileAdapter {
 	openLayout(modelPath: string, layoutFile: string): Promise<DiagramLayout | null>;
 	/** @deprecated Layout data is now inline in the YAML. Will be removed in a future release. */
 	saveLayout(modelPath: string, layoutFile: string, layout: DiagramLayout): Promise<void>;
+	/** Export the threat model as a self-contained HTML report. Returns the saved path, or null if cancelled. */
+	exportAsHtml(htmlContent: string, defaultName: string): Promise<string | null>;
 	/** Show a confirmation dialog for discarding unsaved changes. */
 	confirmDiscard(): Promise<boolean>;
 }
