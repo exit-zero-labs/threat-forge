@@ -123,10 +123,26 @@ jobs:
             libdbus-1-dev \
             libssl-dev
 
-      - uses: tauri-apps/tauri-action@f650639e43adf15f35dd1023d248b3ecc3568b64 # action-v0.6.1
+      # Build WITHOUT code signing (unsigned binaries)
+      - name: Build and release (unsigned)
+        if: ${{ !secrets.APPLE_CERTIFICATE }}
+        uses: tauri-apps/tauri-action@f650639e43adf15f35dd1023d248b3ecc3568b64 # action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS code signing (set these in GitHub repo secrets when ready)
+        with:
+          tagName: v__VERSION__
+          releaseName: "ThreatForge v__VERSION__"
+          releaseBody: "See the assets to download this version and install ThreatForge."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.settings.args }}
+
+      # Build WITH macOS code signing (when Apple Developer secrets are configured)
+      - name: Build and release (signed)
+        if: ${{ secrets.APPLE_CERTIFICATE }}
+        uses: tauri-apps/tauri-action@f650639e43adf15f35dd1023d248b3ecc3568b64 # action-v0.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
