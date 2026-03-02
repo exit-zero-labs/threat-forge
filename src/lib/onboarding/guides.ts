@@ -64,4 +64,67 @@ export const DFD_BASICS_GUIDE: OnboardingGuide = {
 	],
 };
 
-export const ALL_GUIDES: OnboardingGuide[] = [WELCOME_GUIDE, DFD_BASICS_GUIDE];
+export const STRIDE_ANALYSIS_GUIDE: OnboardingGuide = {
+	id: "stride-analysis",
+	name: "STRIDE Analysis",
+	showOnce: false,
+	steps: [
+		{
+			targetSelector: "[data-testid='tab-threats']",
+			title: "Threats Tab",
+			content:
+				"The Threats tab shows all identified threats. Click here to switch to the threat analysis view.",
+			placement: "left",
+		},
+		{
+			targetSelector: "[data-testid='btn-stride-analyze']",
+			title: "Run STRIDE Analysis",
+			content:
+				"Click this button to automatically generate threats based on your diagram elements. The STRIDE methodology covers Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, and Elevation of Privilege.",
+			placement: "left",
+		},
+		{
+			targetSelector: "[data-testid='right-panel']",
+			title: "Review & Manage Threats",
+			content:
+				"Each threat shows its STRIDE category and severity. Click a threat to edit its details, add mitigations, or change its status.",
+			placement: "left",
+		},
+	],
+};
+
+export const AI_ASSISTANT_GUIDE: OnboardingGuide = {
+	id: "ai-assistant",
+	name: "AI Assistant",
+	showOnce: false,
+	steps: [
+		{
+			targetSelector: "[data-testid='tab-ai']",
+			title: "AI Chat Tab",
+			content:
+				"The AI tab lets you chat with an LLM about your threat model. It can suggest threats, review mitigations, and answer security questions.",
+			placement: "left",
+		},
+		{
+			targetSelector: "[data-testid='btn-settings-dialog']",
+			title: "Configure API Key",
+			content:
+				"To use AI features, open Settings and add your API key (OpenAI, Anthropic, or Ollama). Keys are stored securely in your OS keychain.",
+			placement: "bottom",
+		},
+		{
+			targetSelector: "[data-testid='tab-ai']",
+			title: "Ask About Threats",
+			content:
+				"Try asking: 'What threats am I missing?' or 'Review the mitigations for my API gateway.' The AI sees your current model and provides contextual suggestions.",
+			placement: "left",
+		},
+	],
+};
+
+export const ALL_GUIDES: OnboardingGuide[] = [
+	WELCOME_GUIDE,
+	DFD_BASICS_GUIDE,
+	STRIDE_ANALYSIS_GUIDE,
+	AI_ASSISTANT_GUIDE,
+];
