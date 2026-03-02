@@ -84,7 +84,7 @@ export function WhatsNewOverlay() {
 				onKeyDown={(e) => e.stopPropagation()}
 			>
 				<h2 className="mb-1 text-lg font-semibold text-foreground">What's New</h2>
-				<p className="mb-4 text-xs text-muted-foreground">Recent updates to ThreatForge</p>
+				<p className="mb-4 text-xs text-muted-foreground">Recent updates to Threat Forge</p>
 
 				{unseenEntries.map((entry) => (
 					<div key={entry.version} className="mb-4">

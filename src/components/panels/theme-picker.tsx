@@ -1,7 +1,8 @@
 import { Check, Monitor, Moon, Sun } from "lucide-react";
 import { THEME_PRESETS } from "@/lib/themes/presets";
+import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
-import type { ThemeMode } from "@/types/theme";
+import type { ThemeMode, ThemeTokens } from "@/types/theme";
 
 const MODE_OPTIONS: Array<{
 	mode: ThemeMode;
@@ -23,7 +24,8 @@ const lightPresets = presetList.filter((p) => p.mode === "light");
 
 export function ThemePicker() {
 	const themeMode = useUiStore((s) => s.themeMode);
-	const themePresetId = useUiStore((s) => s.themePresetId);
+	const lightPresetId = useUiStore((s) => s.lightPresetId);
+	const darkPresetId = useUiStore((s) => s.darkPresetId);
 	const setTheme = useUiStore((s) => s.setTheme);
 
 	const handleModeChange = (mode: ThemeMode) => {
@@ -37,6 +39,10 @@ export function ThemePicker() {
 		const mode = themeMode === "system" ? "system" : preset.mode;
 		setTheme(mode, presetId);
 	};
+
+	// Determine which sections should be dimmed
+	const dimDark = themeMode === "light";
+	const dimLight = themeMode === "dark";
 
 	return (
 		<div className="space-y-3">
@@ -63,56 +69,80 @@ export function ThemePicker() {
 			</div>
 
 			{/* Dark presets */}
-			<div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-				Dark Themes
+			<div
+				className={cn(
+					"mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground",
+					dimDark && "opacity-50",
+				)}
+			>
+				For dark mode
 			</div>
-			<div className="mb-3 space-y-0.5">
+			<div className={cn("mb-3 space-y-0.5", dimDark && "opacity-60")}>
 				{darkPresets.map((preset) => (
 					<button
 						key={preset.id}
 						type="button"
 						onClick={() => handlePresetChange(preset.id)}
 						className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs ${
-							themePresetId === preset.id
+							darkPresetId === preset.id
 								? "bg-accent text-accent-foreground"
 								: "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
 						}`}
 					>
-						<span
-							className="h-3 w-3 shrink-0 rounded-full border border-border"
-							style={{ backgroundColor: preset.tokens.background }}
-						/>
+						<ThemeSwatch tokens={preset.tokens} />
 						<span className="flex-1 text-left">{preset.name}</span>
-						{themePresetId === preset.id && <Check className="h-3 w-3 text-tf-signal" />}
+						{darkPresetId === preset.id && <Check className="h-3 w-3 text-tf-signal" />}
 					</button>
 				))}
 			</div>
 
 			{/* Light presets */}
-			<div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-				Light Themes
+			<div
+				className={cn(
+					"mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground",
+					dimLight && "opacity-50",
+				)}
+			>
+				For light mode
 			</div>
-			<div className="space-y-0.5">
+			<div className={cn("space-y-0.5", dimLight && "opacity-60")}>
 				{lightPresets.map((preset) => (
 					<button
 						key={preset.id}
 						type="button"
 						onClick={() => handlePresetChange(preset.id)}
 						className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs ${
-							themePresetId === preset.id
+							lightPresetId === preset.id
 								? "bg-accent text-accent-foreground"
 								: "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
 						}`}
 					>
-						<span
-							className="h-3 w-3 shrink-0 rounded-full border border-border"
-							style={{ backgroundColor: preset.tokens.background }}
-						/>
+						<ThemeSwatch tokens={preset.tokens} />
 						<span className="flex-1 text-left">{preset.name}</span>
-						{themePresetId === preset.id && <Check className="h-3 w-3 text-tf-signal" />}
+						{lightPresetId === preset.id && <Check className="h-3 w-3 text-tf-signal" />}
 					</button>
 				))}
 			</div>
 		</div>
+	);
+}
+
+/** Shows 3 representative color dots from the theme tokens. */
+function ThemeSwatch({ tokens }: { tokens: ThemeTokens }) {
+	return (
+		<span className="flex shrink-0 gap-0.5">
+			<span
+				className="h-3 w-3 rounded-full border border-border/50"
+				style={{ backgroundColor: tokens.background }}
+			/>
+			<span
+				className="h-3 w-3 rounded-full border border-border/50"
+				style={{ backgroundColor: tokens.primary }}
+			/>
+			<span
+				className="h-3 w-3 rounded-full border border-border/50"
+				style={{ backgroundColor: tokens.accent }}
+			/>
+		</span>
 	);
 }

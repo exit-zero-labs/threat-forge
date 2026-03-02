@@ -2,7 +2,7 @@ use crate::errors::ThreatForgeError;
 use crate::models::{DiagramLayout, ThreatModel};
 use std::path::Path;
 
-/// Write a threat model to a `.threatforge.yaml` file
+/// Write a threat model to a `.thf` file
 pub fn write_threat_model(path: &Path, model: &ThreatModel) -> Result<(), ThreatForgeError> {
     // Add header comment
     let yaml =
@@ -61,7 +61,7 @@ mod tests {
     #[test]
     fn test_write_and_read_round_trip() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("test.threatforge.yaml");
+        let path = dir.path().join("test.thf");
 
         let model = ThreatModel::new("Round Trip Test", "Test Author");
         write_threat_model(&path, &model).unwrap();
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_write_creates_parent_directories() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("nested/dir/test.threatforge.yaml");
+        let path = dir.path().join("nested/dir/test.thf");
 
         let model = ThreatModel::new("Nested Test", "Test Author");
         write_threat_model(&path, &model).unwrap();
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn test_written_file_has_header_comment() {
         let dir = TempDir::new().unwrap();
-        let path = dir.path().join("test.threatforge.yaml");
+        let path = dir.path().join("test.thf");
 
         let model = ThreatModel::new("Header Test", "Test Author");
         write_threat_model(&path, &model).unwrap();

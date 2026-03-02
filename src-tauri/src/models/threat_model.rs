@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Root threat model document — maps to `.threatforge.yaml`
+/// Root threat model document — maps to `.thf`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ThreatModel {
     pub version: String,
@@ -30,6 +30,9 @@ impl ThreatModel {
                 created: today,
                 modified: today,
                 description: String::new(),
+                created_by: None,
+                modified_by: None,
+                last_edit_timestamp: None,
                 settings: None,
             },
             elements: Vec::new(),
@@ -54,6 +57,12 @@ pub struct Metadata {
     pub modified: NaiveDate,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_edit_timestamp: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<FileSettings>,
 }
@@ -121,6 +130,14 @@ pub struct DataFlow {
     pub authenticated: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_offset: Option<Position>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_handle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_handle: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_opacity: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -415,6 +432,8 @@ data_flows:
     label_offset:
       x: 10.0
       y: -5.0
+    stroke_color: "#ef4444"
+    stroke_opacity: 0.8
 diagrams:
   - id: main-dfd
     name: "Level 0 DFD"
@@ -448,6 +467,11 @@ diagrams:
             model.data_flows[0].label_offset,
             Some(Position { x: 10.0, y: -5.0 })
         );
+        assert_eq!(
+            model.data_flows[0].stroke_color,
+            Some(String::from("#ef4444"))
+        );
+        assert_eq!(model.data_flows[0].stroke_opacity, Some(0.8));
         assert_eq!(
             model.diagrams[0].viewport,
             Some(Viewport {
@@ -496,6 +520,8 @@ diagrams:
         assert!(model.trust_boundaries[0].size.is_none());
         assert!(model.trust_boundaries[0].fill_color.is_none());
         assert!(model.data_flows[0].label_offset.is_none());
+        assert!(model.data_flows[0].stroke_color.is_none());
+        assert!(model.data_flows[0].stroke_opacity.is_none());
         assert_eq!(
             model.diagrams[0].layout_file,
             Some(".threatforge/layouts/main-dfd.json".to_string())

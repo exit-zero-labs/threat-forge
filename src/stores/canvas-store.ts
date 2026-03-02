@@ -1,7 +1,12 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
-import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
+import { applyEdgeChanges, applyNodeChanges, MarkerType } from "@xyflow/react";
 import { create } from "zustand";
-import { getSmartHandlePair, isSelfLoop, nodeToRect } from "@/lib/canvas-utils";
+import {
+	getSelfLoopHandlePair,
+	getSmartHandlePair,
+	isSelfLoop,
+	nodeToRect,
+} from "@/lib/canvas-utils";
 import { getComponentByType } from "@/lib/component-library";
 import type {
 	DataFlow,
@@ -57,6 +62,10 @@ export type DfdEdgeData = {
 	labelOffsetX?: number;
 	/** Dragged label Y offset from default position */
 	labelOffsetY?: number;
+	/** Custom edge stroke color (hex) */
+	strokeColor?: string;
+	/** Custom edge stroke opacity (0-1) */
+	strokeOpacity?: number;
 };
 
 export type DfdNode = Node<DfdNodeData>;
@@ -119,10 +128,12 @@ interface CanvasState {
 	rfFitView: (() => void) | null;
 	rfZoomIn: (() => void) | null;
 	rfZoomOut: (() => void) | null;
+	rfPanBy: ((delta: { x: number; y: number }) => void) | null;
 	setReactFlowActions: (actions: {
 		fitView: () => void;
 		zoomIn: () => void;
 		zoomOut: () => void;
+		panBy: (delta: { x: number; y: number }) => void;
 	}) => void;
 
 	/** Nudge selected nodes by a delta (in flow coordinates) */
@@ -134,6 +145,12 @@ interface CanvasState {
 
 /** Model snapshot captured at the start of a drag (with pre-drag canvas positions baked in). */
 let preDragSnapshot: ThreatModel | null = null;
+
+/** Nudge gesture state (arrow key): snapshot + debounce timer. */
+const nudgeState = {
+	snapshot: null as ThreatModel | null,
+	timer: null as ReturnType<typeof setTimeout> | null,
+};
 
 /** Write current canvas node positions into the model's inline position fields. */
 function writePositionsToModel(model: ThreatModel, nodes: DfdNode[]): ThreatModel {
@@ -237,6 +254,18 @@ export function flowToEdge(flow: DataFlow): DfdEdge {
 		source: flow.from,
 		target: flow.to,
 		type: "dataFlow",
+		sourceHandle: flow.source_handle,
+		targetHandle: flow.target_handle,
+		...(flow.stroke_color
+			? {
+					markerEnd: {
+						type: MarkerType.ArrowClosed,
+						width: 16,
+						height: 16,
+						color: flow.stroke_color,
+					},
+				}
+			: {}),
 		data: {
 			name: flow.name ?? "",
 			protocol: flow.protocol,
@@ -244,6 +273,8 @@ export function flowToEdge(flow: DataFlow): DfdEdge {
 			authenticated: flow.authenticated,
 			labelOffsetX: flow.label_offset?.x,
 			labelOffsetY: flow.label_offset?.y,
+			strokeColor: flow.stroke_color,
+			strokeOpacity: flow.stroke_opacity,
 		},
 	};
 }
@@ -423,12 +454,29 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	},
 
 	addDataFlow: (sourceId, targetId, opts) => {
-		// Prevent self-loops
-		if (isSelfLoop(sourceId, targetId)) {
-			return null;
+		const id = generateFlowId();
+
+		// Determine handles: explicit from user drag, smart routing, or self-loop defaults
+		let resolvedSourceHandle: string | undefined;
+		let resolvedTargetHandle: string | undefined;
+		if (opts?.sourceHandle && opts?.targetHandle) {
+			resolvedSourceHandle = opts.sourceHandle;
+			resolvedTargetHandle = opts.targetHandle;
+		} else if (isSelfLoop(sourceId, targetId)) {
+			// Default handle pair for self-loops
+			const pair = getSelfLoopHandlePair();
+			resolvedSourceHandle = pair.sourceHandle;
+			resolvedTargetHandle = pair.targetHandle;
+		} else {
+			const sourceNode = get().nodes.find((n) => n.id === sourceId);
+			const targetNode = get().nodes.find((n) => n.id === targetId);
+			if (sourceNode && targetNode) {
+				const handlePair = getSmartHandlePair(nodeToRect(sourceNode), nodeToRect(targetNode));
+				resolvedSourceHandle = handlePair.sourceHandle;
+				resolvedTargetHandle = handlePair.targetHandle;
+			}
 		}
 
-		const id = generateFlowId();
 		const newFlow: DataFlow = {
 			id,
 			name: opts?.name ?? "",
@@ -437,23 +485,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			protocol: "",
 			data: [],
 			authenticated: false,
+			source_handle: resolvedSourceHandle,
+			target_handle: resolvedTargetHandle,
 		};
 
 		const newEdge = flowToEdge(newFlow);
-
-		// Use explicitly provided handles (from user drag), or fall back to smart routing
-		if (opts?.sourceHandle && opts?.targetHandle) {
-			newEdge.sourceHandle = opts.sourceHandle;
-			newEdge.targetHandle = opts.targetHandle;
-		} else {
-			const sourceNode = get().nodes.find((n) => n.id === sourceId);
-			const targetNode = get().nodes.find((n) => n.id === targetId);
-			if (sourceNode && targetNode) {
-				const handlePair = getSmartHandlePair(nodeToRect(sourceNode), nodeToRect(targetNode));
-				newEdge.sourceHandle = handlePair.sourceHandle;
-				newEdge.targetHandle = handlePair.targetHandle;
-			}
-		}
 
 		set({ edges: [...get().edges, newEdge] });
 
@@ -504,7 +540,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const currentNodes = get().nodes;
 		const currentEdges = get().edges;
 		const selectedNodes = currentNodes.filter((n) => n.selected);
-		const selectedEdges = currentEdges.filter((e) => e.selected);
+		let selectedEdges = currentEdges.filter((e) => e.selected);
+
+		// Fallback: if no edges are selected in ReactFlow but model store has a
+		// selected edge (happens when user clicks the edge label, which uses
+		// stopPropagation and only sets selection in model store), include it.
+		if (selectedEdges.length === 0 && selectedNodes.length === 0) {
+			const modelSelectedEdgeId = useModelStore.getState().selectedEdgeId;
+			if (modelSelectedEdgeId) {
+				const fallbackEdge = currentEdges.find((e) => e.id === modelSelectedEdgeId);
+				if (fallbackEdge) {
+					selectedEdges = [fallbackEdge];
+				}
+			}
+		}
 
 		if (selectedNodes.length === 0 && selectedEdges.length === 0) return;
 
@@ -590,9 +639,17 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		useHistoryStore.getState().pushSnapshot(model);
 
-		// Update model: swap from/to (use direct set to preserve selection state)
+		// Update model: swap from/to and handles (use direct set to preserve selection state)
 		const updatedFlows = model.data_flows.map((f) =>
-			f.id === edgeId ? { ...f, from: f.to, to: f.from } : f,
+			f.id === edgeId
+				? {
+						...f,
+						from: f.to,
+						to: f.from,
+						source_handle: f.target_handle?.replace("target", "source"),
+						target_handle: f.source_handle?.replace("source", "target"),
+					}
+				: f,
 		);
 		useModelStore.setState({
 			model: { ...model, data_flows: updatedFlows },
@@ -619,8 +676,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	rfFitView: null,
 	rfZoomIn: null,
 	rfZoomOut: null,
+	rfPanBy: null,
 	setReactFlowActions: (actions) =>
-		set({ rfFitView: actions.fitView, rfZoomIn: actions.zoomIn, rfZoomOut: actions.zoomOut }),
+		set({
+			rfFitView: actions.fitView,
+			rfZoomIn: actions.zoomIn,
+			rfZoomOut: actions.zoomOut,
+			rfPanBy: actions.panBy,
+		}),
 
 	nudgeSelected: (dx, dy) => {
 		const model = useModelStore.getState().model;
@@ -629,18 +692,34 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const selectedNodes = get().nodes.filter((n) => n.selected && !n.data.isBoundary);
 		if (selectedNodes.length === 0) return;
 
-		// Push history before nudging
-		useHistoryStore.getState().pushSnapshot(writePositionsToModel(model, get().nodes));
+		// Capture pre-nudge snapshot on the first keypress of a gesture
+		if (!nudgeState.snapshot) {
+			nudgeState.snapshot = writePositionsToModel(model, get().nodes);
+		}
 
+		// Only update canvas nodes — do NOT touch the model store yet.
+		// This avoids triggering syncFromModel which destroys focus.
 		const updatedNodes = get().nodes.map((n) => {
 			if (!n.selected || n.data.isBoundary) return n;
 			return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
 		});
 		set({ nodes: updatedNodes });
 
-		// Write positions back to model
-		const updated = writePositionsToModel(model, updatedNodes);
-		useModelStore.setState({ model: updated, isDirty: true });
+		// Debounce: flush to model + history after 300ms of no nudging
+		if (nudgeState.timer) clearTimeout(nudgeState.timer);
+		nudgeState.timer = setTimeout(() => {
+			const currentModel = useModelStore.getState().model;
+			if (!currentModel) return;
+			// Push the pre-nudge snapshot to history for undo
+			if (nudgeState.snapshot) {
+				useHistoryStore.getState().pushSnapshot(nudgeState.snapshot);
+			}
+			// Write final positions to model
+			const final = writePositionsToModel(currentModel, get().nodes);
+			useModelStore.setState({ model: final, isDirty: true });
+			nudgeState.snapshot = null;
+			nudgeState.timer = null;
+		}, 300);
 	},
 
 	syncFromModel: () => {

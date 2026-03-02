@@ -89,7 +89,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml       # Rust
 
 ## File Format
 
-The `.threatforge.yaml` format is designed to be the most developer-friendly way to store threat models:
+The `.thf` format is designed to be the most developer-friendly way to store threat models:
 
 ```yaml
 version: "1.0"

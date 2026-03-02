@@ -1,5 +1,12 @@
 import {
+	Bug,
+	ExternalLink,
+	Github,
+	Globe,
 	Keyboard,
+	LifeBuoy,
+	Lightbulb,
+	Mail,
 	Monitor,
 	Paintbrush,
 	RotateCcw,
@@ -9,6 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import { useState } from "react";
+import { openExternalUrl } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type SettingsTab, useSettingsStore } from "@/stores/settings-store";
 import { KEYBOARD_SHORTCUTS } from "@/types/settings";
@@ -37,6 +45,11 @@ const SECTIONS: {
 		label: "Shortcuts",
 		icon: <Keyboard className="h-3.5 w-3.5" />,
 	},
+	{
+		id: "support",
+		label: "Support",
+		icon: <LifeBuoy className="h-3.5 w-3.5" />,
+	},
 ];
 
 export function SettingsDialog() {
@@ -60,7 +73,7 @@ export function SettingsDialog() {
 		>
 			<div
 				data-testid="settings-dialog"
-				className="flex h-[520px] w-full max-w-2xl rounded-lg border border-border bg-background shadow-lg"
+				className="flex h-[560px] w-full max-w-2xl rounded-lg border border-border bg-background shadow-lg"
 				onKeyDown={handleKeyDown}
 			>
 				{/* Sidebar nav */}
@@ -75,7 +88,7 @@ export function SettingsDialog() {
 							type="button"
 							onClick={() => setSection(s.id)}
 							className={cn(
-								"flex items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors",
+								"flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors",
 								section === s.id
 									? "bg-accent text-foreground"
 									: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -93,7 +106,7 @@ export function SettingsDialog() {
 				{/* Content */}
 				<div className="flex flex-1 flex-col overflow-hidden">
 					<div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-						<span className="text-xs font-medium">
+						<span className="text-sm font-medium">
 							{SECTIONS.find((s) => s.id === section)?.label}
 						</span>
 						<button
@@ -110,6 +123,7 @@ export function SettingsDialog() {
 						{section === "editor" && <EditorSection />}
 						{section === "ai" && <AiSettingsContent />}
 						{section === "shortcuts" && <ShortcutsSection />}
+						{section === "support" && <SupportSection />}
 					</div>
 				</div>
 			</div>
@@ -123,7 +137,7 @@ function ResetButton() {
 		<button
 			type="button"
 			onClick={resetToDefaults}
-			className="flex items-center gap-1.5 rounded px-2 py-1.5 text-[10px] text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+			className="flex items-center gap-1.5 rounded px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
 		>
 			<RotateCcw className="h-3 w-3" />
 			Reset to defaults
@@ -139,10 +153,28 @@ function GeneralSection() {
 
 	return (
 		<div className="space-y-5">
+			<SettingRow label="Author name" description="Your name for edit tracking in threat models">
+				<TextInput
+					value={settings.authorName}
+					placeholder="e.g. Jane Doe"
+					onChange={(v) => updateSetting("authorName", v)}
+				/>
+			</SettingRow>
+
+			<SettingRow label="Author email" description="Your email for edit tracking in threat models">
+				<TextInput
+					value={settings.authorEmail}
+					placeholder="e.g. jane@example.com"
+					onChange={(v) => updateSetting("authorEmail", v)}
+				/>
+			</SettingRow>
+
+			<div className="border-t border-border pt-4" />
+
 			<SettingRow label="Language" description="Interface language (more coming soon)">
 				<select
 					disabled
-					className="rounded border border-border bg-background px-2 py-1.5 text-xs opacity-60"
+					className="rounded border border-border bg-background px-2 py-1.5 text-sm opacity-60"
 				>
 					<option>English</option>
 				</select>
@@ -228,6 +260,13 @@ function EditorSection() {
 					onChange={(v) => updateSetting("gridSize", v)}
 				/>
 			</SettingRow>
+
+			<SettingRow label="Show minimap" description="Display a minimap overview on the canvas">
+				<ToggleSwitch
+					checked={settings.minimapVisible}
+					onChange={(v) => updateSetting("minimapVisible", v)}
+				/>
+			</SettingRow>
 		</div>
 	);
 }
@@ -249,17 +288,17 @@ function ShortcutsSection() {
 				if (shortcuts.length === 0) return null;
 				return (
 					<div key={cat}>
-						<h3 className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+						<h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
 							{categoryLabels[cat]}
 						</h3>
 						<div className="space-y-1">
 							{shortcuts.map((shortcut) => (
 								<div
 									key={shortcut.id}
-									className="flex items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-accent/30"
+									className="flex items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-accent/30"
 								>
 									<span className="text-foreground">{shortcut.label}</span>
-									<kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+									<kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
 										{isMac ? shortcut.macKeys : shortcut.winKeys}
 									</kbd>
 								</div>
@@ -269,10 +308,95 @@ function ShortcutsSection() {
 				);
 			})}
 
-			<p className="text-[10px] text-muted-foreground/70">
+			<p className="text-xs text-muted-foreground/70">
 				Custom keyboard shortcuts coming in a future release.
 			</p>
 		</div>
+	);
+}
+
+function SupportSection() {
+	const openExternal = (url: string) => {
+		void openExternalUrl(url);
+	};
+
+	return (
+		<div className="space-y-5">
+			<div className="space-y-1">
+				<SupportLink
+					icon={<Github className="h-4 w-4" />}
+					label="GitHub Repository"
+					description="Source code, issues, and discussions"
+					onClick={() => openExternal("https://github.com/exit-zero-labs/threat-forge")}
+				/>
+				<SupportLink
+					icon={<Bug className="h-4 w-4" />}
+					label="Report a Bug"
+					description="Found something broken? Let us know"
+					onClick={() =>
+						openExternal(
+							"https://github.com/exit-zero-labs/threat-forge/issues/new?template=bug-report.yml",
+						)
+					}
+				/>
+				<SupportLink
+					icon={<Lightbulb className="h-4 w-4" />}
+					label="Feature Request"
+					description="Suggest a new feature or improvement"
+					onClick={() =>
+						openExternal(
+							"https://github.com/exit-zero-labs/threat-forge/issues/new?template=feature-request.yml",
+						)
+					}
+				/>
+				<SupportLink
+					icon={<Globe className="h-4 w-4" />}
+					label="Website"
+					description="exitzerolabs.com"
+					onClick={() => openExternal("https://www.exitzerolabs.com")}
+				/>
+				<SupportLink
+					icon={<Mail className="h-4 w-4" />}
+					label="Contact Us"
+					description="admin@exitzerolabs.com"
+					onClick={() => openExternal("mailto:admin@exitzerolabs.com")}
+				/>
+			</div>
+
+			<div className="border-t border-border pt-4">
+				<p className="text-xs text-muted-foreground">
+					Threat Forge is open-source software built by Exit Zero Labs LLC.
+				</p>
+				<p className="mt-1 text-xs text-muted-foreground/70">Version {__APP_VERSION__ ?? "dev"}</p>
+			</div>
+		</div>
+	);
+}
+
+function SupportLink({
+	icon,
+	label,
+	description,
+	onClick,
+}: {
+	icon: React.ReactNode;
+	label: string;
+	description: string;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className="flex w-full items-center gap-3 rounded px-2 py-2.5 text-left transition-colors hover:bg-accent/50"
+		>
+			<span className="text-muted-foreground">{icon}</span>
+			<div className="min-w-0 flex-1">
+				<p className="text-sm font-medium text-foreground">{label}</p>
+				<p className="text-xs text-muted-foreground">{description}</p>
+			</div>
+			<ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+		</button>
 	);
 }
 
@@ -290,8 +414,8 @@ function SettingRow({
 	return (
 		<div className="flex items-center justify-between gap-4">
 			<div className="min-w-0">
-				<p className="text-xs font-medium text-foreground">{label}</p>
-				<p className="text-[10px] text-muted-foreground">{description}</p>
+				<p className="text-sm font-medium text-foreground">{label}</p>
+				<p className="text-xs text-muted-foreground">{description}</p>
 			</div>
 			{children}
 		</div>
@@ -326,6 +450,26 @@ function ToggleSwitch({
 	);
 }
 
+function TextInput({
+	value,
+	placeholder,
+	onChange,
+}: {
+	value: string;
+	placeholder?: string;
+	onChange: (value: string) => void;
+}) {
+	return (
+		<input
+			type="text"
+			value={value}
+			placeholder={placeholder}
+			onChange={(e) => onChange(e.target.value)}
+			className="w-48 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+		/>
+	);
+}
+
 function NumberInput({
 	value,
 	min,
@@ -349,7 +493,7 @@ function NumberInput({
 					onChange(parsed);
 				}
 			}}
-			className="w-20 rounded border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
+			className="w-20 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
 		/>
 	);
 }

@@ -1,3 +1,4 @@
+import { MarkerType } from "@xyflow/react";
 import { ArrowLeftRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -5,7 +6,6 @@ import {
 	COMPONENT_LIBRARY,
 	getComponentByType,
 	getSubtypesForType,
-	isPrefabType,
 } from "@/lib/component-library";
 import { type DfdEdge, useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
@@ -54,6 +54,11 @@ function EdgeProperties({ flow }: { flow: DataFlow }) {
 	const updateDataFlow = useModelStore((s) => s.updateDataFlow);
 	const reverseEdge = useCanvasStore((s) => s.reverseEdge);
 
+	// Read current colors from canvas edge data
+	const edge = useCanvasStore((s) => s.edges.find((e) => e.id === flow.id));
+	const strokeColor = (edge?.data?.strokeColor as string) ?? "";
+	const strokeOpacity = (edge?.data?.strokeOpacity as number) ?? 1;
+
 	const fromElement = model?.elements.find((e) => e.id === flow.from);
 	const toElement = model?.elements.find((e) => e.id === flow.to);
 
@@ -62,6 +67,21 @@ function EdgeProperties({ flow }: { flow: DataFlow }) {
 		const updatedEdges: DfdEdge[] = edges.map((e) =>
 			e.id === flow.id ? { ...e, data: { ...e.data, ...updates } as DfdEdge["data"] } : e,
 		);
+		useCanvasStore.setState({ edges: updatedEdges });
+	};
+
+	const syncEdgeColor = (color: string | undefined, opacity: number) => {
+		const edges = useCanvasStore.getState().edges;
+		const updatedEdges: DfdEdge[] = edges.map((e) => {
+			if (e.id !== flow.id) return e;
+			return {
+				...e,
+				markerEnd: color
+					? { type: MarkerType.ArrowClosed, width: 16, height: 16, color }
+					: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+				data: { ...e.data, strokeColor: color, strokeOpacity: opacity } as DfdEdge["data"],
+			};
+		});
 		useCanvasStore.setState({ edges: updatedEdges });
 	};
 
@@ -125,6 +145,20 @@ function EdgeProperties({ flow }: { flow: DataFlow }) {
 				<span className="text-xs text-foreground">Authenticated</span>
 			</label>
 
+			<ColorField
+				label="Stroke Color"
+				color={strokeColor}
+				opacity={strokeOpacity}
+				onColorChange={(color) => {
+					syncEdgeColor(color || undefined, strokeOpacity);
+					updateDataFlow(flow.id, { stroke_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncEdgeColor(strokeColor || undefined, opacity);
+					updateDataFlow(flow.id, { stroke_opacity: opacity });
+				}}
+			/>
+
 			{/* Related threats for this flow */}
 			<FlowThreats flowId={flow.id} />
 		</div>
@@ -173,7 +207,6 @@ function ElementProperties({ elementId }: { elementId: string }) {
 	}
 
 	const subtypes = getSubtypesForType(element.type);
-	const isPrefab = isPrefabType(element.type);
 	const relatedThreats = model?.threats.filter((t) => t.element === element.id) ?? [];
 
 	/** Group library components by category for the type dropdown */
@@ -193,32 +226,15 @@ function ElementProperties({ elementId }: { elementId: string }) {
 
 	const handleTypeChange = (newType: string) => {
 		const comp = getComponentByType(newType);
-		const clearColors = isPrefabType(newType);
 		updateElement(element.id, {
 			type: newType,
 			subtype: undefined,
 			icon: comp?.icon,
-			...(clearColors
-				? {
-						fill_color: undefined,
-						stroke_color: undefined,
-						fill_opacity: undefined,
-						stroke_opacity: undefined,
-					}
-				: {}),
 		});
 		syncElementNodeData({
 			elementType: newType,
 			subtype: undefined,
 			icon: comp?.icon,
-			...(clearColors
-				? {
-						elementFillColor: undefined,
-						elementStrokeColor: undefined,
-						elementFillOpacity: undefined,
-						elementStrokeOpacity: undefined,
-					}
-				: {}),
 		});
 	};
 
@@ -313,37 +329,33 @@ function ElementProperties({ elementId }: { elementId: string }) {
 				}}
 			/>
 
-			{!isPrefab && (
-				<>
-					<ColorField
-						label="Fill Color"
-						color={fillColor}
-						opacity={fillOpacity}
-						onColorChange={(color) => {
-							syncElementNodeData({ elementFillColor: color || undefined });
-							updateElement(element.id, { fill_color: color || undefined });
-						}}
-						onOpacityChange={(opacity) => {
-							syncElementNodeData({ elementFillOpacity: opacity });
-							updateElement(element.id, { fill_opacity: opacity });
-						}}
-					/>
+			<ColorField
+				label="Fill Color"
+				color={fillColor}
+				opacity={fillOpacity}
+				onColorChange={(color) => {
+					syncElementNodeData({ elementFillColor: color || undefined });
+					updateElement(element.id, { fill_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncElementNodeData({ elementFillOpacity: opacity });
+					updateElement(element.id, { fill_opacity: opacity });
+				}}
+			/>
 
-					<ColorField
-						label="Stroke Color"
-						color={strokeColor}
-						opacity={strokeOpacity}
-						onColorChange={(color) => {
-							syncElementNodeData({ elementStrokeColor: color || undefined });
-							updateElement(element.id, { stroke_color: color || undefined });
-						}}
-						onOpacityChange={(opacity) => {
-							syncElementNodeData({ elementStrokeOpacity: opacity });
-							updateElement(element.id, { stroke_opacity: opacity });
-						}}
-					/>
-				</>
-			)}
+			<ColorField
+				label="Stroke Color"
+				color={strokeColor}
+				opacity={strokeOpacity}
+				onColorChange={(color) => {
+					syncElementNodeData({ elementStrokeColor: color || undefined });
+					updateElement(element.id, { stroke_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncElementNodeData({ elementStrokeOpacity: opacity });
+					updateElement(element.id, { stroke_opacity: opacity });
+				}}
+			/>
 
 			{relatedThreats.length > 0 && (
 				<div className="border-t border-border pt-3">

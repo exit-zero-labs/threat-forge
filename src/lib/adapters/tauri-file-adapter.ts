@@ -4,8 +4,8 @@ import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 import type { FileAdapter } from "./file-adapter";
 
 const YAML_FILTER = {
-	name: "ThreatForge Model",
-	extensions: ["threatforge.yaml", "yaml", "yml"],
+	name: "Threat Forge Model",
+	extensions: ["thf"],
 };
 
 export class TauriFileAdapter implements FileAdapter {
@@ -30,7 +30,7 @@ export class TauriFileAdapter implements FileAdapter {
 		if (!targetPath) {
 			const selected = await save({
 				filters: [YAML_FILTER],
-				defaultPath: "model.threatforge.yaml",
+				defaultPath: "model.thf",
 			});
 			if (!selected) return null;
 			targetPath = selected;

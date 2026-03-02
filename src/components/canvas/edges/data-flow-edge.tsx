@@ -35,6 +35,8 @@ function getWaypointPath(
 
 export function DataFlowEdge({
 	id,
+	source,
+	target,
 	sourceX,
 	sourceY,
 	targetX,
@@ -48,15 +50,27 @@ export function DataFlowEdge({
 	const edgeData = data as DfdEdgeData | undefined;
 	const { setEdges } = useReactFlow();
 
+	const isSelfLoop = source === target;
+
+	// Self-loop: custom cubic bezier path that arcs out from the node
+	const selfLoopOffset = 70;
+	const selfLoopPath = isSelfLoop
+		? `M ${sourceX},${sourceY} C ${sourceX + selfLoopOffset},${sourceY - selfLoopOffset} ${targetX + selfLoopOffset},${targetY - selfLoopOffset} ${targetX},${targetY}`
+		: "";
+	const selfLoopLabelX = isSelfLoop ? sourceX + selfLoopOffset * 0.8 : 0;
+	const selfLoopLabelY = isSelfLoop ? sourceY - selfLoopOffset * 0.8 : 0;
+
 	// Default label position (midpoint of standard bezier)
-	const [defaultPath, defaultLabelX, defaultLabelY] = getBezierPath({
-		sourceX,
-		sourceY,
-		sourcePosition,
-		targetX,
-		targetY,
-		targetPosition,
-	});
+	const [defaultPath, defaultLabelX, defaultLabelY] = isSelfLoop
+		? [selfLoopPath, selfLoopLabelX, selfLoopLabelY]
+		: getBezierPath({
+				sourceX,
+				sourceY,
+				sourcePosition,
+				targetX,
+				targetY,
+				targetPosition,
+			});
 
 	const isAuthenticated = edgeData?.authenticated === true;
 	const hasTextLabel =
@@ -77,6 +91,10 @@ export function DataFlowEdge({
 		hasLabel && hasCustomPosition
 			? getWaypointPath(sourceX, sourceY, targetX, targetY, labelX, labelY)
 			: defaultPath;
+
+	const customStrokeColor = edgeData?.strokeColor as string | undefined;
+	const customStrokeOpacity = (edgeData?.strokeOpacity as number) ?? 1;
+	const hasCustomColor = !!customStrokeColor;
 
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
@@ -214,12 +232,24 @@ export function DataFlowEdge({
 				markerEnd={markerEnd}
 				className={cn(
 					"!stroke-2 transition-colors",
-					selected
-						? "!stroke-tf-signal"
-						: isHovered
-							? "!stroke-muted-foreground/80"
-							: "!stroke-muted-foreground/50",
+					hasCustomColor
+						? selected
+							? "!stroke-tf-signal"
+							: ""
+						: selected
+							? "!stroke-tf-signal"
+							: isHovered
+								? "!stroke-muted-foreground/80"
+								: "!stroke-muted-foreground/50",
 				)}
+				style={
+					hasCustomColor && !selected
+						? {
+								stroke: customStrokeColor,
+								strokeOpacity: isHovered ? 1 : customStrokeOpacity,
+							}
+						: undefined
+				}
 			/>
 			{/* Animated flow direction dashes on hover/selection (only for non-authenticated edges) */}
 			{(isHovered || selected) && !isAuthenticated && (
@@ -227,9 +257,13 @@ export function DataFlowEdge({
 					d={edgePath}
 					fill="none"
 					strokeWidth={2}
-					className="stroke-tf-signal/40"
+					className={hasCustomColor ? undefined : "stroke-tf-signal/40"}
 					strokeDasharray="6 4"
-					style={{ pointerEvents: "none" }}
+					style={
+						hasCustomColor
+							? { pointerEvents: "none", stroke: customStrokeColor, strokeOpacity: 0.4 }
+							: { pointerEvents: "none" }
+					}
 				>
 					<animate
 						attributeName="stroke-dashoffset"

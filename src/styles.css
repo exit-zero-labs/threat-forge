@@ -117,6 +117,27 @@ html.light {
 @layer base {
 	* {
 		@apply border-border;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+	}
+
+	/* WebKit scrollbar styling (Chrome, Safari, Tauri WebView) */
+	::-webkit-scrollbar {
+		width: 8px;
+		height: 8px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		background: rgba(128, 128, 128, 0.3);
+		border-radius: 4px;
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background: rgba(128, 128, 128, 0.5);
+	}
+	::-webkit-scrollbar-corner {
+		background: transparent;
 	}
 
 	body {

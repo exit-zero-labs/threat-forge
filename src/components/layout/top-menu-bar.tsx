@@ -2,13 +2,12 @@ import {
 	BookOpen,
 	FilePlus,
 	FolderOpen,
-	HelpCircle,
 	LayoutPanelLeft,
 	PanelRight,
 	Save,
 	Settings,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -19,18 +18,43 @@ import { Keytip } from "../ui/keytip";
 export function TopMenuBar() {
 	const isDirty = useModelStore((s) => s.isDirty);
 	const model = useModelStore((s) => s.model);
+	const filePath = useModelStore((s) => s.filePath);
 	const toggleLeftPanel = useUiStore((s) => s.toggleLeftPanel);
 	const toggleRightPanel = useUiStore((s) => s.toggleRightPanel);
 	const openSettingsDialog = useSettingsStore((s) => s.openSettingsDialog);
-	const openShortcutsDialog = useSettingsStore((s) => s.openShortcutsDialog);
 	const keytipsVisible = useSettingsStore((s) => s.settings.keytipsVisible);
-	const { newModel, openModel, saveModel } = useFileOperations();
+	const { newModel, openModel, saveModel, saveModelAs } = useFileOperations();
 	const [guidePickerOpen, setGuidePickerOpen] = useState(false);
+	const [editingTitle, setEditingTitle] = useState(false);
+	const titleInputRef = useRef<HTMLInputElement>(null);
 
-	const title = model?.metadata.title ?? "ThreatForge";
+	// Show file basename when saved, otherwise model title
+	const title = filePath
+		? (filePath
+				.split("/")
+				.pop()
+				?.replace(/\.[^.]+$/, "") ??
+			model?.metadata.title ??
+			"Threat Forge")
+		: (model?.metadata.title ?? "Threat Forge");
 	const displayTitle = isDirty ? `${title} *` : title;
 	const isMac = navigator.platform.includes("Mac");
 	const modKey = isMac ? "\u2318" : "Ctrl+";
+
+	const commitTitle = useCallback(() => {
+		const newTitle = titleInputRef.current?.value.trim();
+		setEditingTitle(false);
+		if (!newTitle || !model) return;
+		if (newTitle !== model.metadata.title) {
+			useModelStore.getState().updateMetadata({ title: newTitle });
+			// Trigger save-as so user can choose the filename
+			void saveModelAs();
+		}
+	}, [model, saveModelAs]);
+
+	const cancelEdit = useCallback(() => {
+		setEditingTitle(false);
+	}, []);
 
 	return (
 		<header
@@ -39,8 +63,31 @@ export function TopMenuBar() {
 		>
 			{/* App title / branding */}
 			<div className="flex items-center gap-2">
-				<img src="/logo_square.png" alt="ThreatForge" className="h-5 w-5" />
-				<span className="text-sm font-semibold tracking-tight">{displayTitle}</span>
+				<img src="/logo_square.png" alt="Threat Forge" className="h-5 w-5" />
+				{editingTitle && model ? (
+					<input
+						ref={titleInputRef}
+						defaultValue={model.metadata.title}
+						autoFocus
+						className="w-40 rounded border border-primary bg-background px-1.5 py-0.5 text-sm font-semibold tracking-tight text-foreground focus:outline-none"
+						onKeyDown={(e) => {
+							e.stopPropagation();
+							if (e.key === "Enter") commitTitle();
+							if (e.key === "Escape") cancelEdit();
+						}}
+						onBlur={cancelEdit}
+					/>
+				) : (
+					<span
+						className="text-sm font-semibold tracking-tight cursor-default"
+						onDoubleClick={() => {
+							if (model) setEditingTitle(true);
+						}}
+						title={model ? "Double-click to rename" : undefined}
+					>
+						{displayTitle}
+					</span>
+				)}
 			</div>
 
 			{/* File operations */}
@@ -98,12 +145,6 @@ export function TopMenuBar() {
 					icon={<BookOpen className="h-4 w-4" />}
 					tooltip="Guided Tours"
 					onClick={() => setGuidePickerOpen(true)}
-				/>
-				<MenuButton
-					testId="btn-shortcuts-dialog"
-					icon={<HelpCircle className="h-4 w-4" />}
-					tooltip={`Keyboard Shortcuts (${modKey}/)`}
-					onClick={openShortcutsDialog}
 				/>
 				<MenuButton
 					testId="btn-settings-dialog"

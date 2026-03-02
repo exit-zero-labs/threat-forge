@@ -1,4 +1,4 @@
-import { Loader2, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
 import { isTauri } from "@/lib/platform";
@@ -19,6 +19,7 @@ export function AiSettingsContent() {
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const [showKey, setShowKey] = useState(false);
 	const [keyStatus, setKeyStatus] = useState<Record<AiProvider, boolean>>({
 		anthropic: false,
 		openai: false,
@@ -53,6 +54,7 @@ export function AiSettingsContent() {
 			await adapter.setKey(provider, apiKey.trim());
 			setKeyStatus((prev) => ({ ...prev, [provider]: true }));
 			setApiKey("");
+			setShowKey(false);
 			const successText = isTauri()
 				? "API key saved securely to OS keychain."
 				: "API key saved to browser storage.";
@@ -122,16 +124,27 @@ export function AiSettingsContent() {
 					{keyStatus[provider] ? "Replace API Key" : "API Key"}
 				</span>
 				<div className="flex gap-2">
-					<input
-						type="password"
-						value={apiKey}
-						onChange={(e) => setApiKey(e.target.value)}
-						placeholder={provider === "anthropic" ? "sk-ant-..." : "sk-..."}
-						className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
-						onKeyDown={(e) => {
-							if (e.key === "Enter") void handleSave();
-						}}
-					/>
+					<div className="relative flex-1">
+						<input
+							type={showKey ? "text" : "password"}
+							value={apiKey}
+							onChange={(e) => setApiKey(e.target.value)}
+							placeholder={provider === "anthropic" ? "sk-ant-..." : "sk-..."}
+							className="w-full rounded border border-border bg-background px-2 py-1.5 pr-8 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+							onKeyDown={(e) => {
+								e.stopPropagation();
+								if (e.key === "Enter") void handleSave();
+							}}
+						/>
+						<button
+							type="button"
+							onClick={() => setShowKey(!showKey)}
+							className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+							title={showKey ? "Hide API key" : "Show API key"}
+						>
+							{showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+						</button>
+					</div>
 					<button
 						type="button"
 						onClick={() => void handleSave()}

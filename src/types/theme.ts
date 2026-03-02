@@ -52,5 +52,6 @@ export interface ThemePreset {
 /** Serializable theme configuration for persistence */
 export interface ThemeConfig {
 	mode: ThemeMode;
-	presetId: string;
+	lightPresetId: string;
+	darkPresetId: string;
 }

@@ -1,6 +1,6 @@
 # YAML File Format Rules
 
-The `.threatforge.yaml` format is the product's primary moat. Treat it with extreme care.
+The `.thf` format is the product's primary moat. Treat it with extreme care.
 
 ## Schema Stability
 - NEVER make breaking changes to the schema without a version bump and migration path.
@@ -10,7 +10,7 @@ The `.threatforge.yaml` format is the product's primary moat. Treat it with extr
 
 ## Structure
 
-All data lives in a single `.threatforge.yaml` file — no sidecar files needed.
+All data lives in a single `.thf` file — no sidecar files needed.
 
 Layout data (positions, sizes, viewport, colors) is stored inline on each entity:
 - `elements[].position` — `{x, y}` canvas position
@@ -42,6 +42,6 @@ New saves always use inline positions and omit `layout_file`.
 
 ## Testing
 - Every schema change needs a round-trip test: YAML -> Rust struct -> YAML -> assert equal.
-- Maintain a set of sample `.threatforge.yaml` files in `tests/fixtures/` for regression testing.
+- Maintain a set of sample `.thf` files in `tests/fixtures/` for regression testing.
 - Test that git diffs for common operations (add element, add threat, reorder) are clean and minimal.
 - Test backward compatibility: old YAML files without new fields must still parse correctly.

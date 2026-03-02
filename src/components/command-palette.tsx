@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { buildCommands, type Command, searchCommands } from "@/lib/command-registry";
+import { useModelStore } from "@/stores/model-store";
 
 interface CommandPaletteProps {
 	open: boolean;
@@ -13,6 +14,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 	canvas: "Canvas",
 	navigate: "Navigate",
 	settings: "Settings",
+	component: "Add Component",
 };
 
 export function CommandPalette({ open, onClose }: CommandPaletteProps) {
@@ -22,6 +24,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 	const listRef = useRef<HTMLDivElement>(null);
 
 	const { newModel, openModel, saveModel, saveModelAs } = useFileOperations();
+	const hasModel = useModelStore((s) => s.model !== null);
 
 	const allCommands = useMemo(
 		() =>
@@ -30,8 +33,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 				openModel: () => void openModel(),
 				saveModel: () => void saveModel(),
 				saveModelAs: () => void saveModelAs(),
+				hasModel,
 			}),
-		[newModel, openModel, saveModel, saveModelAs],
+		[newModel, openModel, saveModel, saveModelAs, hasModel],
 	);
 
 	const filtered = useMemo(() => searchCommands(allCommands, query), [allCommands, query]);

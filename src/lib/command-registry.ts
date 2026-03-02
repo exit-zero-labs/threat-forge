@@ -3,6 +3,7 @@
  * Each command has an id, label, category, optional shortcut, and action callback.
  */
 
+import { getAllComponents } from "@/lib/component-library";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -11,7 +12,7 @@ import { useUiStore } from "@/stores/ui-store";
 export interface Command {
 	id: string;
 	label: string;
-	category: "file" | "view" | "canvas" | "navigate" | "settings";
+	category: "file" | "view" | "canvas" | "navigate" | "settings" | "component";
 	/** Optional keyboard shortcut hint displayed in the palette */
 	shortcut?: string;
 	/** Callback executed when the command is selected */
@@ -25,6 +26,17 @@ function fmt(mac: string, win: string): string {
 	return isMac ? mac : win;
 }
 
+/** Compute the center of the visible canvas area in flow coordinates. */
+function getViewportCenter(): { x: number; y: number } {
+	const vp = useCanvasStore.getState().viewport;
+	const w = window.innerWidth;
+	const h = window.innerHeight;
+	return {
+		x: (-vp.x + w / 2) / vp.zoom,
+		y: (-vp.y + h / 2) / vp.zoom,
+	};
+}
+
 /**
  * Build the full command list.
  * Each call returns a fresh array since actions close over current store state.
@@ -34,8 +46,9 @@ export function buildCommands(deps: {
 	openModel: () => void;
 	saveModel: () => void;
 	saveModelAs: () => void;
+	hasModel: boolean;
 }): Command[] {
-	return [
+	const commands: Command[] = [
 		// File commands
 		{
 			id: "file:new",
@@ -167,6 +180,26 @@ export function buildCommands(deps: {
 			action: () => useSettingsStore.getState().openShortcutsDialog(),
 		},
 	];
+
+	// Component placement commands — only available when a model is open
+	if (deps.hasModel) {
+		for (const comp of getAllComponents()) {
+			commands.push({
+				id: `component:${comp.id}`,
+				label: `Add ${comp.label}`,
+				category: "component",
+				action: () => {
+					const position = getViewportCenter();
+					useCanvasStore.getState().addElement(comp.id, position, {
+						icon: comp.icon,
+						name: comp.label,
+					});
+				},
+			});
+		}
+	}
+
+	return commands;
 }
 
 /**

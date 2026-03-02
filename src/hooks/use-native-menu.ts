@@ -10,7 +10,25 @@ import { useUiStore } from "@/stores/ui-store";
 import { useFileOperations } from "./use-file-operations";
 
 /**
+ * Open a .thf file by path (used for file association / open-with).
+ * Calls the Rust open_threat_model command directly with the given path.
+ */
+async function openFileByPath(filePath: string) {
+	const { invoke } = await import("@tauri-apps/api/core");
+	const model = await invoke<import("@/types/threat-model").ThreatModel>("open_threat_model", {
+		path: filePath,
+	});
+
+	const layout = buildLayoutFromModel(model);
+	if (layout) useCanvasStore.getState().setPendingLayout(layout);
+	useModelStore.getState().setModel(model, filePath);
+	useHistoryStore.getState().clear();
+	useSettingsStore.getState().loadFileSettings(model.metadata.settings);
+}
+
+/**
  * Listens to native Tauri menu events and dispatches them to the appropriate store actions.
+ * Also listens for file-association open events.
  * No-op in web builds where Tauri APIs are unavailable.
  */
 export function useNativeMenu() {
@@ -19,12 +37,18 @@ export function useNativeMenu() {
 	useEffect(() => {
 		if (!isTauri()) return;
 
-		let unlisten: (() => void) | undefined;
+		let unlistenMenu: (() => void) | undefined;
+		let unlistenFile: (() => void) | undefined;
 
 		async function setup() {
 			const { listen } = await import("@tauri-apps/api/event");
 
-			unlisten = await listen<string>("menu-action", (event) => {
+			// Listen for file-association open events (double-click .thf in Finder/Explorer)
+			unlistenFile = await listen<string>("open-file", (event) => {
+				void openFileByPath(event.payload);
+			});
+
+			unlistenMenu = await listen<string>("menu-action", (event) => {
 				const action = event.payload;
 
 				switch (action) {
@@ -71,17 +95,47 @@ export function useNativeMenu() {
 						break;
 					}
 					case "edit-cut":
-						useClipboardStore.getState().cutSelected();
-						break;
 					case "edit-copy":
-						useClipboardStore.getState().copySelected();
-						break;
 					case "edit-paste":
-						useClipboardStore.getState().paste();
+					case "edit-select-all": {
+						// When an input/textarea has focus, perform native text
+						// operations instead of canvas clipboard actions. The Tauri
+						// native menu intercepts the keystroke at the OS level, so
+						// the webview never sees the keydown — we trigger text ops
+						// manually here.
+						const el = document.activeElement;
+						const isText =
+							el instanceof HTMLInputElement ||
+							el instanceof HTMLTextAreaElement ||
+							(el instanceof HTMLElement && el.isContentEditable);
+
+						if (isText) {
+							if (action === "edit-select-all") {
+								if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+									el.select();
+								} else {
+									document.execCommand("selectAll");
+								}
+							} else if (action === "edit-copy") {
+								document.execCommand("copy");
+							} else if (action === "edit-cut") {
+								document.execCommand("cut");
+							} else if (action === "edit-paste") {
+								document.execCommand("paste");
+							}
+						} else {
+							if (action === "edit-select-all") {
+								useClipboardStore.getState().selectAll();
+							} else if (action === "edit-copy") {
+								useClipboardStore.getState().copySelected();
+							} else if (action === "edit-cut") {
+								useClipboardStore.getState().cutSelected();
+							} else if (action === "edit-paste") {
+								useClipboardStore.getState().paste();
+							}
+						}
 						break;
-					case "edit-select-all":
-						useClipboardStore.getState().selectAll();
-						break;
+					}
 					case "edit-delete":
 						useCanvasStore.getState().deleteSelected();
 						break;
@@ -124,7 +178,8 @@ export function useNativeMenu() {
 		void setup();
 
 		return () => {
-			unlisten?.();
+			unlistenMenu?.();
+			unlistenFile?.();
 		};
 	}, [newModel, openModel, saveModel, saveModelAs, closeModel]);
 }

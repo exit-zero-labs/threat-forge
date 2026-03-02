@@ -15,7 +15,8 @@ describe("useUiStore", () => {
 			rightPanelWidth: 320,
 			rightPanelTab: "properties",
 			themeMode: "dark",
-			themePresetId: "midnight",
+			lightPresetId: "daylight",
+			darkPresetId: "midnight",
 		});
 	});
 
@@ -57,23 +58,34 @@ describe("useUiStore", () => {
 		it("has default dark theme", () => {
 			const state = useUiStore.getState();
 			expect(state.themeMode).toBe("dark");
-			expect(state.themePresetId).toBe("midnight");
+			expect(state.darkPresetId).toBe("midnight");
+			expect(state.lightPresetId).toBe("daylight");
 		});
 
-		it("sets theme mode and preset", () => {
-			useUiStore.getState().setTheme("light", "daylight");
+		it("sets dark preset when selecting a dark theme", () => {
+			useUiStore.getState().setTheme("dark", "nord");
+			const state = useUiStore.getState();
+			expect(state.themeMode).toBe("dark");
+			expect(state.darkPresetId).toBe("nord");
+			expect(state.lightPresetId).toBe("daylight"); // unchanged
+		});
+
+		it("sets light preset when selecting a light theme", () => {
+			useUiStore.getState().setTheme("light", "warm-sand");
 			const state = useUiStore.getState();
 			expect(state.themeMode).toBe("light");
-			expect(state.themePresetId).toBe("daylight");
+			expect(state.lightPresetId).toBe("warm-sand");
+			expect(state.darkPresetId).toBe("midnight"); // unchanged
 		});
 
-		it("persists theme to localStorage", () => {
-			useUiStore.getState().setTheme("light", "daylight");
+		it("persists theme to localStorage with new format", () => {
+			useUiStore.getState().setTheme("light", "warm-sand");
 			const stored = localStorage.getItem(THEME_STORAGE_KEY);
 			expect(stored).toBeTruthy();
 			const parsed = JSON.parse(stored as string);
 			expect(parsed.mode).toBe("light");
-			expect(parsed.presetId).toBe("daylight");
+			expect(parsed.lightPresetId).toBe("warm-sand");
+			expect(parsed.darkPresetId).toBe("midnight");
 		});
 
 		it("applies CSS variables when setting theme", () => {
@@ -96,12 +108,15 @@ describe("useUiStore", () => {
 			expect(useUiStore.getState().themeMode).toBe("system");
 		});
 
-		it("uses default preset when switching mode without specifying preset", () => {
-			useUiStore.getState().setTheme("light");
+		it("preserves both presets when switching mode without specifying preset", () => {
+			useUiStore.getState().setTheme("dark", "nord");
+			useUiStore.getState().setTheme("light", "warm-sand");
+			// Now switch back to dark without specifying a preset
+			useUiStore.getState().setTheme("dark");
 			const state = useUiStore.getState();
-			expect(state.themeMode).toBe("light");
-			// Should pick a light preset
-			expect(state.themePresetId).toBe("daylight");
+			expect(state.themeMode).toBe("dark");
+			expect(state.darkPresetId).toBe("nord"); // preserved
+			expect(state.lightPresetId).toBe("warm-sand"); // preserved
 		});
 	});
 });

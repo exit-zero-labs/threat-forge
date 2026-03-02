@@ -2,7 +2,7 @@ import type { OnboardingGuide } from "@/types/onboarding";
 
 export const WELCOME_GUIDE: OnboardingGuide = {
 	id: "welcome",
-	name: "Welcome to ThreatForge",
+	name: "Welcome to Threat Forge",
 	showOnce: true,
 	steps: [
 		{

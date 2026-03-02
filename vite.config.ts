@@ -9,9 +9,16 @@ const host = process.env.TAURI_DEV_HOST;
 // @ts-expect-error process is a nodejs global
 const isTauriBuild = !!process.env.TAURI_ENV_ARCH;
 
+// Read version from package.json for use in the app
+const { readFileSync } = await import("node:fs");
+const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as { version: string };
+
 // biome-ignore lint/style/noDefaultExport: Vite requires default export
 export default defineConfig(async () => ({
 	plugins: [react(), tailwindcss()],
+	define: {
+		__APP_VERSION__: JSON.stringify(pkg.version),
+	},
 
 	resolve: {
 		alias: {

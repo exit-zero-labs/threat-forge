@@ -100,7 +100,7 @@ See @docs/implementation-plan.md for full ADR details.
 
 ## File Format
 
-The `.threatforge.yaml` file format is the product's primary moat. Design principles:
+The `.thf` file format is the product's primary moat. Design principles:
 1. Human-readable in any text editor
 2. Minimal, clean git diffs
 3. Schema-validated for tooling interop

@@ -39,7 +39,7 @@ export class BrowserFileAdapter implements FileAdapter {
 	}
 
 	async openThreatModel(): Promise<{ model: ThreatModel; path: string | null } | null> {
-		const file = await pickFile(".yaml,.yml");
+		const file = await pickFile(".thf,.yaml,.yml");
 		if (!file) return null;
 
 		const text = await file.text();
@@ -70,7 +70,7 @@ export class BrowserFileAdapter implements FileAdapter {
 
 		const blob = new Blob([yamlString], { type: "application/x-yaml" });
 		const filename = sanitizeFilename(model.metadata.title) || "model";
-		downloadBlob(blob, `${filename}.threatforge.yaml`);
+		downloadBlob(blob, `${filename}.thf`);
 		return filename;
 	}
 
