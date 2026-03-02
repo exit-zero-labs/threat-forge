@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import { useCanvasStore } from "@/stores/canvas-store";
+import { useClipboardStore } from "@/stores/clipboard-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -16,9 +17,13 @@ export function useKeyboardShortcuts() {
 			const mod = e.metaKey || e.ctrlKey;
 
 			// Non-modifier shortcuts (only when not focused in an input)
-			const activeTag = document.activeElement?.tagName;
+			const active = document.activeElement;
+			const activeTag = active?.tagName;
 			const isInputFocused =
-				activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT";
+				activeTag === "INPUT" ||
+				activeTag === "TEXTAREA" ||
+				activeTag === "SELECT" ||
+				(active instanceof HTMLElement && active.isContentEditable);
 
 			if (!isInputFocused && !mod) {
 				switch (e.key) {
@@ -122,6 +127,30 @@ export function useKeyboardShortcuts() {
 				case "/":
 					e.preventDefault();
 					useSettingsStore.getState().openShortcutsDialog();
+					break;
+				case "a":
+					if (!isInputFocused) {
+						e.preventDefault();
+						useClipboardStore.getState().selectAll();
+					}
+					break;
+				case "c":
+					if (!isInputFocused) {
+						e.preventDefault();
+						useClipboardStore.getState().copySelected();
+					}
+					break;
+				case "x":
+					if (!isInputFocused) {
+						e.preventDefault();
+						useClipboardStore.getState().cutSelected();
+					}
+					break;
+				case "v":
+					if (!isInputFocused) {
+						e.preventDefault();
+						useClipboardStore.getState().paste();
+					}
 					break;
 			}
 		}

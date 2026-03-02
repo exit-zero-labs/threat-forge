@@ -67,6 +67,7 @@ export function ThreatsTab() {
 			{/* Analyze button */}
 			<button
 				type="button"
+				data-testid="btn-stride-analyze"
 				disabled={!hasElements || isAnalyzing}
 				onClick={() => void analyzeThreats()}
 				className={cn(

@@ -6,6 +6,7 @@ import {
 	MiniMap,
 	type OnConnectStart,
 	ReactFlow,
+	SelectionMode,
 	useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -304,6 +305,8 @@ export function DfdCanvas() {
 				fitView
 				snapToGrid
 				snapGrid={[16, 16]}
+				multiSelectionKeyCode="Shift"
+				selectionMode={SelectionMode.Partial}
 				deleteKeyCode={null}
 				className="bg-background"
 				proOptions={{ hideAttribution: true }}

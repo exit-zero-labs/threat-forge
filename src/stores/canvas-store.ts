@@ -147,22 +147,22 @@ let elementCounter = 0;
 let flowCounter = 0;
 let boundaryCounter = 0;
 
-function generateElementId(): string {
+export function generateElementId(): string {
 	elementCounter++;
 	return `comp-${elementCounter}`;
 }
 
-function generateFlowId(): string {
+export function generateFlowId(): string {
 	flowCounter++;
 	return `flow-${flowCounter}`;
 }
 
-function generateBoundaryId(): string {
+export function generateBoundaryId(): string {
 	boundaryCounter++;
 	return `boundary-${boundaryCounter}`;
 }
 
-function elementToNode(element: Element, position: { x: number; y: number }): DfdNode {
+export function elementToNode(element: Element, position: { x: number; y: number }): DfdNode {
 	return {
 		id: element.id,
 		type: "dfdElement",
@@ -183,7 +183,10 @@ function elementToNode(element: Element, position: { x: number; y: number }): Df
 	};
 }
 
-function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: number }): DfdNode {
+export function boundaryToNode(
+	boundary: TrustBoundary,
+	position: { x: number; y: number },
+): DfdNode {
 	const w = boundary.size?.width ?? 400;
 	const h = boundary.size?.height ?? 300;
 	return {
@@ -212,7 +215,7 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 	};
 }
 
-function flowToEdge(flow: DataFlow): DfdEdge {
+export function flowToEdge(flow: DataFlow): DfdEdge {
 	return {
 		id: flow.id,
 		source: flow.from,
@@ -268,22 +271,30 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			}
 		}
 
-		// Handle selection changes
-		const selectionChange = changes.find((c) => c.type === "select" && c.selected);
-		if (selectionChange && selectionChange.type === "select") {
-			const node = get().nodes.find((n) => n.id === selectionChange.id);
-			if (node?.data.isBoundary) {
-				useModelStore.getState().setSelectedBoundary(selectionChange.id);
-			} else if (node && !node.data.isBoundary) {
-				useModelStore.getState().setSelectedElement(selectionChange.id);
+		// Handle selection changes — process the last selected node for model-store sync.
+		// In multi-select batches, multiple nodes may be selected at once; use the last
+		// one as the "active" selection for the properties panel.
+		const selectionChanges = changes.filter((c) => c.type === "select" && c.selected);
+		if (selectionChanges.length > 0) {
+			const lastChange = selectionChanges[selectionChanges.length - 1];
+			if (lastChange.type === "select") {
+				const node = get().nodes.find((n) => n.id === lastChange.id);
+				if (node?.data.isBoundary) {
+					useModelStore.getState().setSelectedBoundary(lastChange.id);
+				} else if (node && !node.data.isBoundary) {
+					useModelStore.getState().setSelectedElement(lastChange.id);
+				}
 			}
 		}
 
-		// Handle deselection
-		const deselection = changes.find((c) => c.type === "select" && !c.selected);
-		if (deselection && !changes.some((c) => c.type === "select" && c.selected)) {
-			useModelStore.getState().setSelectedElement(null);
-			useModelStore.getState().setSelectedBoundary(null);
+		// Handle deselection — only clear model selection when zero nodes remain selected
+		const hasDeselection = changes.some((c) => c.type === "select" && !c.selected);
+		if (hasDeselection && !changes.some((c) => c.type === "select" && c.selected)) {
+			const anyStillSelected = get().nodes.some((n) => n.selected);
+			if (!anyStillSelected) {
+				useModelStore.getState().setSelectedElement(null);
+				useModelStore.getState().setSelectedBoundary(null);
+			}
 		}
 	},
 
