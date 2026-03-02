@@ -41,9 +41,10 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app
 
-# 4. npm ci (cached until package-lock.json changes)
+# 4. npm ci + Playwright (cached until package-lock.json changes)
 COPY package.json package-lock.json ./
 RUN npm ci
+RUN npx playwright install --with-deps chromium
 
 # 5. cargo fetch (cached until Cargo.lock changes)
 COPY src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/

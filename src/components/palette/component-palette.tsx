@@ -163,6 +163,18 @@ function getCanvasCenter(
 	});
 }
 
+/** Create a styled drag ghost image and attach it to the drag event */
+function setDragGhost(e: React.DragEvent, label: string) {
+	const ghost = document.createElement("div");
+	ghost.textContent = label;
+	ghost.style.cssText =
+		"position:fixed;left:-9999px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:500;background:hsl(var(--card));border:1px solid hsl(var(--border));box-shadow:0 4px 6px rgba(0,0,0,0.1);color:hsl(var(--foreground));white-space:nowrap;";
+	document.body.appendChild(ghost);
+	e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+	// Clean up after the drag image is captured
+	requestAnimationFrame(() => ghost.remove());
+}
+
 /** Generic items: Component (generic) and Boundary. No subtype. */
 function GenericPaletteItem({
 	icon: Icon,
@@ -195,6 +207,7 @@ function GenericPaletteItem({
 			onDragStart={(e) => {
 				e.dataTransfer.setData("text/plain", type);
 				e.dataTransfer.effectAllowed = "copy";
+				setDragGhost(e, label);
 				// Use setDraggedComponent to clear any stale subtype/icon/name from a prior library drag
 				useCanvasStore.getState().setDraggedComponent({ type });
 			}}
@@ -248,6 +261,7 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 			onDragStart={(e) => {
 				e.dataTransfer.setData("text/plain", component.id);
 				e.dataTransfer.effectAllowed = "copy";
+				setDragGhost(e, component.label);
 				useCanvasStore.getState().setDraggedComponent({
 					type: component.id,
 					icon: component.icon,

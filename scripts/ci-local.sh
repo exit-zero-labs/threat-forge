@@ -3,6 +3,7 @@
 #
 # Usage:
 #   bash scripts/ci-local.sh           # lint + test (default)
+#   bash scripts/ci-local.sh --e2e     # lint + test + E2E tests
 #   bash scripts/ci-local.sh --build   # lint + test + tauri build
 #
 # Exit codes: 0 = all checks pass, non-zero = failure.
@@ -21,9 +22,11 @@ BOLD='\033[1m'
 RESET='\033[0m'
 
 BUILD=false
+E2E=false
 for arg in "$@"; do
   case "$arg" in
     --build) BUILD=true ;;
+    --e2e) E2E=true ;;
   esac
 done
 
@@ -67,6 +70,14 @@ pass "Vitest"
 step "Rust tests"
 cargo test --manifest-path src-tauri/Cargo.toml || fail "cargo test failed"
 pass "cargo test"
+
+# ── E2E Tests (optional) ─────────────────────────────
+
+if [ "$E2E" = true ]; then
+  step "E2E tests (Playwright)"
+  npx playwright test || fail "Playwright E2E tests failed"
+  pass "Playwright"
+fi
 
 # ── Build (optional) ─────────────────────────────────
 

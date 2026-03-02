@@ -19,7 +19,13 @@ function hexToRgba(hex: string, opacity: number): string {
 export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 	const nodeData = data as DfdNodeData;
 	const [isEditing, setIsEditing] = useState(false);
+	const [isDragOver, setIsDragOver] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
+
+	// Highlight boundary when an element is being dragged from the palette
+	const isDraggingElement = useCanvasStore(
+		(s) => s.draggedType !== null && s.draggedType !== "trust_boundary",
+	);
 
 	const fillColor = nodeData.boundaryFillColor as string | undefined;
 	const strokeColor = nodeData.boundaryStrokeColor as string | undefined;
@@ -91,11 +97,21 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 					hasCustomColors &&
 						selected &&
 						"ring-2 ring-tf-signal ring-offset-1 ring-offset-background",
+					isDragOver && isDraggingElement && "border-tf-signal/60 bg-tf-signal/10",
 				)}
 				style={{
 					pointerEvents: "none",
 					...(hasCustomColors ? customStyle : {}),
 				}}
+				onDragEnter={(e) => {
+					e.preventDefault();
+					if (isDraggingElement) setIsDragOver(true);
+				}}
+				onDragOver={(e) => {
+					e.preventDefault();
+				}}
+				onDragLeave={() => setIsDragOver(false)}
+				onDrop={() => setIsDragOver(false)}
 			>
 				{/* Clickable border overlay — 4 thin strips along the edges */}
 				{/* Top */}

@@ -23,6 +23,10 @@ interface UiState extends ThemeState {
 	rightPanelWidth: number;
 	/** Current right panel tab */
 	rightPanelTab: RightPanelTab;
+	/** Whether the canvas is locked (prevents editing) */
+	canvasLocked: boolean;
+	/** Whether the command palette (Cmd+K) is open */
+	commandPaletteOpen: boolean;
 
 	// Actions
 	toggleLeftPanel: () => void;
@@ -30,6 +34,9 @@ interface UiState extends ThemeState {
 	setRightPanelTab: (tab: RightPanelTab) => void;
 	setRightPanelWidth: (width: number) => void;
 	setTheme: (mode: ThemeMode, presetId?: string) => void;
+	toggleCanvasLock: () => void;
+	openCommandPalette: () => void;
+	closeCommandPalette: () => void;
 }
 
 function loadPersistedTheme(): ThemeState {
@@ -93,6 +100,8 @@ export const useUiStore = create<UiState>((set, get) => ({
 	rightPanelOpen: true,
 	rightPanelWidth: 320,
 	rightPanelTab: "properties",
+	canvasLocked: false,
+	commandPaletteOpen: false,
 	themeMode: initialTheme.themeMode,
 	themePresetId: initialTheme.themePresetId,
 
@@ -100,6 +109,9 @@ export const useUiStore = create<UiState>((set, get) => ({
 	toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
 	setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
 	setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
+	toggleCanvasLock: () => set((state) => ({ canvasLocked: !state.canvasLocked })),
+	openCommandPalette: () => set({ commandPaletteOpen: true }),
+	closeCommandPalette: () => set({ commandPaletteOpen: false }),
 
 	setTheme: (mode, presetId) => {
 		const effectivePresetId = presetId ?? resolvePresetForMode(mode, get().themePresetId);

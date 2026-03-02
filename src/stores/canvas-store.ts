@@ -112,6 +112,19 @@ interface CanvasState {
 	duplicateElement: (nodeId: string) => void;
 	reverseEdge: (edgeId: string) => void;
 
+	// ReactFlow instance actions (set by DfdCanvas on init)
+	rfFitView: (() => void) | null;
+	rfZoomIn: (() => void) | null;
+	rfZoomOut: (() => void) | null;
+	setReactFlowActions: (actions: {
+		fitView: () => void;
+		zoomIn: () => void;
+		zoomOut: () => void;
+	}) => void;
+
+	/** Nudge selected nodes by a delta (in flow coordinates) */
+	nudgeSelected: (dx: number, dy: number) => void;
+
 	// Sync from model store
 	syncFromModel: () => void;
 }
@@ -594,6 +607,34 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 				: e,
 		);
 		set({ edges: updatedEdges });
+	},
+
+	// ReactFlow instance actions
+	rfFitView: null,
+	rfZoomIn: null,
+	rfZoomOut: null,
+	setReactFlowActions: (actions) =>
+		set({ rfFitView: actions.fitView, rfZoomIn: actions.zoomIn, rfZoomOut: actions.zoomOut }),
+
+	nudgeSelected: (dx, dy) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+
+		const selectedNodes = get().nodes.filter((n) => n.selected && !n.data.isBoundary);
+		if (selectedNodes.length === 0) return;
+
+		// Push history before nudging
+		useHistoryStore.getState().pushSnapshot(writePositionsToModel(model, get().nodes));
+
+		const updatedNodes = get().nodes.map((n) => {
+			if (!n.selected || n.data.isBoundary) return n;
+			return { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } };
+		});
+		set({ nodes: updatedNodes });
+
+		// Write positions back to model
+		const updated = writePositionsToModel(model, updatedNodes);
+		useModelStore.setState({ model: updated, isDirty: true });
 	},
 
 	syncFromModel: () => {

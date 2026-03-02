@@ -1,9 +1,12 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useNativeMenu } from "@/hooks/use-native-menu";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { Canvas } from "../canvas/canvas";
+import { CommandPalette } from "../command-palette";
+import { GuideProvider } from "../onboarding/guide-provider";
 import { ComponentPalette } from "../palette/component-palette";
 import { RightPanel } from "../panels/right-panel";
 import { SettingsDialog } from "../panels/settings-dialog";
@@ -14,10 +17,13 @@ import { TopMenuBar } from "./top-menu-bar";
 export function AppLayout() {
 	const leftPanelOpen = useUiStore((s) => s.leftPanelOpen);
 	const rightPanelOpen = useUiStore((s) => s.rightPanelOpen);
+	const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen);
+	const closeCommandPalette = useUiStore((s) => s.closeCommandPalette);
 	const settingsDialogOpen = useSettingsStore((s) => s.settingsDialogOpen);
 	const shortcutsDialogOpen = useSettingsStore((s) => s.shortcutsDialogOpen);
 
 	useKeyboardShortcuts();
+	useNativeMenu();
 	useAutosave();
 
 	return (
@@ -54,6 +60,8 @@ export function AppLayout() {
 				{/* Dialogs */}
 				{settingsDialogOpen && <SettingsDialog />}
 				{shortcutsDialogOpen && <ShortcutsDialog />}
+				<CommandPalette open={commandPaletteOpen} onClose={closeCommandPalette} />
+				<GuideProvider />
 			</div>
 		</ReactFlowProvider>
 	);

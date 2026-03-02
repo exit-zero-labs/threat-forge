@@ -2,6 +2,7 @@ mod ai;
 mod commands;
 mod errors;
 mod file_io;
+mod menu;
 mod models;
 mod stride;
 
@@ -9,12 +10,24 @@ use commands::{
     analyze_stride, create_new_model, delete_api_key, get_api_key_status, open_layout,
     open_threat_model, save_layout, save_threat_model, send_chat_message, set_api_key,
 };
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let menu = menu::build_menu(app)?;
+            app.set_menu(menu)?;
+
+            // Forward native menu events to the frontend
+            app.on_menu_event(move |app_handle, event| {
+                let _ = app_handle.emit("menu-action", event.id().0.as_str());
+            });
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             create_new_model,
             open_threat_model,
