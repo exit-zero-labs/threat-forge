@@ -8,6 +8,7 @@ import { useUiStore } from "@/stores/ui-store";
 import { Canvas } from "../canvas/canvas";
 import { CommandPalette } from "../command-palette";
 import { GuideProvider } from "../onboarding/guide-provider";
+
 import { WhatsNewOverlay } from "../onboarding/whats-new-overlay";
 import { ComponentPalette } from "../palette/component-palette";
 import { RightPanel } from "../panels/right-panel";
