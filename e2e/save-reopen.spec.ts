@@ -17,7 +17,7 @@ test.describe("Save and Reopen", () => {
 		const download = await downloadPromise;
 
 		// Verify the downloaded file
-		expect(download.suggestedFilename()).toContain(".yaml");
+		expect(download.suggestedFilename()).toContain(".thf");
 
 		// Read the file content
 		const readable = await download.createReadStream();

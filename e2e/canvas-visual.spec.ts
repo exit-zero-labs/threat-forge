@@ -40,6 +40,10 @@ async function addTrustBoundary(page: Page) {
  */
 
 test.describe("Canvas Visual Regression", () => {
+	// Visual regression snapshots are platform-specific (font rendering, anti-aliasing).
+	// Only macOS baselines are committed — skip in CI (Linux) to avoid missing-snapshot failures.
+	test.skip(!!process.env.CI, "Visual regression tests require platform-specific baselines");
+
 	test.beforeEach(async ({ page }) => {
 		await page.goto("/");
 		await createModel(page);
