@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getStrideAdapter } from "@/lib/adapters/get-stride-adapter";
 import type { DataFlow, Element, Threat, ThreatModel, TrustBoundary } from "@/types/threat-model";
+import { useHistoryStore } from "./history-store";
 
 interface ModelState {
 	/** The currently loaded threat model, or null if no model is open */
@@ -45,8 +46,44 @@ interface ModelState {
 	updateThreat: (id: string, updates: Partial<Threat>) => void;
 	deleteThreat: (id: string) => void;
 
+	// Undo/redo
+	restoreSnapshot: (snapshot: ThreatModel) => void;
+
 	// STRIDE analysis
 	analyzeThreats: () => Promise<void>;
+}
+
+let lastDebouncedCaptureTime = 0;
+let lastDebouncedCaptureKey = "";
+const CAPTURE_DEBOUNCE_MS = 300;
+
+/** Capture a history snapshot for a discrete action. Always pushes. Resets debounce state. */
+function captureHistory(model: ThreatModel | null): void {
+	if (!model) return;
+	lastDebouncedCaptureTime = 0;
+	lastDebouncedCaptureKey = "";
+	useHistoryStore.getState().pushSnapshot(model);
+}
+
+/**
+ * Capture a history snapshot with key-based debouncing for rapid property edits.
+ * Consecutive calls with the same key within CAPTURE_DEBOUNCE_MS are grouped
+ * into a single undo step (only the first push is recorded).
+ */
+function captureHistoryDebounced(model: ThreatModel | null, key: string): void {
+	if (!model) return;
+	const now = Date.now();
+	if (key === lastDebouncedCaptureKey && now - lastDebouncedCaptureTime < CAPTURE_DEBOUNCE_MS)
+		return;
+	lastDebouncedCaptureTime = now;
+	lastDebouncedCaptureKey = key;
+	useHistoryStore.getState().pushSnapshot(model);
+}
+
+/** Reset the debounce state. Exported for testing. */
+export function resetCaptureDebounce(): void {
+	lastDebouncedCaptureTime = 0;
+	lastDebouncedCaptureKey = "";
 }
 
 export const useModelStore = create<ModelState>((set, get) => ({
@@ -107,6 +144,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistoryDebounced(model, `element:${id}`);
 		const updatedElements = model.elements.map((e) => (e.id === id ? { ...e, ...updates } : e));
 		set({
 			model: { ...model, elements: updatedElements },
@@ -118,6 +156,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistoryDebounced(model, `flow:${id}`);
 		const updatedFlows = model.data_flows.map((f) => (f.id === id ? { ...f, ...updates } : f));
 		set({
 			model: { ...model, data_flows: updatedFlows },
@@ -129,6 +168,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistoryDebounced(model, `boundary:${id}`);
 		const updatedBoundaries = model.trust_boundaries.map((b) =>
 			b.id === id ? { ...b, ...updates } : b,
 		);
@@ -142,6 +182,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		set({
 			model: { ...model, threats: [...model.threats, threat] },
 			isDirty: true,
@@ -153,6 +194,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		if (!model) return;
 		if (threats.length === 0) return;
 
+		captureHistory(model);
 		set({
 			model: { ...model, threats: [...model.threats, ...threats] },
 			isDirty: true,
@@ -163,6 +205,7 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model } = get();
 		if (!model) return;
 
+		captureHistoryDebounced(model, `threat:${id}`);
 		const updatedThreats = model.threats.map((t) => (t.id === id ? { ...t, ...updates } : t));
 		set({
 			model: { ...model, threats: updatedThreats },
@@ -174,10 +217,20 @@ export const useModelStore = create<ModelState>((set, get) => ({
 		const { model, selectedThreatId } = get();
 		if (!model) return;
 
+		captureHistory(model);
 		set({
 			model: { ...model, threats: model.threats.filter((t) => t.id !== id) },
 			isDirty: true,
 			selectedThreatId: selectedThreatId === id ? null : selectedThreatId,
+		});
+	},
+
+	restoreSnapshot: (snapshot) => {
+		lastDebouncedCaptureTime = 0;
+		lastDebouncedCaptureKey = "";
+		set({
+			model: snapshot,
+			isDirty: true,
 		});
 	},
 

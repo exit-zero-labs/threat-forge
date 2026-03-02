@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Threat, ThreatModel } from "@/types/threat-model";
-import { useModelStore } from "./model-store";
+import { useHistoryStore } from "./history-store";
+import { resetCaptureDebounce, useModelStore } from "./model-store";
+
+/** Helper that asserts a value is not null and returns it typed. */
+function assertDefined<T>(value: T | null | undefined): T {
+	expect(value).not.toBeNull();
+	return value as T;
+}
 
 vi.mock("@tauri-apps/api/core", () => ({
 	invoke: vi.fn(),
@@ -52,9 +59,13 @@ describe("useModelStore", () => {
 			filePath: null,
 			isDirty: false,
 			selectedElementId: null,
+			selectedEdgeId: null,
+			selectedBoundaryId: null,
 			selectedThreatId: null,
 			isAnalyzing: false,
 		});
+		useHistoryStore.setState({ past: [], future: [] });
+		resetCaptureDebounce();
 	});
 
 	it("starts with no model loaded", () => {
@@ -159,5 +170,83 @@ describe("useModelStore", () => {
 		expect(element?.trust_zone).toBe("dmz");
 		expect(element?.type).toBe("process");
 		expect(useModelStore.getState().isDirty).toBe(true);
+	});
+
+	describe("undo/redo integration", () => {
+		it("mutations push to history and undo restores state", () => {
+			useModelStore.getState().setModel(mockModel, null);
+
+			// Perform mutation
+			useModelStore.getState().updateElement("web-app", { name: "Changed" });
+			expect(useModelStore.getState().model?.elements[0].name).toBe("Changed");
+			expect(useHistoryStore.getState().past).toHaveLength(1);
+
+			// Undo
+			const currentModel = assertDefined(useModelStore.getState().model);
+			const snapshot = assertDefined(useHistoryStore.getState().undo(currentModel));
+			useModelStore.getState().restoreSnapshot(snapshot);
+			expect(useModelStore.getState().model?.elements[0].name).toBe("Web Application");
+		});
+
+		it("undo then redo returns to mutated state", () => {
+			useModelStore.getState().setModel(mockModel, null);
+
+			useModelStore.getState().updateElement("web-app", { name: "Changed" });
+
+			// Undo
+			const model1 = assertDefined(useModelStore.getState().model);
+			const undone = assertDefined(useHistoryStore.getState().undo(model1));
+			useModelStore.getState().restoreSnapshot(undone);
+			expect(useModelStore.getState().model?.elements[0].name).toBe("Web Application");
+
+			// Redo
+			const model2 = assertDefined(useModelStore.getState().model);
+			const redone = assertDefined(useHistoryStore.getState().redo(model2));
+			useModelStore.getState().restoreSnapshot(redone);
+			expect(useModelStore.getState().model?.elements[0].name).toBe("Changed");
+		});
+
+		it("new mutation after undo clears redo stack", () => {
+			useModelStore.getState().setModel(mockModel, null);
+
+			useModelStore.getState().updateElement("web-app", { name: "V1" });
+			useModelStore.getState().updateElement("web-app", { name: "V2" });
+
+			// Undo once
+			const current = assertDefined(useModelStore.getState().model);
+			const snapshot = assertDefined(useHistoryStore.getState().undo(current));
+			useModelStore.getState().restoreSnapshot(snapshot);
+
+			expect(useHistoryStore.getState().future).toHaveLength(1);
+
+			// New mutation should clear future
+			useModelStore.getState().updateElement("web-app", { name: "V3" });
+			expect(useHistoryStore.getState().future).toHaveLength(0);
+		});
+
+		it("multiple mutation types push to history", () => {
+			const modelWithThreat = { ...mockModel, threats: [mockThreat] };
+			useModelStore.getState().setModel(modelWithThreat, null);
+
+			useModelStore.getState().updateElement("web-app", { name: "Changed" });
+			useModelStore.getState().updateThreat("threat-1", { severity: "critical" });
+			useModelStore.getState().deleteThreat("threat-1");
+
+			expect(useHistoryStore.getState().past).toHaveLength(3);
+		});
+
+		it("restoreSnapshot sets isDirty to true", () => {
+			useModelStore.getState().setModel(mockModel, null);
+			expect(useModelStore.getState().isDirty).toBe(false);
+
+			useModelStore.getState().restoreSnapshot(mockModel);
+			expect(useModelStore.getState().isDirty).toBe(true);
+		});
+
+		it("addThreats with empty array does not push to history", () => {
+			useModelStore.getState().setModel(mockModel, null);
+			useModelStore.getState().addThreats([]);
+			expect(useHistoryStore.getState().past).toHaveLength(0);
+		});
 	});
 });

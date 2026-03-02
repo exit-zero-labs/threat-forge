@@ -60,6 +60,7 @@ export function SettingsDialog() {
 			}}
 		>
 			<div
+				data-testid="settings-dialog"
 				className="flex h-[520px] w-full max-w-2xl rounded-lg border border-border bg-background shadow-lg"
 				onKeyDown={handleKeyDown}
 			>
@@ -234,9 +235,10 @@ function EditorSection() {
 
 function ShortcutsSection() {
 	const isMac = navigator.platform.includes("Mac");
-	const categories = ["file", "view", "canvas"] as const;
+	const categories = ["file", "edit", "view", "canvas"] as const;
 	const categoryLabels = {
 		file: "File",
+		edit: "Edit",
 		view: "View",
 		canvas: "Canvas",
 	} as const;

@@ -7,8 +7,10 @@ import type {
 	DiagramLayout,
 	Element,
 	ElementType,
+	ThreatModel,
 	TrustBoundary,
 } from "@/types/threat-model";
+import { useHistoryStore } from "./history-store";
 import { useModelStore } from "./model-store";
 
 /** ReactFlow node data payload for DFD elements.
@@ -84,6 +86,33 @@ interface CanvasState {
 
 	// Sync from model store
 	syncFromModel: () => void;
+}
+
+/** Model snapshot captured at the start of a drag (with pre-drag canvas positions baked in). */
+let preDragSnapshot: ThreatModel | null = null;
+
+/** Write current canvas node positions into the model's inline position fields. */
+function writePositionsToModel(model: ThreatModel, nodes: DfdNode[]): ThreatModel {
+	const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+	return {
+		...model,
+		elements: model.elements.map((el) => {
+			const node = nodeMap.get(el.id);
+			if (!node) return el;
+			return { ...el, position: { x: node.position.x, y: node.position.y } };
+		}),
+		trust_boundaries: model.trust_boundaries.map((b) => {
+			const node = nodeMap.get(b.id);
+			if (!node) return b;
+			const w = node.width ?? (node.style as Record<string, number> | undefined)?.width ?? 400;
+			const h = node.height ?? (node.style as Record<string, number> | undefined)?.height ?? 300;
+			return {
+				...b,
+				position: { x: node.position.x, y: node.position.y },
+				size: { width: w, height: h },
+			};
+		}),
+	};
 }
 
 let elementCounter = 0;
@@ -198,12 +227,28 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	pendingLayout: null,
 
 	onNodesChange: (changes) => {
+		// Capture pre-drag model snapshot BEFORE applying changes (nodes still have old positions)
+		const hasDragStart = changes.some((c) => c.type === "position" && c.dragging === true);
+		if (hasDragStart && !preDragSnapshot) {
+			const model = useModelStore.getState().model;
+			if (model) {
+				preDragSnapshot = writePositionsToModel(model, get().nodes);
+			}
+		}
+
+		// Apply node changes (positions update here)
 		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
 
-		// Propagate position changes to keep model aware of dirty state
-		const hasPositionChange = changes.some((c) => c.type === "position" && c.dragging === false);
-		if (hasPositionChange) {
-			useModelStore.getState().markDirty();
+		// Handle drag end: push pre-drag snapshot to history, write new positions to model
+		const hasDragEnd = changes.some((c) => c.type === "position" && c.dragging === false);
+		if (hasDragEnd && preDragSnapshot) {
+			useHistoryStore.getState().pushSnapshot(preDragSnapshot);
+			preDragSnapshot = null;
+			const model = useModelStore.getState().model;
+			if (model) {
+				const updated = writePositionsToModel(model, get().nodes);
+				useModelStore.setState({ model: updated, isDirty: true });
+			}
 		}
 
 		// Handle selection changes
@@ -237,6 +282,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		if (removals.length > 0) {
 			const model = useModelStore.getState().model;
 			if (model) {
+				useHistoryStore.getState().pushSnapshot(model);
 				const removedIds = new Set(removals.map((r) => r.id));
 				const updatedFlows = model.data_flows.filter((f) => !removedIds.has(f.id));
 				useModelStore
@@ -295,6 +341,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			// If dropped inside boundary, add to its contains array
 			let updatedBoundaries = model.trust_boundaries;
 			if (boundaryNode) {
@@ -355,6 +402,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			useModelStore
 				.getState()
 				.setModel(
@@ -382,6 +430,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			useModelStore.getState().setModel(
 				{
 					...model,
@@ -419,6 +468,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Update model store
 		const model = useModelStore.getState().model;
 		if (model) {
+			useHistoryStore.getState().pushSnapshot(model);
 			useModelStore.getState().setModel(
 				{
 					...model,
@@ -459,6 +509,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const newNode = elementToNode(newElement, { x: offsetX, y: offsetY });
 		set({ nodes: [...get().nodes, newNode] });
 
+		useHistoryStore.getState().pushSnapshot(model);
 		useModelStore
 			.getState()
 			.setModel(
@@ -475,6 +526,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 		const flow = model.data_flows.find((f) => f.id === edgeId);
 		if (!flow) return;
+
+		useHistoryStore.getState().pushSnapshot(model);
 
 		// Update model: swap from/to (use direct set to preserve selection state)
 		const updatedFlows = model.data_flows.map((f) =>
@@ -592,15 +645,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			return node;
 		});
 
-		// Convert flows to edges, preserving handle assignments and label offsets from existing edges
+		// Convert flows to edges, preserving handle assignments from existing edges
 		const existingEdgeMap = new Map(get().edges.map((e) => [e.id, e]));
 		const edges: DfdEdge[] = model.data_flows.map((flow) => {
 			const edge = flowToEdge(flow);
 			const existing = existingEdgeMap.get(flow.id);
 			if (existing?.sourceHandle) edge.sourceHandle = existing.sourceHandle;
 			if (existing?.targetHandle) edge.targetHandle = existing.targetHandle;
-			// Preserve dragged label position
-			if (existing?.data?.labelOffsetX != null || existing?.data?.labelOffsetY != null) {
+			// Preserve dragged label position only if model has no label_offset for this flow.
+			// When the model has label_offset (e.g. after undo/redo or drag-end write-back),
+			// flowToEdge already applied it — don't override with stale canvas data.
+			if (
+				!flow.label_offset &&
+				(existing?.data?.labelOffsetX != null || existing?.data?.labelOffsetY != null)
+			) {
 				edge.data = {
 					...(edge.data as DfdEdgeData),
 					labelOffsetX: existing.data.labelOffsetX,

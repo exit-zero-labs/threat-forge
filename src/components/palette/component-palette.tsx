@@ -35,7 +35,7 @@ const BOUNDARY_ELEMENTS = [
 
 export function ComponentPalette() {
 	return (
-		<div className="flex h-full flex-col">
+		<div data-testid="component-palette" className="flex h-full flex-col">
 			<div className="border-b border-border px-3 py-2">
 				<h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
 					Components
@@ -91,6 +91,7 @@ function PaletteItem({
 
 	return (
 		<div
+			data-testid={`palette-item-${type.replace("_", "-")}`}
 			className="flex cursor-grab items-center gap-3 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-border hover:bg-accent"
 			draggable
 			onDragStart={(e) => {

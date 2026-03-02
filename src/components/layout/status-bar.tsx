@@ -1,3 +1,4 @@
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -6,6 +7,8 @@ export function StatusBar() {
 	const isDirty = useModelStore((s) => s.isDirty);
 	const filePath = useModelStore((s) => s.filePath);
 	const autosaveEnabled = useSettingsStore((s) => s.settings.autosaveEnabled);
+	const pastLength = useHistoryStore((s) => s.past.length);
+	const futureLength = useHistoryStore((s) => s.future.length);
 
 	const elementCount = model?.elements.length ?? 0;
 	const threatCount = model?.threats.length ?? 0;
@@ -19,7 +22,10 @@ export function StatusBar() {
 	}
 
 	return (
-		<footer className="flex h-6 shrink-0 items-center border-t border-border bg-card px-3 text-xs text-muted-foreground">
+		<footer
+			data-testid="status-bar"
+			className="flex h-6 shrink-0 items-center border-t border-border bg-card px-3 text-xs text-muted-foreground"
+		>
 			{model ? (
 				<>
 					<span>
@@ -35,6 +41,14 @@ export function StatusBar() {
 					</span>
 					<Separator />
 					<span>{renderSaveStatus()}</span>
+					{(pastLength > 0 || futureLength > 0) && (
+						<>
+							<Separator />
+							<span className="tabular-nums">
+								Undo: {pastLength} / Redo: {futureLength}
+							</span>
+						</>
+					)}
 					{filePath && (
 						<>
 							<div className="flex-1" />

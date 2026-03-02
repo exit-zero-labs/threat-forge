@@ -1,4 +1,7 @@
 import { useEffect } from "react";
+import { buildLayoutFromModel } from "@/lib/model-layout-utils";
+import { useCanvasStore } from "@/stores/canvas-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -68,6 +71,45 @@ export function useKeyboardShortcuts() {
 						void saveModel();
 					}
 					break;
+				case "z": {
+					e.preventDefault();
+					const currentModel = useModelStore.getState().model;
+					if (!currentModel) break;
+					if (e.shiftKey) {
+						// Redo (Cmd+Shift+Z)
+						const snapshot = useHistoryStore.getState().redo(currentModel);
+						if (snapshot) {
+							const layout = buildLayoutFromModel(snapshot);
+							if (layout) useCanvasStore.getState().setPendingLayout(layout);
+							useModelStore.getState().restoreSnapshot(snapshot);
+							useCanvasStore.getState().syncFromModel();
+						}
+					} else {
+						// Undo (Cmd+Z)
+						const snapshot = useHistoryStore.getState().undo(currentModel);
+						if (snapshot) {
+							const layout = buildLayoutFromModel(snapshot);
+							if (layout) useCanvasStore.getState().setPendingLayout(layout);
+							useModelStore.getState().restoreSnapshot(snapshot);
+							useCanvasStore.getState().syncFromModel();
+						}
+					}
+					break;
+				}
+				case "y": {
+					// Redo alternative (Cmd+Y)
+					e.preventDefault();
+					const currentModel = useModelStore.getState().model;
+					if (!currentModel) break;
+					const snapshot = useHistoryStore.getState().redo(currentModel);
+					if (snapshot) {
+						const layout = buildLayoutFromModel(snapshot);
+						if (layout) useCanvasStore.getState().setPendingLayout(layout);
+						useModelStore.getState().restoreSnapshot(snapshot);
+						useCanvasStore.getState().syncFromModel();
+					}
+					break;
+				}
 				case "l":
 					e.preventDefault();
 					useUiStore.getState().rightPanelOpen || useUiStore.getState().toggleRightPanel();

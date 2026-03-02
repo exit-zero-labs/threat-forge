@@ -1,9 +1,11 @@
 import { useCallback } from "react";
 import { getFileAdapter } from "@/lib/adapters/get-file-adapter";
+import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
-import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
+import type { ThreatModel } from "@/types/threat-model";
 
 function todayString(): string {
 	return new Date().toISOString().split("T")[0];
@@ -60,44 +62,6 @@ function captureCanvasIntoModel(model: ThreatModel): ThreatModel {
 	return { ...model, elements, trust_boundaries, data_flows, diagrams };
 }
 
-/** Build a DiagramLayout from inline model positions (for setPendingLayout). */
-function buildLayoutFromModel(model: ThreatModel): DiagramLayout | null {
-	if (model.diagrams.length === 0) return null;
-
-	const diagram = model.diagrams[0];
-
-	// Only build if there are inline positions to use
-	const hasInlinePositions =
-		model.elements.some((e) => e.position) || model.trust_boundaries.some((b) => b.position);
-
-	if (!hasInlinePositions && !diagram.viewport) return null;
-
-	const nodes = [
-		...model.elements
-			.filter((e) => e.position)
-			.map((e) => ({
-				id: e.id,
-				x: e.position?.x ?? 0,
-				y: e.position?.y ?? 0,
-			})),
-		...model.trust_boundaries
-			.filter((b) => b.position)
-			.map((b) => ({
-				id: b.id,
-				x: b.position?.x ?? 0,
-				y: b.position?.y ?? 0,
-				width: b.size?.width,
-				height: b.size?.height,
-			})),
-	];
-
-	return {
-		diagram_id: diagram.id,
-		viewport: diagram.viewport ?? { x: 0, y: 0, zoom: 1 },
-		nodes,
-	};
-}
-
 export function useFileOperations() {
 	const model = useModelStore((s) => s.model);
 	const filePath = useModelStore((s) => s.filePath);
@@ -117,6 +81,7 @@ export function useFileOperations() {
 		// No pending layout for new models — use default positions
 		useCanvasStore.getState().setPendingLayout(null);
 		setModel(created, null);
+		useHistoryStore.getState().clear();
 		// syncFromModel is called by the useEffect in DfdCanvas when model changes
 	}, [isDirty, setModel]);
 
@@ -146,6 +111,7 @@ export function useFileOperations() {
 		}
 
 		setModel(loaded, path);
+		useHistoryStore.getState().clear();
 		// syncFromModel is called by the useEffect in DfdCanvas when model changes
 	}, [isDirty, setModel]);
 
@@ -186,6 +152,7 @@ export function useFileOperations() {
 			if (!discard) return;
 		}
 		clearModel();
+		useHistoryStore.getState().clear();
 		// DfdCanvas unmounts when model is null, so useEffect won't fire — clear canvas directly
 		useCanvasStore.getState().syncFromModel();
 	}, [isDirty, clearModel]);

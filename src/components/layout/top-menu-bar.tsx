@@ -29,7 +29,10 @@ export function TopMenuBar() {
 	const modKey = isMac ? "\u2318" : "Ctrl+";
 
 	return (
-		<header className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3">
+		<header
+			data-testid="top-menu-bar"
+			className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3"
+		>
 			{/* App title / branding */}
 			<div className="flex items-center gap-2">
 				<img src="/logo_square.png" alt="ThreatForge" className="h-5 w-5" />
@@ -39,18 +42,21 @@ export function TopMenuBar() {
 			{/* File operations */}
 			<div className="ml-4 flex items-center gap-0.5">
 				<MenuButton
+					testId="btn-new"
 					icon={<FilePlus className="h-3.5 w-3.5" />}
 					tooltip={`New Model (${modKey}N)`}
 					keytip={keytipsVisible ? `${modKey}N` : undefined}
 					onClick={() => void newModel()}
 				/>
 				<MenuButton
+					testId="btn-open"
 					icon={<FolderOpen className="h-3.5 w-3.5" />}
 					tooltip={`Open Model (${modKey}O)`}
 					keytip={keytipsVisible ? `${modKey}O` : undefined}
 					onClick={() => void openModel()}
 				/>
 				<MenuButton
+					testId="btn-save"
 					icon={<Save className="h-3.5 w-3.5" />}
 					tooltip={`Save (${modKey}S)`}
 					keytip={keytipsVisible ? `${modKey}S` : undefined}
@@ -65,11 +71,13 @@ export function TopMenuBar() {
 			{/* View toggles */}
 			<div className="flex items-center gap-0.5">
 				<MenuButton
+					testId="btn-toggle-left-panel"
 					icon={<LayoutPanelLeft className="h-4 w-4" />}
 					tooltip="Toggle component palette"
 					onClick={toggleLeftPanel}
 				/>
 				<MenuButton
+					testId="btn-toggle-right-panel"
 					icon={<PanelRight className="h-4 w-4" />}
 					tooltip="Toggle properties panel"
 					onClick={toggleRightPanel}
@@ -82,11 +90,13 @@ export function TopMenuBar() {
 			{/* Settings + Help */}
 			<div className="flex items-center gap-0.5">
 				<MenuButton
+					testId="btn-shortcuts-dialog"
 					icon={<HelpCircle className="h-4 w-4" />}
 					tooltip={`Keyboard Shortcuts (${modKey}/)`}
 					onClick={openShortcutsDialog}
 				/>
 				<MenuButton
+					testId="btn-settings-dialog"
 					icon={<Settings className="h-4 w-4" />}
 					tooltip={`Settings (${modKey},)`}
 					onClick={openSettingsDialog}
@@ -97,12 +107,14 @@ export function TopMenuBar() {
 }
 
 function MenuButton({
+	testId,
 	icon,
 	tooltip,
 	keytip,
 	onClick,
 	disabled,
 }: {
+	testId?: string;
 	icon: React.ReactNode;
 	tooltip: string;
 	keytip?: string;
@@ -113,6 +125,7 @@ function MenuButton({
 		<span className="relative">
 			<button
 				type="button"
+				data-testid={testId}
 				onClick={onClick}
 				disabled={disabled}
 				title={tooltip}

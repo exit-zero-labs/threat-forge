@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import type { ThreatModel } from "@/types/threat-model";
 import { useCanvasStore } from "./canvas-store";
+import { useHistoryStore } from "./history-store";
 import { useModelStore } from "./model-store";
 
 function createTestModel(): ThreatModel {
@@ -62,6 +64,7 @@ describe("canvas-store", () => {
 			viewport: { x: 0, y: 0, zoom: 1 },
 		});
 		useModelStore.setState({ model: null, filePath: null, isDirty: false });
+		useHistoryStore.setState({ past: [], future: [] });
 	});
 
 	it("syncs nodes and edges from model store", () => {
@@ -361,5 +364,93 @@ describe("canvas-store", () => {
 		const edge = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
 		expect(edge?.data?.labelOffsetX).toBe(15);
 		expect(edge?.data?.labelOffsetY).toBe(-10);
+	});
+
+	it("captures pre-drag positions and writes post-drag positions on drag end", () => {
+		const model = createTestModel();
+		model.elements[0].position = { x: 100, y: 100 };
+		model.elements[1].position = { x: 300, y: 300 };
+		model.trust_boundaries[0].position = { x: 20, y: 20 };
+		model.diagrams = [{ id: "main", name: "Main" }];
+
+		const layout = buildLayoutFromModel(model);
+		if (layout) useCanvasStore.getState().setPendingLayout(layout);
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		// Verify initial positions
+		const processNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
+		expect(processNode?.position).toEqual({ x: 100, y: 100 });
+
+		// Simulate drag start (dragging: true)
+		useCanvasStore
+			.getState()
+			.onNodesChange([
+				{ id: "process-1", type: "position", position: { x: 110, y: 110 }, dragging: true },
+			]);
+
+		// History should not have been pushed yet (drag still in progress)
+		expect(useHistoryStore.getState().past).toHaveLength(0);
+
+		// Simulate drag end (dragging: false)
+		useCanvasStore
+			.getState()
+			.onNodesChange([
+				{ id: "process-1", type: "position", position: { x: 500, y: 500 }, dragging: false },
+			]);
+
+		// History should now have the pre-drag snapshot
+		expect(useHistoryStore.getState().past).toHaveLength(1);
+
+		// The pre-drag snapshot should have the original position
+		const snapshot = useHistoryStore.getState().past[0];
+		const snapshotElement = snapshot.elements.find((e) => e.id === "process-1");
+		expect(snapshotElement?.position).toEqual({ x: 100, y: 100 });
+
+		// The model should now have the post-drag position
+		const updatedModel = useModelStore.getState().model;
+		const updatedElement = updatedModel?.elements.find((e) => e.id === "process-1");
+		expect(updatedElement?.position).toEqual({ x: 500, y: 500 });
+		expect(useModelStore.getState().isDirty).toBe(true);
+	});
+
+	it("restores positions on undo via pending layout", () => {
+		const model = createTestModel();
+		model.elements[0].position = { x: 100, y: 100 };
+		model.elements[1].position = { x: 300, y: 300 };
+		model.trust_boundaries[0].position = { x: 20, y: 20 };
+		model.diagrams = [{ id: "main", name: "Main" }];
+
+		const layout = buildLayoutFromModel(model);
+		if (layout) useCanvasStore.getState().setPendingLayout(layout);
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		// Simulate drag: process-1 from (100,100) to (500,500)
+		useCanvasStore
+			.getState()
+			.onNodesChange([
+				{ id: "process-1", type: "position", position: { x: 110, y: 110 }, dragging: true },
+			]);
+		useCanvasStore
+			.getState()
+			.onNodesChange([
+				{ id: "process-1", type: "position", position: { x: 500, y: 500 }, dragging: false },
+			]);
+
+		// Undo: restore pre-drag snapshot via pending layout
+		const currentModel = useModelStore.getState().model;
+		expect(currentModel).not.toBeNull();
+		const snapshot = useHistoryStore.getState().undo(currentModel as ThreatModel);
+		expect(snapshot).not.toBeNull();
+
+		const undoLayout = buildLayoutFromModel(snapshot as ThreatModel);
+		if (undoLayout) useCanvasStore.getState().setPendingLayout(undoLayout);
+		useModelStore.getState().restoreSnapshot(snapshot as ThreatModel);
+		useCanvasStore.getState().syncFromModel();
+
+		// Position should be restored to pre-drag
+		const restoredNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
+		expect(restoredNode?.position).toEqual({ x: 100, y: 100 });
 	});
 });

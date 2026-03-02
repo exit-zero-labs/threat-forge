@@ -14,6 +14,8 @@
 		"format": "biome check --write .",
 		"test": "vitest --run",
 		"test:watch": "vitest",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui",
 		"ci:local": "bash scripts/ci-local.sh",
 		"ci:docker": "docker compose run --rm --build ci",
 		"ci:docker:build": "docker compose run --rm --build ci bash scripts/ci-local.sh --build",
@@ -35,6 +37,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.4",
+		"@playwright/test": "^1.58.2",
 		"@tailwindcss/vite": "^4.2.1",
 		"@tauri-apps/cli": "^2",
 		"@testing-library/jest-dom": "^6.9.1",

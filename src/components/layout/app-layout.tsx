@@ -22,7 +22,10 @@ export function AppLayout() {
 
 	return (
 		<ReactFlowProvider>
-			<div className="flex h-full w-full flex-col bg-background text-foreground">
+			<div
+				data-testid="app-layout"
+				className="flex h-full w-full flex-col bg-background text-foreground"
+			>
 				<TopMenuBar />
 
 				<div className="flex flex-1 overflow-hidden">

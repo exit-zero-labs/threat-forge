@@ -60,3 +60,114 @@ Consolidate layout data from separate `.threatforge/layouts/*.json` sidecar file
 - Layout IPC commands (`open_layout`/`save_layout`) stay registered but become unused
 - Also fixed struct constructors in `ai/prompt.rs` and `stride/mod.rs` for new fields
 - 37 Rust tests, 95 frontend tests — all passing
+
+---
+
+## 2026-03-01 — WS3.1 + WS4.1-4.2: Undo/Redo + Playwright Setup + TestIDs
+
+### Plan
+- [x] Step 1: Create history store (`src/stores/history-store.ts`)
+  - [x] `past`/`future` arrays of `ThreatModel` snapshots
+  - [x] `pushSnapshot` — clones model, pushes to past, clears future, trims to 20
+  - [x] `undo(currentModel)` — pushes current to future, pops from past
+  - [x] `redo(currentModel)` — pushes current to past, pops from future
+  - [x] `clear()` — empties both stacks
+  - [x] `canUndo()`/`canRedo()` convenience methods
+- [x] Step 2: Integrate history into model-store mutations
+  - [x] Add `captureHistory()` helper before each mutation
+  - [x] Instrumented: `updateElement`, `updateDataFlow`, `updateTrustBoundary`, `addThreat`, `addThreats`, `updateThreat`, `deleteThreat`
+  - [x] Added `restoreSnapshot()` action for undo/redo restore
+  - [x] Import `useHistoryStore` in model-store
+- [x] Step 3: Update canvas-store for history capture
+  - [x] `onNodesChange` — capture snapshot when position drag completes
+  - [x] `onEdgesChange` — capture snapshot before edge removal
+  - [x] `addElement` — capture before model update
+  - [x] `addDataFlow` — capture before model update
+  - [x] `addTrustBoundary` — capture before model update
+  - [x] `deleteSelected` — capture before model update
+  - [x] `duplicateElement` — capture before model update
+  - [x] `reverseEdge` — capture before model update
+- [x] Step 4: Clear history on file operations
+  - [x] `newModel` — calls `useHistoryStore.getState().clear()`
+  - [x] `openModel` — calls `useHistoryStore.getState().clear()`
+  - [x] `closeModel` — calls `useHistoryStore.getState().clear()`
+- [x] Step 5: Wire keyboard shortcuts
+  - [x] `Cmd+Z` — undo (restore snapshot, sync canvas)
+  - [x] `Cmd+Shift+Z` — redo
+  - [x] `Cmd+Y` — redo alternative
+  - [x] Added shortcuts to `KEYBOARD_SHORTCUTS` array (edit category)
+  - [x] Updated shortcuts dialog and settings dialog to show "Edit" category
+- [x] Step 6: Status bar undo/redo indicator
+  - [x] Show "Undo: N / Redo: N" when stacks are non-empty
+- [x] Step 7: History store tests (`history-store.test.ts`)
+  - [x] Push 5 snapshots, verify stack length
+  - [x] Undo 3 times, verify past shrinks and future grows
+  - [x] Redo 1 time, verify state
+  - [x] Push after undo clears future
+  - [x] Max 20 entries — push 25, verify only 20 remain
+  - [x] Clear resets both stacks
+  - [x] Undo on empty past returns null
+  - [x] Redo on empty future returns null
+  - [x] Deep clone verification
+  - [x] Full round-trip: 5 actions → undo 3 → redo 1
+- [x] Step 8: Model store undo/redo integration tests
+  - [x] Mutation → undo → verify state matches original
+  - [x] Undo → redo → verify returns to mutated state
+  - [x] New mutation after undo clears redo stack
+  - [x] Multiple mutation types push to history
+  - [x] restoreSnapshot sets isDirty
+  - [x] addThreats with empty array doesn't push to history
+- [x] Step 9: Playwright setup
+  - [x] `npm install -D @playwright/test`
+  - [x] `npx playwright install chromium`
+  - [x] Created `playwright.config.ts` (Chromium only, port 3000, web server)
+  - [x] Created `e2e/` directory with `.gitkeep`
+  - [x] Added `test:e2e` and `test:e2e:ui` npm scripts
+  - [x] Added `playwright-report/`, `test-results/`, `blob-report/` to `.gitignore`
+- [x] Step 10: Add `data-testid` attributes
+  - [x] `app-layout.tsx` — `data-testid="app-layout"`
+  - [x] `top-menu-bar.tsx` — `top-menu-bar`, `btn-new`, `btn-open`, `btn-save`, `btn-toggle-left-panel`, `btn-toggle-right-panel`, `btn-settings-dialog`, `btn-shortcuts-dialog`
+  - [x] `status-bar.tsx` — `data-testid="status-bar"`
+  - [x] `canvas.tsx` — `canvas-area`, `empty-canvas`, `btn-empty-new`, `btn-empty-open`
+  - [x] `component-palette.tsx` — `component-palette`, `palette-item-process`, `palette-item-data-store`, `palette-item-external-entity`, `palette-item-trust-boundary`
+  - [x] `right-panel.tsx` — `right-panel`, `tab-properties`, `tab-threats`, `tab-ai`
+  - [x] `settings-dialog.tsx` — `settings-dialog`
+  - [x] `shortcuts-dialog.tsx` — `shortcuts-dialog`
+- [x] Final validation: `npm run ci:local` — ALL PASSED
+
+### Notes
+- State-snapshot approach for undo/redo (not action-replay) — simpler with dual-store pattern
+- Separate history-store rather than Zustand temporal middleware for cleaner separation
+- Canvas mutations capture history via `useHistoryStore.getState().pushSnapshot()` before calling `setModel()`
+- `setModel()` itself does NOT clear history — only file operations (new/open/close) call `clear()`
+- 112 frontend tests (up from 95), 37 Rust tests — all passing
+- Playwright targets web build on port 3000 (`npm run dev:web`), Chromium only for speed
+
+---
+
+## 2026-03-01 — Fix undo/redo for edge label drags + per-keystroke history pollution
+
+### Problem
+1. Typing in property panel fields (Name, Protocol, etc.) pushes one history snapshot per keystroke — Cmd+Z undoes one character at a time
+2. Edge label drags don't push to history at all — Cmd+Z skips the drag entirely
+3. `syncFromModel` preserves stale canvas label offsets over model data during undo
+
+### Plan
+- [x] Step 1: Add key-based debounced `captureHistory` to `model-store.ts`
+  - [x] `captureHistoryDebounced(model, key)` — skips if same key within 300ms
+  - [x] `captureHistory(model)` (discrete) — always pushes + resets debounce state
+  - [x] `restoreSnapshot` — resets debounce state
+  - [x] Export `resetCaptureDebounce()` for tests
+  - [x] Use debounced for: `updateElement`, `updateDataFlow`, `updateTrustBoundary`, `updateThreat`
+  - [x] Use always-push for: `addThreat`, `addThreats`, `deleteThreat`
+- [x] Step 2: Add edge label drag history capture in `data-flow-edge.tsx`
+  - [x] Import `useHistoryStore`, `useCanvasStore`, `ThreatModel`
+  - [x] In `handlePointerDown`: capture pre-drag model with current label offset baked in
+  - [x] In `onPointerUp`: push pre-drag model to history + write new offset to model store
+- [x] Step 3: Fix `syncFromModel` in `canvas-store.ts`
+  - [x] Only preserve existing canvas label offsets when model has no `label_offset`
+  - [x] When model has `label_offset`, use it (from `flowToEdge`)
+- [x] Step 4: Update `model-store.test.ts`
+  - [x] Import + call `resetCaptureDebounce()` in `beforeEach`
+- [x] Validate: `npx vitest --run` — 114 tests passing
+- [x] Validate: `npm run ci:local` — all checks passed
