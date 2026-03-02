@@ -4,6 +4,41 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-02 — Documentation restructure
+
+### Plan
+- [x] Create `docs/knowledge/` with focused reference docs split from project-document.md:
+  - [x] `overview.md` — Product overview, value prop, mission, status
+  - [x] `architecture.md` — System architecture, ADRs, tech stack, project structure
+  - [x] `file-format.md` — `.thf` format spec with full examples
+  - [x] `product-design.md` — Personas, features, user journeys, success metrics
+  - [x] `market-analysis.md` — Market sizing, competitive landscape
+  - [x] `business-model.md` — Revenue, costs, sustainability
+  - [x] `go-to-market.md` — Launch strategy, growth loops, content strategy
+  - [x] `risks.md` — Risk register, pre-mortems, kill gates
+  - [x] `glossary.md` — Terms, STRIDE mapping, references
+- [x] Move todo/planning files to `docs/plans/`
+  - [x] `todo.md`, `todo-archive-001.md` through `004.md`
+  - [x] Create `roadmap.md` with remaining/future work
+- [x] Delete old monolith docs: `project-document.md`, `implementation-plan.md`
+- [x] Update all cross-references:
+  - [x] `CLAUDE.md` — status, architecture tree, ADR-006, doc references, todo path
+  - [x] `README.md` — status, roadmap link, file format description
+  - [x] `.claude/agents/threat-model-expert.md` — doc references
+  - [x] `.claude/agents/security-auditor.md` — fix outdated deny_unknown_fields
+  - [x] `.claude/skills/implement-sprint/SKILL.md` — doc references
+  - [x] `.claude/rules/workflow.md` — todo.md path (4 occurrences)
+  - [x] `.claude/rules/security.md` — fix outdated deny_unknown_fields
+  - [x] `SECURITY.md` — fix outdated deny_unknown_fields
+
+### Notes
+- Project is 99% production ready — all language updated from "early development" to "production-ready"
+- ADR-006 updated from "separate JSON files" to "inline layout data" reflecting current architecture
+- `deny_unknown_fields` was removed from Rust types for forward compatibility; updated in 3 places (SECURITY.md, security rules, security auditor agent)
+- Todo archives left with historical references to `docs/todo.md` (they're archives, not active)
+
+---
+
 ## 2026-03-02 — Replace OS keychain with encrypted file storage
 
 ### Plan

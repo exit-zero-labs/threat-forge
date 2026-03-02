@@ -2,19 +2,19 @@
 
 These are MANDATORY. Follow them for every non-trivial change.
 
-## docs/todo.md — Shared Execution Plan
+## docs/plans/todo.md — Shared Execution Plan
 
-`docs/todo.md` is the shared plan-of-record for both humans and LLM agents. It is the FIRST thing you read and the LAST thing you update.
+`docs/plans/todo.md` is the shared plan-of-record for both humans and LLM agents. It is the FIRST thing you read and the LAST thing you update.
 
 ### Before starting any work:
-1. Read `docs/todo.md` to understand current state
+1. Read `docs/plans/todo.md` to understand current state
 2. Write the full execution plan as a Markdown checklist under a dated heading
 3. Each task must be a checkable item: `- [ ] Description`
 4. Sub-tasks are indented: `  - [ ] Sub-task`
 5. Include validation steps as explicit checklist items
 
 ### During execution:
-- After completing each task or validation pass, update `docs/todo.md`:
+- After completing each task or validation pass, update `docs/plans/todo.md`:
   - Check off completed items: `- [x] Description`
   - Add notes on anything unexpected
   - Add new items discovered during implementation
@@ -37,7 +37,7 @@ These are MANDATORY. Follow them for every non-trivial change.
 ```
 
 ### Archiving:
-- When the file gets long (50+ completed items or multiple days of work), the human will rename it to `docs/todo-archive-YYYY-MM-DD.md` and create a fresh `docs/todo.md`.
+- When the file gets long (50+ completed items or multiple days of work), the human will rename it to `docs/plans/todo-archive-YYYY-MM-DD.md` and create a fresh `docs/plans/todo.md`.
 - Do NOT archive automatically — the human decides when.
 
 ## Git Branching — Branch Per Change
@@ -52,7 +52,7 @@ IMPORTANT: Non-trivial changes MUST happen on a new branch, never directly on `m
 
 ### What can go directly on main:
 - Typo fixes in docs/comments
-- Updating `docs/todo.md` itself
+- Updating `docs/plans/todo.md` itself
 - Adding/updating `.claude/` configuration files
 
 ### Branch workflow:

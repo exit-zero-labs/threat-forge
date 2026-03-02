@@ -4,7 +4,7 @@ Open-source, AI-enhanced, cross-platform desktop threat modeling application.
 
 Fills the gap between Microsoft's legacy TMT (free but Windows-only, binary `.tm7` files) and enterprise platforms like ThreatModeler/IriusRisk ($20K+/year). Produces human-readable, git-diffable YAML files with integrated AI assistance.
 
-**Status:** Early development — default Tauri scaffold, no custom code yet. Currently Phase 0.
+**Status:** Production-ready. Core application fully functional. Remaining work: cross-platform CI builds, code signing, and launch marketing.
 
 ## Tech Stack
 
@@ -62,28 +62,38 @@ npm run ci:docker:build  # Docker lint + test + Tauri build
 
 ```
 threat-forge/
-├── src/                    # React frontend
-│   ├── components/         # React components (PascalCase)
-│   ├── stores/             # Zustand stores
-│   ├── hooks/              # Custom React hooks
-│   ├── lib/                # Shared utilities
-│   ├── types/              # TypeScript type definitions
-│   └── App.tsx             # App root
-├── src-tauri/              # Rust backend
+├── src/                        # React frontend
+│   ├── components/             # React components (PascalCase)
+│   │   ├── canvas/             # DFD canvas, nodes, edges
+│   │   ├── layout/             # App layout, top menu, panels
+│   │   ├── onboarding/         # Guides, overlays, tips
+│   │   ├── palette/            # Component palette (left sidebar)
+│   │   ├── panels/             # Properties, threats, settings, AI
+│   │   └── ui/                 # shadcn/ui primitives
+│   ├── hooks/                  # Custom React hooks
+│   ├── lib/                    # Shared utilities
+│   ├── stores/                 # Zustand stores
+│   ├── types/                  # TypeScript type definitions
+│   └── App.tsx                 # App root
+├── src-tauri/                  # Rust backend
 │   ├── src/
-│   │   ├── lib.rs          # Tauri commands + app setup
-│   │   ├── main.rs         # Entry point
-│   │   ├── commands/       # Tauri IPC command handlers
-│   │   ├── models/         # Rust types (serde YAML schema)
-│   │   ├── stride/         # STRIDE threat engine
-│   │   └── file_io/        # File read/write operations
+│   │   ├── lib.rs              # Tauri commands + app setup
+│   │   ├── main.rs             # Entry point
+│   │   ├── commands/           # Tauri IPC command handlers
+│   │   ├── models/             # Rust types (serde YAML schema)
+│   │   ├── stride/             # STRIDE threat engine
+│   │   ├── ai/                 # AI key storage (AES-256-GCM)
+│   │   └── file_io/            # File read/write operations
 │   ├── Cargo.toml
 │   └── tauri.conf.json
-├── docs/                   # Project + implementation docs
-│   ├── project-document.md
-│   └── implementation-plan.md
-└── public/                 # Static assets
+├── e2e/                        # Playwright E2E tests
+├── docs/                       # Documentation
+│   ├── knowledge/              # Reference docs (architecture, format, market, etc.)
+│   └── plans/                  # Todo tracking and roadmap
+└── public/                     # Static assets
 ```
+
+See @docs/knowledge/architecture.md for the full system architecture and ADRs.
 
 ## Key Architecture Decisions
 
@@ -92,11 +102,9 @@ threat-forge/
 - **ADR-003:** Custom YAML file format — human-readable, git-diffable (THE product moat)
 - **ADR-004:** Zustand for state — minimal boilerplate, TypeScript-first
 - **ADR-005:** BYOK AI (user-provided API keys) — zero cost, user controls data
-- **ADR-006:** Layout data in separate JSON files — keeps YAML diffs clean
+- **ADR-006:** Inline layout data — positions stored on each element in the `.thf` file; single-file portability
 - **ADR-007:** AES-256-GCM encrypted file storage for API keys
 - **ADR-008:** Tailwind + shadcn/ui — lightweight, dark mode, customizable
-
-See @docs/implementation-plan.md for full ADR details.
 
 ## File Format
 
@@ -104,9 +112,9 @@ The `.thf` file format is the product's primary moat. Design principles:
 1. Human-readable in any text editor
 2. Minimal, clean git diffs
 3. Schema-validated for tooling interop
-4. Layout coordinates stored separately in `.threatforge/layouts/*.json`
+4. Single-file — all data (including layout positions) inline, no sidecars
 
-See @docs/project-document.md Section 4.3 for the full schema example.
+See @docs/knowledge/file-format.md for the full schema spec and examples.
 
 ## Conventions
 
@@ -127,7 +135,7 @@ These override the parent Exit Zero Labs CLAUDE.md:
 
 **These two rules are non-negotiable. Follow them for every non-trivial change.**
 
-1. **`docs/todo.md` is the shared execution plan.** Before starting any work, read it. Write your full plan as a checklist. Update it after every validation pass. See `.claude/rules/workflow.md` for the full protocol.
+1. **`docs/plans/todo.md` is the shared execution plan.** Before starting any work, read it. Write your full plan as a checklist. Update it after every validation pass. See `.claude/rules/workflow.md` for the full protocol.
 
 2. **Non-trivial changes go on a branch, never `main`.** Before writing code, run `git branch --show-current`. If on `main`, create a branch first: `git checkout -b type/short-description` (e.g., `feat/canvas-nodes`, `fix/yaml-validation`).
 

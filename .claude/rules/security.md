@@ -9,7 +9,7 @@ This is a security tool. The bar for security in our own code is high.
 
 ## Input Validation
 - Validate ALL user input on the Rust side before processing. The frontend is untrusted.
-- Use serde strict deserialization for YAML files — reject unknown fields.
+- Use serde deserialization for YAML files with schema version validation. Unknown fields are tolerated for forward compatibility.
 - Sanitize file paths to prevent directory traversal. Use Tauri's path scoping.
 - Validate YAML schema version on file load. Reject unsupported versions with clear errors.
 
