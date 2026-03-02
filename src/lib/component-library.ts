@@ -410,6 +410,12 @@ export function getSubtypesForType(type: string): SubtypeDefinition[] {
 	return getComponentByType(type)?.subtypes ?? [];
 }
 
+/** Returns true if the component type is a library prefab (not "generic"). */
+export function isPrefabType(type: string): boolean {
+	const comp = getComponentByType(type);
+	return comp !== undefined && comp.id !== "generic";
+}
+
 /** Case-insensitive search across label and tags. Excludes the generic type from results. */
 export function searchComponents(query: string): ComponentDefinition[] {
 	const q = query.toLowerCase().trim();

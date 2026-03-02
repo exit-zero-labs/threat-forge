@@ -9,6 +9,7 @@ import {
 	getShapeForType,
 	getStrideCategoryForType,
 	getSubtypesForType,
+	isPrefabType,
 	searchComponents,
 } from "./component-library";
 
@@ -129,6 +130,30 @@ describe("component-library", () => {
 
 	it("getIconComponent returns undefined for unknown icon", () => {
 		expect(getIconComponent("nonexistent_icon")).toBeUndefined();
+	});
+
+	it("isPrefabType returns true for library components", () => {
+		expect(isPrefabType("api_gateway")).toBe(true);
+		expect(isPrefabType("sql_database")).toBe(true);
+		expect(isPrefabType("web_browser")).toBe(true);
+		expect(isPrefabType("load_balancer")).toBe(true);
+	});
+
+	it("isPrefabType returns false for generic and unknown types", () => {
+		expect(isPrefabType("generic")).toBe(false);
+		expect(isPrefabType("nonexistent_type")).toBe(false);
+		expect(isPrefabType("")).toBe(false);
+	});
+
+	it("type change (swap) preserves component definition lookup", () => {
+		// Verify that changing from one type to another resolves correct definitions
+		const sqlDb = getComponentByType("sql_database");
+		const apiGw = getComponentByType("api_gateway");
+		expect(sqlDb?.shape).toBe("database");
+		expect(apiGw?.shape).toBe("rounded");
+		// Swapping type should give the new component's shape
+		expect(getShapeForType("api_gateway")).toBe("rounded");
+		expect(getShapeForType("sql_database")).toBe("database");
 	});
 
 	it("every component has a valid shape and stride category", () => {

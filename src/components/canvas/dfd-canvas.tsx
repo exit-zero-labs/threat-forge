@@ -209,6 +209,16 @@ export function DfdCanvas() {
 		useUiStore.getState().setRightPanelTab("properties");
 	}, []);
 
+	/** Alt+Drag to instantly duplicate: clone at original position, user drags the original away */
+	const onNodeDragStart = useCallback(
+		(event: React.MouseEvent, node: DfdNode) => {
+			if (event.altKey && !node.data.isBoundary) {
+				duplicateElement(node.id, { offset: { x: 0, y: 0 }, select: false });
+			}
+		},
+		[duplicateElement],
+	);
+
 	const onNodeContextMenu = useCallback((event: React.MouseEvent, node: DfdNode) => {
 		event.preventDefault();
 		if (node.data.isBoundary) return;
@@ -310,6 +320,7 @@ export function DfdCanvas() {
 				onPaneClick={onPaneClick}
 				onNodeClick={onNodeClick}
 				onEdgeClick={onEdgeClick}
+				onNodeDragStart={onNodeDragStart}
 				onNodeContextMenu={onNodeContextMenu}
 				onEdgeContextMenu={onEdgeContextMenu}
 				nodeTypes={nodeTypes}

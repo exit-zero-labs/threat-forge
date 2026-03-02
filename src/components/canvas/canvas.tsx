@@ -1,7 +1,9 @@
 import { FolderOpen, Shield } from "lucide-react";
+import { lazy, Suspense } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
-import { DfdCanvas } from "./dfd-canvas";
+
+const LazyDfdCanvas = lazy(() => import("./dfd-canvas").then((m) => ({ default: m.DfdCanvas })));
 
 export function Canvas() {
 	const model = useModelStore((s) => s.model);
@@ -12,7 +14,15 @@ export function Canvas() {
 
 	return (
 		<div data-testid="canvas-area" className="h-full w-full">
-			<DfdCanvas />
+			<Suspense
+				fallback={
+					<div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+						Loading canvas...
+					</div>
+				}
+			>
+				<LazyDfdCanvas />
+			</Suspense>
 		</div>
 	);
 }

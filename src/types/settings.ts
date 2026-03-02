@@ -240,4 +240,11 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 		winKeys: "Ctrl+K",
 		category: "view",
 	},
+	{
+		id: "alt-drag-duplicate",
+		label: "Alt+Drag Duplicate",
+		macKeys: "⌥+Drag",
+		winKeys: "Alt+Drag",
+		category: "canvas",
+	},
 ];

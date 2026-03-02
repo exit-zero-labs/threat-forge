@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 interface TargetRect {
 	top: number;
@@ -20,6 +20,7 @@ export function GuideOverlay({
 	targetSelector: string;
 	onClickOutside: () => void;
 }) {
+	const maskId = useId().replace(/:/g, "");
 	const [rect, setRect] = useState<TargetRect | null>(null);
 
 	const measure = useCallback(() => {
@@ -63,7 +64,7 @@ export function GuideOverlay({
 		>
 			<svg className="absolute inset-0 h-full w-full" aria-hidden="true">
 				<defs>
-					<mask id="spotlight-mask">
+					<mask id={maskId}>
 						<rect width={vw} height={vh} fill="white" />
 						<rect
 							x={rect.left}
@@ -75,7 +76,7 @@ export function GuideOverlay({
 						/>
 					</mask>
 				</defs>
-				<rect width={vw} height={vh} fill="rgba(0,0,0,0.6)" mask="url(#spotlight-mask)" />
+				<rect width={vw} height={vh} fill="rgba(0,0,0,0.6)" mask={`url(#${maskId})`} />
 			</svg>
 			{/* Highlight border around target */}
 			<div

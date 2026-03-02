@@ -2,11 +2,14 @@ import { ReactFlowProvider } from "@xyflow/react";
 import { useAutosave } from "@/hooks/use-autosave";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useNativeMenu } from "@/hooks/use-native-menu";
+import { useOnboardingTriggers } from "@/hooks/use-onboarding-triggers";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { Canvas } from "../canvas/canvas";
 import { CommandPalette } from "../command-palette";
 import { GuideProvider } from "../onboarding/guide-provider";
+
+import { WhatsNewOverlay } from "../onboarding/whats-new-overlay";
 import { ComponentPalette } from "../palette/component-palette";
 import { RightPanel } from "../panels/right-panel";
 import { SettingsDialog } from "../panels/settings-dialog";
@@ -25,6 +28,7 @@ export function AppLayout() {
 	useKeyboardShortcuts();
 	useNativeMenu();
 	useAutosave();
+	useOnboardingTriggers();
 
 	return (
 		<ReactFlowProvider>
@@ -62,6 +66,7 @@ export function AppLayout() {
 				{shortcutsDialogOpen && <ShortcutsDialog />}
 				<CommandPalette open={commandPaletteOpen} onClose={closeCommandPalette} />
 				<GuideProvider />
+				<WhatsNewOverlay />
 			</div>
 		</ReactFlowProvider>
 	);

@@ -109,7 +109,10 @@ interface CanvasState {
 	) => string | null;
 	addTrustBoundary: (name: string, position: { x: number; y: number }) => void;
 	deleteSelected: () => void;
-	duplicateElement: (nodeId: string) => void;
+	duplicateElement: (
+		nodeId: string,
+		opts?: { offset?: { x: number; y: number }; select?: boolean },
+	) => void;
 	reverseEdge: (edgeId: string) => void;
 
 	// ReactFlow instance actions (set by DfdCanvas on init)
@@ -543,7 +546,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		}
 	},
 
-	duplicateElement: (nodeId) => {
+	duplicateElement: (nodeId, opts) => {
 		const model = useModelStore.getState().model;
 		if (!model) return;
 
@@ -551,8 +554,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		if (!element) return;
 
 		const sourceNode = get().nodes.find((n) => n.id === nodeId);
-		const offsetX = sourceNode ? sourceNode.position.x + 50 : 200;
-		const offsetY = sourceNode ? sourceNode.position.y + 50 : 200;
+		const offset = opts?.offset ?? { x: 50, y: 50 };
+		const offsetX = sourceNode ? sourceNode.position.x + offset.x : 200;
+		const offsetY = sourceNode ? sourceNode.position.y + offset.y : 200;
 
 		const newId = generateElementId();
 		const newElement: Element = {
@@ -572,7 +576,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 				useModelStore.getState().filePath,
 			);
 		useModelStore.getState().markDirty();
-		useModelStore.getState().setSelectedElement(newId);
+		if (opts?.select !== false) {
+			useModelStore.getState().setSelectedElement(newId);
+		}
 	},
 
 	reverseEdge: (edgeId) => {
