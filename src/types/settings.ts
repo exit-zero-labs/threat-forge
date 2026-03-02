@@ -153,6 +153,27 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 		category: "canvas",
 	},
 	{
+		id: "copy",
+		label: "Copy",
+		macKeys: "⌘C",
+		winKeys: "Ctrl+C",
+		category: "edit",
+	},
+	{
+		id: "cut",
+		label: "Cut",
+		macKeys: "⌘X",
+		winKeys: "Ctrl+X",
+		category: "edit",
+	},
+	{
+		id: "paste",
+		label: "Paste",
+		macKeys: "⌘V",
+		winKeys: "Ctrl+V",
+		category: "edit",
+	},
+	{
 		id: "select-all",
 		label: "Select All",
 		macKeys: "⌘A",

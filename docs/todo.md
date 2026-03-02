@@ -4,6 +4,63 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-02 — Launch Readiness: Canvas Clipboard + E2E Tests
+
+Multi-select, clipboard operations (copy/cut/paste/select-all), and E2E test coverage for critical happy paths.
+
+### Plan
+- [x] Step 1: Export helpers from canvas-store.ts
+  - [x] Export generateElementId, generateFlowId, generateBoundaryId
+  - [x] Export elementToNode, boundaryToNode, flowToEdge
+- [x] Step 2: Create clipboard store (src/stores/clipboard-store.ts)
+  - [x] selectAll — set all nodes selected
+  - [x] copySelected — copy elements/boundaries/flows to clipboard
+  - [x] cutSelected — copy + delete
+  - [x] paste — clone with new IDs, offset positions, push history
+- [x] Step 3: Enable ReactFlow multi-select (dfd-canvas.tsx)
+  - [x] Add selectionKeyCode, multiSelectionKeyCode, selectionMode props
+- [x] Step 4: Fix multi-select deselection (canvas-store.ts)
+  - [x] Only clear model selection when zero nodes remain selected
+- [x] Step 5: Wire keyboard shortcuts (use-keyboard-shortcuts.ts)
+  - [x] Cmd+A → selectAll, Cmd+C → copy, Cmd+X → cut, Cmd+V → paste
+  - [x] Guard with isInputFocused
+- [x] Step 6: Update shortcuts list (settings.ts)
+  - [x] Add copy, cut, paste entries
+- [x] Step 7: Clipboard store unit tests (18 tests)
+- [x] Step 8: E2E test fixtures (e2e/fixtures.ts)
+- [x] Step 9: E2E tests (18 tests across 5 files)
+  - [x] app-launch.spec.ts (3 tests)
+  - [x] new-model.spec.ts (3 tests)
+  - [x] canvas-elements.spec.ts (5 tests)
+  - [x] keyboard-shortcuts.spec.ts (5 tests)
+  - [x] stride-analysis.spec.ts (2 tests)
+- [x] Step 10: Validation — biome, vitest, playwright, cargo test, ci:local
+
+### Code Review Fixes (post-implementation)
+- [x] Clipboard store: deep-clone mutable arrays (technologies, data, contains) on copy and paste
+- [x] Clipboard store: hoist `newElIds` Set outside `.filter()` callback (O(n²) → O(n))
+- [x] Clipboard store: insert pasted boundaries at front of nodes array (render behind elements)
+- [x] Clipboard store: set parentId/extent on pasted elements inside pasted boundaries
+- [x] dfd-canvas.tsx: remove `selectionKeyCode="Shift"` — was breaking free rubber-band select
+- [x] use-keyboard-shortcuts.ts: extend `isInputFocused` to cover `contentEditable` elements
+- [x] canvas-store.ts: fix `.find()` → `.filter()` for multi-select batch — use last selected node for properties panel
+- [x] stride-analysis E2E: strengthen assertion from `/\d+/` to `/[1-9]\d*/` (reject "0" threats)
+- [x] keyboard-shortcuts E2E: use bottom-right corner click position (avoids landing on auto-placed nodes)
+- [x] Validation — biome, vitest (158), playwright (36/36 with 2x repeat), tsc, ci:local — all passed
+
+### Notes
+- 158 frontend tests (up from 140), 40 Rust tests — all passing
+- 18 E2E tests across 5 files — all passing (36/36 with 2x repeat for flake detection)
+- Added data-testid="btn-stride-analyze" to threats-tab.tsx for E2E
+- Multi-select uses Shift+click for additive selection; rubber-band select works without modifier
+- Clipboard is in-memory only (not system clipboard) — simpler, no serialization
+- Paste offset cascades at 50px per paste (Figma pattern)
+- First paste adds "(copy)" suffix; subsequent pastes don't
+- Pasted boundary nodes go to front of array (render behind); element nodes go to end
+- Elements inside pasted boundaries get parentId/extent set for proper containment
+
+---
+
 ## 2026-03-01 — WS1: YAML Format Consolidation
 
 Consolidate layout data from separate `.threatforge/layouts/*.json` sidecar files into inline fields within `.threatforge.yaml`. Adds position/size/color/viewport fields directly on each entity.
