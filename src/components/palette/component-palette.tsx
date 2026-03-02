@@ -151,6 +151,19 @@ function CategoryTab({
 	);
 }
 
+/** Get the center of the visible canvas area in flow coordinates */
+function getCanvasCenter(
+	screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number },
+) {
+	const canvasEl = document.querySelector(".react-flow");
+	if (!canvasEl) return { x: 200, y: 200 };
+	const rect = canvasEl.getBoundingClientRect();
+	return screenToFlowPosition({
+		x: rect.left + rect.width / 2,
+		y: rect.top + rect.height / 2,
+	});
+}
+
 /** Generic items: Entity (process) and Boundary. No subtype. */
 function GenericPaletteItem({
 	icon: Icon,
@@ -165,11 +178,21 @@ function GenericPaletteItem({
 }) {
 	const { screenToFlowPosition } = useReactFlow();
 
+	const handleDoubleClick = () => {
+		const position = getCanvasCenter(screenToFlowPosition);
+		if (type === "trust_boundary") {
+			useCanvasStore.getState().addTrustBoundary("New Boundary", position);
+		} else {
+			useCanvasStore.getState().addElement(type as ElementType, position);
+		}
+	};
+
 	return (
 		<div
 			data-testid={`palette-item-${type.replace(/_/g, "-")}`}
 			className="flex cursor-grab items-center gap-3 rounded-md border border-transparent px-2 py-2 transition-colors hover:border-border hover:bg-accent"
 			draggable
+			onDoubleClick={handleDoubleClick}
 			onDragStart={(e) => {
 				e.dataTransfer.setData("text/plain", type);
 				e.dataTransfer.effectAllowed = "copy";
@@ -210,17 +233,33 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 	const { screenToFlowPosition } = useReactFlow();
 	const Icon = getIconComponent(component.icon);
 
+	/** Build the opts to pass to addElement for this library component */
+	const buildOpts = () =>
+		component.isBaseType
+			? { icon: component.icon }
+			: { subtype: component.id, icon: component.icon, name: component.label };
+
+	const handleDoubleClick = () => {
+		const position = getCanvasCenter(screenToFlowPosition);
+		useCanvasStore.getState().addElement(component.type, position, buildOpts());
+	};
+
 	return (
 		<div
 			data-testid={`palette-item-${component.id.replace(/_/g, "-")}`}
 			className="flex cursor-grab items-center gap-2.5 rounded-md border border-transparent px-2 py-1.5 transition-colors hover:border-border hover:bg-accent"
 			draggable
+			onDoubleClick={handleDoubleClick}
 			onDragStart={(e) => {
 				e.dataTransfer.setData("text/plain", component.type);
 				e.dataTransfer.effectAllowed = "copy";
+				// Always pass icon so it shows on the canvas node.
+				// Base types: no subtype, just icon. Subtypes: full info.
 				if (component.isBaseType) {
-					// Base types: set type only, no subtype. Use setDraggedComponent to clear stale fields.
-					useCanvasStore.getState().setDraggedComponent({ type: component.type });
+					useCanvasStore.getState().setDraggedComponent({
+						type: component.type,
+						icon: component.icon,
+					});
 				} else {
 					useCanvasStore.getState().setDraggedComponent({
 						type: component.type,
@@ -241,16 +280,7 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 				if (!canvas || !canvas.contains(target)) return;
 
 				const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-
-				if (component.isBaseType) {
-					useCanvasStore.getState().addElement(draggedType as ElementType, position);
-				} else {
-					useCanvasStore.getState().addElement(draggedType as ElementType, position, {
-						subtype: component.id,
-						icon: component.icon,
-						name: component.label,
-					});
-				}
+				useCanvasStore.getState().addElement(draggedType as ElementType, position, buildOpts());
 			}}
 		>
 			<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-secondary">

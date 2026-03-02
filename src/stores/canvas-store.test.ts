@@ -508,6 +508,24 @@ describe("canvas-store", () => {
 		expect(newElement?.type).toBe("process");
 	});
 
+	it("creates base type element with icon only (no subtype)", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		useCanvasStore.getState().addElement("data_store", { x: 300, y: 300 }, { icon: "database" });
+
+		const { nodes } = useCanvasStore.getState();
+		const newNode = nodes.find((n) => n.data.label === "New Data Store");
+		expect(newNode).toBeDefined();
+		expect(newNode?.data.subtype).toBeUndefined();
+		expect(newNode?.data.icon).toBe("database");
+
+		const model = useModelStore.getState().model;
+		const newElement = model?.elements.find((e) => e.name === "New Data Store");
+		expect(newElement?.icon).toBe("database");
+		expect(newElement?.subtype).toBeUndefined();
+	});
+
 	it("syncFromModel preserves subtype and icon in node data", () => {
 		const model = createTestModel();
 		model.elements[0].subtype = "web_server";
