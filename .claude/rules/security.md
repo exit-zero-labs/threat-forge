@@ -3,7 +3,7 @@
 This is a security tool. The bar for security in our own code is high.
 
 ## API Keys
-- NEVER write API keys to files, logs, or telemetry. Always use OS keychain via Tauri plugin.
+- NEVER write API keys to logs or telemetry. Keys are AES-256-GCM encrypted at rest via `KeyStorage`.
 - NEVER include API keys in error messages or user-facing strings.
 - NEVER commit `.env` files or any file containing secrets.
 

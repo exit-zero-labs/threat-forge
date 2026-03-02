@@ -4,6 +4,27 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-02 — Replace OS keychain with encrypted file storage
+
+### Plan
+- [x] Update `Cargo.toml`: remove `keyring`, add `aes-gcm` and `rand`
+- [x] Rewrite `src-tauri/src/ai/keychain.rs` with `KeyStorage` struct (AES-256-GCM encrypted file)
+- [x] Update `errors.rs`: rename `Keychain` variant to `KeyStorage`
+- [x] Update `ai_commands.rs`: add `State<KeyStorage>` param to all 4 commands
+- [x] Update `lib.rs`: initialize `KeyStorage` in `.setup()` block
+- [x] Update frontend strings in `ai-settings-content.tsx` and `guides.ts`
+- [x] Update docs: CLAUDE.md, SECURITY.md, `.claude/rules/security.md`, `.claude/agents/security-auditor.md`
+- [x] Update adapter comments: `keychain-adapter.ts`, `browser-keychain-adapter.ts`
+- [x] Validate: `cargo test` — 52 tests pass (9 new KeyStorage tests)
+- [x] Validate: `cargo clippy` + `cargo fmt` — clean
+- [x] Validate: `npx vitest --run` — 244 tests pass
+- [x] Validate: `npx biome check --write .` — clean
+- [x] Validate: `npm run ci:local` — all 6 checks pass
+
+### Notes
+
+---
+
 ## 2026-03-02 — Mac icon, file association, UX fixes, app naming
 
 ### Plan

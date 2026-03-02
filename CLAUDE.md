@@ -93,7 +93,7 @@ threat-forge/
 - **ADR-004:** Zustand for state — minimal boilerplate, TypeScript-first
 - **ADR-005:** BYOK AI (user-provided API keys) — zero cost, user controls data
 - **ADR-006:** Layout data in separate JSON files — keeps YAML diffs clean
-- **ADR-007:** OS keychain for API keys — native security via Tauri plugin
+- **ADR-007:** AES-256-GCM encrypted file storage for API keys
 - **ADR-008:** Tailwind + shadcn/ui — lightweight, dark mode, customizable
 
 See @docs/implementation-plan.md for full ADR details.
@@ -137,5 +137,5 @@ These override the parent Exit Zero Labs CLAUDE.md:
 - ALWAYS run `npx biome check --write .` after modifying TypeScript code
 - Prefer running single test files over the full suite for speed
 - The Tauri dev server runs on port 1420 — do not change this
-- Never store API keys in files — always use OS keychain via Tauri plugin
+- Never store API keys in plaintext — they are AES-256-GCM encrypted at rest
 - The YAML file format stability is critical — breaking changes require a migration path

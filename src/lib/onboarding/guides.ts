@@ -109,7 +109,7 @@ export const AI_ASSISTANT_GUIDE: OnboardingGuide = {
 			targetSelector: "[data-testid='btn-settings-dialog']",
 			title: "Configure API Key",
 			content:
-				"To use AI features, open Settings and add your API key (OpenAI, Anthropic, or Ollama). Keys are stored securely in your OS keychain.",
+				"To use AI features, open Settings and add your API key (OpenAI, Anthropic, or Ollama). Keys are stored securely in encrypted storage.",
 			placement: "bottom",
 		},
 		{

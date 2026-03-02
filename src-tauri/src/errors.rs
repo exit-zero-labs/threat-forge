@@ -49,8 +49,8 @@ pub enum ThreatForgeError {
         valid: Vec<String>,
     },
 
-    #[error("Keychain error: {message}")]
-    Keychain { message: String },
+    #[error("Key storage error: {message}")]
+    KeyStorage { message: String },
 
     #[error("AI request error: {message}")]
     AiRequest { message: String },

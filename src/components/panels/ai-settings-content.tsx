@@ -56,7 +56,7 @@ export function AiSettingsContent() {
 			setApiKey("");
 			setShowKey(false);
 			const successText = isTauri()
-				? "API key saved securely to OS keychain."
+				? "API key saved securely."
 				: "API key saved to browser storage.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
@@ -75,9 +75,7 @@ export function AiSettingsContent() {
 			const adapter = await getKeychainAdapter();
 			await adapter.deleteKey(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: false }));
-			const successText = isTauri()
-				? "API key removed from keychain."
-				: "API key removed from browser storage.";
+			const successText = isTauri() ? "API key removed." : "API key removed from browser storage.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
@@ -191,8 +189,8 @@ export function AiSettingsContent() {
 			{/* Security note */}
 			<p className="text-[10px] text-muted-foreground/70">
 				{isTauri()
-					? "API keys are stored securely in your operating system's keychain. They are never written to files or sent anywhere except the selected AI provider."
-					: "API keys are stored in your browser's localStorage. For stronger security, use the desktop app which stores keys in your OS keychain. Keys are only sent to the selected AI provider."}
+					? "API keys are encrypted at rest and stored locally. They are never sent anywhere except the selected AI provider."
+					: "API keys are stored in your browser's localStorage. For stronger security, use the desktop app which encrypts keys at rest. Keys are only sent to the selected AI provider."}
 			</p>
 		</div>
 	);
