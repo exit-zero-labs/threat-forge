@@ -24,7 +24,7 @@ This is a security tool — our own security posture must be exemplary.
 - File permissions checked on save operations
 
 ### API Key Handling
-- Keys must ONLY be stored in OS keychain via Tauri plugin
+- Keys must ONLY be stored via the `KeyStorage` struct (AES-256-GCM encrypted file)
 - Keys must NEVER appear in logs, error messages, YAML files, or telemetry
 - AI API calls use HTTPS only with proper certificate validation
 - Keys are never sent to any endpoint other than the configured LLM provider

@@ -3,7 +3,7 @@ import type { AiProvider } from "@/stores/chat-store";
 /**
  * Adapter interface for API key storage.
  *
- * Tauri implementation uses OS keychain via invoke().
+ * Tauri implementation uses AES-256-GCM encrypted file storage via invoke().
  * Browser implementation uses localStorage (less secure, noted in UI).
  */
 export interface KeychainAdapter {

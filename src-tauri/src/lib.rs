@@ -26,6 +26,19 @@ pub fn run() {
                 let _ = app_handle.emit("menu-action", event.id().0.as_str());
             });
 
+            // Initialize encrypted key storage
+            let app_data_dir = app.path().app_data_dir().map_err(|e| {
+                Box::new(std::io::Error::other(format!(
+                    "Failed to resolve app data directory: {e}"
+                )))
+            })?;
+            let key_storage = ai::keychain::KeyStorage::new(app_data_dir).map_err(|e| {
+                Box::new(std::io::Error::other(format!(
+                    "Failed to initialize key storage: {e}"
+                )))
+            })?;
+            app.manage(key_storage);
+
             // Check if the app was launched with a .thf file argument (file association)
             let args: Vec<String> = std::env::args().collect();
             if args.len() > 1 {

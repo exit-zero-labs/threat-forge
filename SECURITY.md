@@ -51,7 +51,7 @@ The following are in scope for security reports:
 
 ThreatForge follows these security principles:
 
-- **API keys** are stored in the OS native keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service), never in files
+- **API keys** are AES-256-GCM encrypted at rest in the app data directory, never stored in plaintext
 - **AI API calls** go directly from the user's machine with the user's key -- no proxy server
 - **LLM output** is treated as untrusted input and sanitized before rendering
 - **File operations** are scoped via Tauri's path resolver to prevent directory traversal

@@ -9,7 +9,7 @@ function storageKey(provider: AiProvider): string {
 
 /**
  * Browser keychain adapter using localStorage.
- * Less secure than OS keychain — noted in the UI when running in browser.
+ * Less secure than encrypted storage — noted in the UI when running in browser.
  */
 export class BrowserKeychainAdapter implements KeychainAdapter {
 	async setKey(provider: AiProvider, key: string): Promise<void> {

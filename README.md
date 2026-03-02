@@ -1,7 +1,7 @@
 # ThreatForge
 
 <p align="center">
-  <img src="media/logo_long_v1_compressed.png" alt="ThreatForge" width="400" />
+  <img src="media/logo_long_v1.png" alt="ThreatForge" width="400" />
 </p>
 
 Open-source, AI-enhanced threat modeling for modern development teams.
