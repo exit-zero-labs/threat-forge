@@ -219,3 +219,64 @@ Add component library with ~25 pre-defined technology components, searchable lib
 - All 28 lucide icons verified present in lucide-react v0.575.0
 - Canvas store drag state expanded with `setDraggedComponent` for library items carrying subtype/icon/name
 - 130 frontend tests (up from 114), 39 Rust tests (up from 37) — all passing
+
+---
+
+## 2026-03-01 — Unified Component System + Visual Customization
+
+Flatten ElementType hierarchy from 3-value enum to string-based component types. Add 4 shape categories, 3 STRIDE categories, per-element visual customization, sub-types with icon overrides, and fix technologies input.
+
+### Plan
+- [x] Step 1: Schema changes (TypeScript + Rust)
+  - [x] Changed `ElementType` from `"process" | "data_store" | "external_entity"` to `string` (TS)
+  - [x] Removed `ElementType` enum from Rust, changed to `String`
+  - [x] Added `fill_color`, `stroke_color`, `fill_opacity`, `stroke_opacity` to Element (both TS + Rust)
+  - [x] Updated `ai/prompt.rs` formatting (`{:?}` → `{}`) and test literals
+  - [x] Updated `stride/mod.rs` with `ComponentStrideCategory` enum and `stride_category_for_type()` mapper
+  - [x] Validate: `cargo test` (40 pass) + `cargo clippy` (clean)
+- [x] Step 2: Update component library
+  - [x] Added `ShapeCategory`, `StrideCategory`, `SubtypeDefinition` types
+  - [x] Changed `ComponentDefinition`: replaced `type: ElementType` + `isBaseType` with `shape` + `strideCategory`
+  - [x] Added `generic` entry as default component type
+  - [x] Removed old "Basics" category (process, data_store, external_entity)
+  - [x] Added subtypes to 7 components (sql_database, nosql_database, cache, object_storage, message_queue, event_bus, cdn)
+  - [x] Added `getShapeForType()`, `getStrideCategoryForType()`, `getSubtypesForType()` helpers
+- [x] Step 3: Update STRIDE engine (TS)
+  - [x] Changed rules from `applicableElements: ElementType[]` to `applicableCategories: ComponentStrideCategory[]`
+  - [x] Uses `getStrideCategoryForType()` for element-to-category mapping
+- [x] Step 4: Update canvas store
+  - [x] `DfdNodeData.elementType`: `ElementType` → `string`
+  - [x] Added element color fields to `DfdNodeData`
+  - [x] `generateElementId()` → always produces `comp-N` IDs
+  - [x] `defaultElementName()` → looks up component library label
+  - [x] `elementToNode()` passes color fields from Element to node data
+- [x] Step 5: Update node rendering (shapes + colors)
+  - [x] 4 shape categories: rounded, database, rect, hexagon (via CSS clip-path)
+  - [x] Custom color rendering with `hexToRgba()` + inline styles
+  - [x] `resolveIcon()` checks subtype defs → component type → direct icon field
+- [x] Step 6: Update properties panel
+  - [x] Type dropdown grouped by category
+  - [x] Conditional Sub Type dropdown when type has subtypes
+  - [x] `ColorField` components for fill/stroke colors on elements
+  - [x] Fixed technologies: replaced `EditableField` with `CommaSeparatedField`
+- [x] Step 7: Update palette
+  - [x] Renamed "Entity" → "Component", type `"process"` → `"generic"`
+  - [x] Library items pass `type: component.id` directly (component IS the type)
+  - [x] Removed `isBaseType` logic and `as ElementType` casts
+- [x] Step 8: AI prompts — no TS change needed (already uses `el.type` string); Rust done in Step 1
+- [x] Step 9: Update tests
+  - [x] `component-library.test.ts` — rewritten for new `shape`/`strideCategory` fields, subtypes, categories
+  - [x] `canvas-store.test.ts` — updated types, ID assertions (`comp-N`), new element color test
+  - [x] `stride-engine.test.ts` — updated to use component types, added legacy type mapping test
+- [x] Step 10: Cleanup + validation
+  - [x] `npx biome check --write .` — clean
+  - [x] `npx vitest --run` — 140 tests passing
+  - [x] `cargo test` — 40 tests passing
+  - [x] `cargo clippy` — clean
+
+### Notes
+- Old element types (`process`, `data_store`, `external_entity`) still parse as valid strings for backward compat
+- STRIDE category mapping defaults to "service" for unknown types, ensuring forward compat
+- Hexagon shape uses CSS `clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)`
+- Sub-type system is additive: setting a subtype overrides the icon, clearing it reverts to the component type default
+- 140 frontend tests (up from 130), 40 Rust tests — all passing

@@ -49,7 +49,7 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
         prompt.push_str("Elements:\n");
         for el in &model.elements {
             prompt.push_str(&format!(
-                "  - {} (id: {}, type: {:?}, trust_zone: {}",
+                "  - {} (id: {}, type: {}, trust_zone: {}",
                 el.name, el.id, el.element_type, el.trust_zone
             ));
             if let Some(ref subtype) = el.subtype {
@@ -143,12 +143,12 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_with_elements() {
-        use crate::models::{Element, ElementType};
+        use crate::models::Element;
 
         let mut model = ThreatModel::new("Payment Service", "Alice");
         model.elements.push(Element {
             id: "api-gw".to_string(),
-            element_type: ElementType::Process,
+            element_type: "api_gateway".to_string(),
             name: "API Gateway".to_string(),
             trust_zone: "dmz".to_string(),
             subtype: None,
@@ -158,6 +158,10 @@ mod tests {
             stores: None,
             encryption: None,
             position: None,
+            fill_color: None,
+            stroke_color: None,
+            fill_opacity: None,
+            stroke_opacity: None,
         });
 
         let prompt = build_system_prompt(&model);

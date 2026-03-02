@@ -55,20 +55,12 @@ pub struct Metadata {
     pub description: String,
 }
 
-/// DFD element types
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ElementType {
-    Process,
-    DataStore,
-    ExternalEntity,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Element {
     pub id: String,
+    /// Component type string (e.g. "api_gateway", "sql_database", "generic").
     #[serde(rename = "type")]
-    pub element_type: ElementType,
+    pub element_type: String,
     pub name: String,
     #[serde(default)]
     pub trust_zone: String,
@@ -86,6 +78,14 @@ pub struct Element {
     pub encryption: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<Position>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke_opacity: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

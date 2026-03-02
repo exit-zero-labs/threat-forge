@@ -3,8 +3,12 @@ import {
 	COMPONENT_CATEGORIES,
 	COMPONENT_LIBRARY,
 	getComponentBySubtype,
+	getComponentByType,
 	getComponentsByCategory,
 	getIconComponent,
+	getShapeForType,
+	getStrideCategoryForType,
+	getSubtypesForType,
 	searchComponents,
 } from "./component-library";
 
@@ -13,13 +17,12 @@ describe("component-library", () => {
 		expect(COMPONENT_LIBRARY.length).toBeGreaterThanOrEqual(25);
 	});
 
-	it("has 3 base types in Basics category", () => {
-		const basics = getComponentsByCategory("Basics");
-		expect(basics).toHaveLength(3);
-		expect(basics.map((c) => c.id).sort()).toEqual(["data_store", "external_entity", "process"]);
-		for (const c of basics) {
-			expect(c.isBaseType).toBe(true);
-		}
+	it("has a generic component entry", () => {
+		const generic = getComponentByType("generic");
+		expect(generic).toBeDefined();
+		expect(generic?.shape).toBe("rounded");
+		expect(generic?.strideCategory).toBe("service");
+		expect(generic?.category).toBe("Generic");
 	});
 
 	it("has unique IDs across all components", () => {
@@ -29,7 +32,6 @@ describe("component-library", () => {
 	});
 
 	it("includes expected categories", () => {
-		expect(COMPONENT_CATEGORIES).toContain("Basics");
 		expect(COMPONENT_CATEGORIES).toContain("Services");
 		expect(COMPONENT_CATEGORIES).toContain("Databases");
 		expect(COMPONENT_CATEGORIES).toContain("Messaging");
@@ -38,16 +40,53 @@ describe("component-library", () => {
 		expect(COMPONENT_CATEGORIES).toContain("Clients");
 	});
 
-	it("getComponentBySubtype returns correct definition", () => {
-		const comp = getComponentBySubtype("api_gateway");
+	it("excludes Generic from COMPONENT_CATEGORIES", () => {
+		expect(COMPONENT_CATEGORIES).not.toContain("Generic");
+	});
+
+	it("getComponentByType returns correct definition", () => {
+		const comp = getComponentByType("api_gateway");
 		expect(comp).toBeDefined();
 		expect(comp?.label).toBe("API Gateway");
-		expect(comp?.type).toBe("process");
+		expect(comp?.shape).toBe("rounded");
+		expect(comp?.strideCategory).toBe("service");
 		expect(comp?.icon).toBe("router");
 	});
 
-	it("getComponentBySubtype returns undefined for unknown subtype", () => {
-		expect(getComponentBySubtype("nonexistent")).toBeUndefined();
+	it("getComponentByType returns undefined for unknown type", () => {
+		expect(getComponentByType("nonexistent")).toBeUndefined();
+	});
+
+	it("getComponentBySubtype is a deprecated alias for getComponentByType", () => {
+		const byType = getComponentByType("sql_database");
+		const bySubtype = getComponentBySubtype("sql_database");
+		expect(byType).toBe(bySubtype);
+	});
+
+	it("getShapeForType returns correct shapes", () => {
+		expect(getShapeForType("web_server")).toBe("rounded");
+		expect(getShapeForType("sql_database")).toBe("database");
+		expect(getShapeForType("web_browser")).toBe("rect");
+		expect(getShapeForType("load_balancer")).toBe("hexagon");
+		expect(getShapeForType("unknown_type")).toBe("rounded"); // default
+	});
+
+	it("getStrideCategoryForType returns correct categories", () => {
+		expect(getStrideCategoryForType("api_gateway")).toBe("service");
+		expect(getStrideCategoryForType("sql_database")).toBe("store");
+		expect(getStrideCategoryForType("web_browser")).toBe("actor");
+		expect(getStrideCategoryForType("unknown_type")).toBe("service"); // default
+	});
+
+	it("getSubtypesForType returns subtypes for sql_database", () => {
+		const subtypes = getSubtypesForType("sql_database");
+		expect(subtypes.length).toBeGreaterThanOrEqual(2);
+		expect(subtypes.some((st) => st.id === "rds")).toBe(true);
+	});
+
+	it("getSubtypesForType returns empty array for no subtypes", () => {
+		expect(getSubtypesForType("web_server")).toEqual([]);
+		expect(getSubtypesForType("nonexistent")).toEqual([]);
 	});
 
 	it("searchComponents finds by label substring", () => {
@@ -68,9 +107,9 @@ describe("component-library", () => {
 		expect(upper).toEqual(lower);
 	});
 
-	it("searchComponents returns all for empty query", () => {
-		expect(searchComponents("")).toEqual(COMPONENT_LIBRARY);
-		expect(searchComponents("  ")).toEqual(COMPONENT_LIBRARY);
+	it("searchComponents excludes Generic for empty query", () => {
+		const results = searchComponents("");
+		expect(results.every((c) => c.category !== "Generic")).toBe(true);
 	});
 
 	it("getComponentsByCategory returns correct items", () => {
@@ -92,10 +131,12 @@ describe("component-library", () => {
 		expect(getIconComponent("nonexistent_icon")).toBeUndefined();
 	});
 
-	it("every component has a valid ElementType", () => {
-		const validTypes = ["process", "data_store", "external_entity"];
+	it("every component has a valid shape and stride category", () => {
+		const validShapes = ["rounded", "database", "rect", "hexagon"];
+		const validStride = ["service", "store", "actor"];
 		for (const comp of COMPONENT_LIBRARY) {
-			expect(validTypes).toContain(comp.type);
+			expect(validShapes, `Invalid shape for ${comp.id}`).toContain(comp.shape);
+			expect(validStride, `Invalid strideCategory for ${comp.id}`).toContain(comp.strideCategory);
 		}
 	});
 });

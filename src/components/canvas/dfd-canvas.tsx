@@ -15,7 +15,6 @@ import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
-import type { ElementType } from "@/types/threat-model";
 import { buildEdgeMenuItems, buildNodeMenuItems, CanvasContextMenu } from "./canvas-context-menu";
 import { DataFlowEdge } from "./edges/data-flow-edge";
 import { DfdElementNode } from "./nodes/dfd-element-node";
@@ -158,7 +157,7 @@ export function DfdCanvas() {
 								name: store.draggedName ?? undefined,
 							}
 						: undefined;
-				addElement(draggedType as ElementType, position, opts);
+				addElement(draggedType, position, opts);
 			}
 
 			useCanvasStore.getState().setDraggedComponent(null);

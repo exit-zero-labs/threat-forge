@@ -1,6 +1,11 @@
 import type { NodeProps } from "@xyflow/react";
-import { useCallback, useRef, useState } from "react";
-import { getComponentBySubtype, getIconComponent } from "@/lib/component-library";
+import { useCallback, useMemo, useRef, useState } from "react";
+import {
+	getComponentByType,
+	getIconComponent,
+	getShapeForType,
+	type ShapeCategory,
+} from "@/lib/component-library";
 import { cn } from "@/lib/utils";
 import type { DfdNodeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
@@ -8,29 +13,49 @@ import { useModelStore } from "@/stores/model-store";
 import { NodeHandles } from "./shared-handles";
 import { ThreatBadge, useThreatCount } from "./threat-badge";
 
-/** Shape CSS classes driven by the base DFD element type */
-function shapeClass(elementType: string): string {
-	switch (elementType) {
-		case "data_store":
+/**
+ * Convert a hex color (#rrggbb) + opacity (0-1) to an rgba string.
+ */
+function hexToRgba(hex: string, opacity: number): string {
+	const r = Number.parseInt(hex.slice(1, 3), 16);
+	const g = Number.parseInt(hex.slice(3, 5), 16);
+	const b = Number.parseInt(hex.slice(5, 7), 16);
+	return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+/** Shape CSS classes driven by the ShapeCategory */
+function shapeClass(shape: ShapeCategory): string {
+	switch (shape) {
+		case "database":
 			return "border-y-2";
-		case "external_entity":
+		case "rect":
 			return "border-2";
+		case "hexagon":
+			return "";
 		default:
-			// process
+			// rounded
 			return "rounded-2xl border-2";
 	}
 }
 
 /**
  * Resolve the lucide icon component for a node.
- * Priority: subtype library icon > direct icon field > no icon.
- * If both subtype and icon are set, the subtype's library icon wins.
+ * Priority: subtype library icon > component type icon > direct icon field > no icon.
  */
-function resolveIcon(subtype?: string, icon?: string) {
+function resolveIcon(elementType: string, subtype?: string, icon?: string) {
 	if (subtype) {
-		const comp = getComponentBySubtype(subtype);
+		// Check if parent component has this subtype defined
+		const parentComp = getComponentByType(elementType);
+		const subtypeDef = parentComp?.subtypes?.find((st) => st.id === subtype);
+		if (subtypeDef) return getIconComponent(subtypeDef.icon);
+		// Fall back to looking up subtype as a component ID
+		const comp = getComponentByType(subtype);
 		if (comp) return getIconComponent(comp.icon);
 	}
+	// Try the component type's default icon
+	const comp = getComponentByType(elementType);
+	if (comp) return getIconComponent(comp.icon);
+	// Fall back to direct icon field
 	if (icon) {
 		return getIconComponent(icon);
 	}
@@ -43,7 +68,26 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const threatCount = useThreatCount(id);
 
-	const Icon = resolveIcon(nodeData.subtype, nodeData.icon);
+	const shape = getShapeForType(nodeData.elementType);
+	const Icon = resolveIcon(nodeData.elementType, nodeData.subtype, nodeData.icon);
+
+	const fillColor = nodeData.elementFillColor as string | undefined;
+	const strokeColor = nodeData.elementStrokeColor as string | undefined;
+	const fillOpacity = (nodeData.elementFillOpacity as number | undefined) ?? 0.15;
+	const strokeOpacity = (nodeData.elementStrokeOpacity as number | undefined) ?? 1.0;
+
+	const customStyle = useMemo(() => {
+		const style: React.CSSProperties = {};
+		if (fillColor) {
+			style.backgroundColor = hexToRgba(fillColor, fillOpacity);
+		}
+		if (strokeColor) {
+			style.borderColor = hexToRgba(strokeColor, strokeOpacity);
+		}
+		return style;
+	}, [fillColor, strokeColor, fillOpacity, strokeOpacity]);
+
+	const hasCustomColors = Boolean(fillColor || strokeColor);
 
 	const commitLabel = useCallback(
 		(value: string) => {
@@ -57,15 +101,17 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 		[id, nodeData.label],
 	);
 
-	return (
-		<div
-			data-testid={`node-${id}`}
-			className={cn(
-				"group relative flex min-w-[140px] items-center justify-center bg-card px-4 py-3 shadow-md transition-colors",
-				shapeClass(nodeData.elementType),
-				selected ? "border-tf-signal shadow-tf-signal/20" : "border-border",
-			)}
-		>
+	const isHexagon = shape === "hexagon";
+
+	const hexBorderColor = strokeColor
+		? hexToRgba(strokeColor, strokeOpacity)
+		: selected
+			? "hsl(var(--tf-signal))"
+			: "hsl(var(--border))";
+	const hexFillColor = fillColor ? hexToRgba(fillColor, fillOpacity) : "hsl(var(--card))";
+
+	const innerContent = (
+		<>
 			<NodeHandles />
 
 			<div className="text-center">
@@ -109,6 +155,64 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 			</div>
 
 			{threatCount > 0 && <ThreatBadge count={threatCount} />}
+		</>
+	);
+
+	if (isHexagon) {
+		const hexClip = "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)";
+
+		return (
+			<div
+				data-testid={`node-${id}`}
+				className="relative"
+				style={{
+					filter: "drop-shadow(0 4px 3px rgba(0,0,0,0.07)) drop-shadow(0 2px 2px rgba(0,0,0,0.06))",
+				}}
+			>
+				{/* Hexagonal fill background */}
+				<div
+					className="absolute inset-0"
+					style={{ clipPath: hexClip, backgroundColor: hexFillColor }}
+				/>
+				{/* Hexagonal stroke via SVG — CSS border doesn't follow clip-path in WebKit */}
+				<svg
+					className="absolute inset-0 h-full w-full overflow-visible"
+					viewBox="0 0 100 100"
+					preserveAspectRatio="none"
+					aria-hidden="true"
+				>
+					<polygon
+						points="25,0 75,0 100,50 75,100 25,100 0,50"
+						fill="none"
+						stroke={hexBorderColor}
+						strokeWidth="2"
+						vectorEffect="non-scaling-stroke"
+					/>
+				</svg>
+				{/* Content — positioned above the fill and stroke layers */}
+				<div
+					className={cn(
+						"group relative flex min-w-[140px] items-center justify-center px-8 py-3 transition-colors",
+					)}
+				>
+					{innerContent}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div
+			data-testid={`node-${id}`}
+			className={cn(
+				"group relative flex min-w-[140px] items-center justify-center bg-card px-4 py-3 shadow-md transition-colors",
+				shapeClass(shape),
+				!hasCustomColors && (selected ? "border-tf-signal shadow-tf-signal/20" : "border-border"),
+				hasCustomColors && selected && "ring-2 ring-tf-signal ring-offset-1 ring-offset-background",
+			)}
+			style={hasCustomColors ? customStyle : undefined}
+		>
+			{innerContent}
 		</div>
 	);
 }

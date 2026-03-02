@@ -11,15 +11,14 @@ import {
 } from "@/lib/component-library";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/stores/canvas-store";
-import type { ElementType } from "@/types/threat-model";
 
 /** Generic palette items (always visible at top) */
 const GENERIC_ITEMS = [
 	{
-		type: "process" as const,
-		label: "Entity",
+		type: "generic" as const,
+		label: "Component",
 		icon: Box,
-		description: "Generic DFD element",
+		description: "Generic component",
 	},
 	{
 		type: "trust_boundary" as const,
@@ -40,7 +39,7 @@ export function ComponentPalette() {
 		if (activeCategory !== "All") {
 			return getComponentsByCategory(activeCategory);
 		}
-		return COMPONENT_LIBRARY;
+		return COMPONENT_LIBRARY.filter((c) => c.category !== "Generic");
 	}, [searchQuery, activeCategory]);
 
 	return (
@@ -164,7 +163,7 @@ function getCanvasCenter(
 	});
 }
 
-/** Generic items: Entity (process) and Boundary. No subtype. */
+/** Generic items: Component (generic) and Boundary. No subtype. */
 function GenericPaletteItem({
 	icon: Icon,
 	label,
@@ -183,7 +182,7 @@ function GenericPaletteItem({
 		if (type === "trust_boundary") {
 			useCanvasStore.getState().addTrustBoundary("New Boundary", position);
 		} else {
-			useCanvasStore.getState().addElement(type as ElementType, position);
+			useCanvasStore.getState().addElement(type, position);
 		}
 	};
 
@@ -213,7 +212,7 @@ function GenericPaletteItem({
 				if (draggedType === "trust_boundary") {
 					useCanvasStore.getState().addTrustBoundary("New Boundary", position);
 				} else {
-					useCanvasStore.getState().addElement(draggedType as ElementType, position);
+					useCanvasStore.getState().addElement(draggedType, position);
 				}
 			}}
 		>
@@ -228,20 +227,16 @@ function GenericPaletteItem({
 	);
 }
 
-/** Library items: specific components with subtype + icon. */
+/** Library items: specific typed components. */
 function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 	const { screenToFlowPosition } = useReactFlow();
 	const Icon = getIconComponent(component.icon);
 
-	/** Build the opts to pass to addElement for this library component */
-	const buildOpts = () =>
-		component.isBaseType
-			? { icon: component.icon }
-			: { subtype: component.id, icon: component.icon, name: component.label };
-
 	const handleDoubleClick = () => {
 		const position = getCanvasCenter(screenToFlowPosition);
-		useCanvasStore.getState().addElement(component.type, position, buildOpts());
+		useCanvasStore
+			.getState()
+			.addElement(component.id, position, { icon: component.icon, name: component.label });
 	};
 
 	return (
@@ -251,26 +246,15 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 			draggable
 			onDoubleClick={handleDoubleClick}
 			onDragStart={(e) => {
-				e.dataTransfer.setData("text/plain", component.type);
+				e.dataTransfer.setData("text/plain", component.id);
 				e.dataTransfer.effectAllowed = "copy";
-				// Always pass icon so it shows on the canvas node.
-				// Base types: no subtype, just icon. Subtypes: full info.
-				if (component.isBaseType) {
-					useCanvasStore.getState().setDraggedComponent({
-						type: component.type,
-						icon: component.icon,
-					});
-				} else {
-					useCanvasStore.getState().setDraggedComponent({
-						type: component.type,
-						subtype: component.id,
-						icon: component.icon,
-						name: component.label,
-					});
-				}
+				useCanvasStore.getState().setDraggedComponent({
+					type: component.id,
+					icon: component.icon,
+					name: component.label,
+				});
 			}}
 			onDragEnd={(e) => {
-				// Capture drag state before clearing — onDrop may have already cleared it
 				const draggedType = useCanvasStore.getState().draggedType;
 				useCanvasStore.getState().setDraggedComponent(null);
 				if (!draggedType) return;
@@ -280,7 +264,9 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 				if (!canvas || !canvas.contains(target)) return;
 
 				const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-				useCanvasStore.getState().addElement(draggedType as ElementType, position, buildOpts());
+				useCanvasStore
+					.getState()
+					.addElement(draggedType, position, { icon: component.icon, name: component.label });
 			}}
 		>
 			<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-secondary">

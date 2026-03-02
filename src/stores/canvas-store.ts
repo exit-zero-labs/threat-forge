@@ -2,11 +2,11 @@ import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow
 import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
 import { create } from "zustand";
 import { getSmartHandlePair, isSelfLoop, nodeToRect } from "@/lib/canvas-utils";
+import { getComponentByType } from "@/lib/component-library";
 import type {
 	DataFlow,
 	DiagramLayout,
 	Element,
-	ElementType,
 	ThreatModel,
 	TrustBoundary,
 } from "@/types/threat-model";
@@ -18,12 +18,20 @@ import { useModelStore } from "./model-store";
 export type DfdNodeData = {
 	[key: string]: unknown;
 	label: string;
-	elementType: ElementType;
+	elementType: string;
 	subtype?: string;
 	icon?: string;
 	trustZone: string;
 	description: string;
 	technologies: string[];
+	/** Element fill color */
+	elementFillColor?: string;
+	/** Element stroke color */
+	elementStrokeColor?: string;
+	/** Element fill opacity (0-1) */
+	elementFillOpacity?: number;
+	/** Element stroke opacity (0-1) */
+	elementStrokeOpacity?: number;
 	/** For trust boundary group nodes */
 	isBoundary?: boolean;
 	boundaryName?: string;
@@ -90,7 +98,7 @@ interface CanvasState {
 
 	// Canvas actions
 	addElement: (
-		type: ElementType,
+		type: string,
 		position: { x: number; y: number },
 		opts?: { subtype?: string; icon?: string; name?: string },
 	) => void;
@@ -139,11 +147,9 @@ let elementCounter = 0;
 let flowCounter = 0;
 let boundaryCounter = 0;
 
-function generateElementId(type: ElementType): string {
+function generateElementId(): string {
 	elementCounter++;
-	const prefix =
-		type === "data_store" ? "data-store" : type === "external_entity" ? "external" : "process";
-	return `${prefix}-${elementCounter}`;
+	return `comp-${elementCounter}`;
 }
 
 function generateFlowId(): string {
@@ -156,14 +162,10 @@ function generateBoundaryId(): string {
 	return `boundary-${boundaryCounter}`;
 }
 
-function elementTypeToNodeType(_type: ElementType): string {
-	return "dfdElement";
-}
-
 function elementToNode(element: Element, position: { x: number; y: number }): DfdNode {
 	return {
 		id: element.id,
-		type: elementTypeToNodeType(element.type),
+		type: "dfdElement",
 		position,
 		data: {
 			label: element.name,
@@ -173,6 +175,10 @@ function elementToNode(element: Element, position: { x: number; y: number }): Df
 			trustZone: element.trust_zone ?? "",
 			description: element.description ?? "",
 			technologies: element.technologies ?? [],
+			elementFillColor: element.fill_color,
+			elementStrokeColor: element.stroke_color,
+			elementFillOpacity: element.fill_opacity,
+			elementStrokeOpacity: element.stroke_opacity,
 		},
 	};
 }
@@ -192,7 +198,7 @@ function boundaryToNode(boundary: TrustBoundary, position: { x: number; y: numbe
 		style: { width: w, height: h, pointerEvents: "none" as const },
 		data: {
 			label: boundary.name,
-			elementType: "process", // unused for boundaries
+			elementType: "", // unused for boundaries
 			trustZone: "",
 			description: "",
 			technologies: [],
@@ -223,15 +229,8 @@ function flowToEdge(flow: DataFlow): DfdEdge {
 	};
 }
 
-function defaultElementName(type: ElementType): string {
-	switch (type) {
-		case "process":
-			return "New Process";
-		case "data_store":
-			return "New Data Store";
-		case "external_entity":
-			return "New External Entity";
-	}
+function defaultElementName(type: string): string {
+	return getComponentByType(type)?.label ?? "New Component";
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
@@ -328,7 +327,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	setPendingLayout: (layout) => set({ pendingLayout: layout }),
 
 	addElement: (type, position, opts) => {
-		const id = generateElementId(type);
+		const id = generateElementId();
 		const name = opts?.name ?? defaultElementName(type);
 
 		const newElement: Element = {
@@ -531,7 +530,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const offsetX = sourceNode ? sourceNode.position.x + 50 : 200;
 		const offsetY = sourceNode ? sourceNode.position.y + 50 : 200;
 
-		const newId = generateElementId(element.type);
+		const newId = generateElementId();
 		const newElement: Element = {
 			...element,
 			id: newId,

@@ -27,23 +27,39 @@ import {
 	Smartphone,
 	Zap,
 } from "lucide-react";
-import type { ElementType } from "@/types/threat-model";
+
+/** Shape categories determine how a component renders on the canvas. */
+export type ShapeCategory = "rounded" | "database" | "rect" | "hexagon";
+
+/** STRIDE categories determine which STRIDE threats apply to a component. */
+export type StrideCategory = "service" | "store" | "actor";
+
+export interface SubtypeDefinition {
+	/** Subtype value stored in YAML, e.g. "rds" */
+	id: string;
+	/** Display name, e.g. "AWS RDS" */
+	label: string;
+	/** Lucide icon name override */
+	icon: string;
+}
 
 export interface ComponentDefinition {
-	/** Subtype value stored in YAML, e.g. "api_gateway". For base types, matches the ElementType. */
+	/** Component type value stored in YAML, e.g. "api_gateway" */
 	id: string;
 	/** Display name, e.g. "API Gateway" */
 	label: string;
-	/** Base DFD element type */
-	type: ElementType;
+	/** Visual shape on canvas */
+	shape: ShapeCategory;
+	/** Which STRIDE threats apply */
+	strideCategory: StrideCategory;
 	/** Lucide icon name */
 	icon: string;
 	/** Grouping category, e.g. "Services", "Databases" */
 	category: string;
 	/** Search keywords */
 	tags: string[];
-	/** Whether this is a base DFD type (process, data_store, external_entity) */
-	isBaseType?: boolean;
+	/** Optional provider-specific subtypes */
+	subtypes?: SubtypeDefinition[];
 }
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -76,40 +92,23 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 
 export const COMPONENT_LIBRARY: ComponentDefinition[] = [
-	// Basics — the 3 standard DFD element types
+	// Generic (default drop type)
 	{
-		id: "process",
-		label: "Process",
-		type: "process",
+		id: "generic",
+		label: "Generic",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "box",
-		category: "Basics",
-		tags: ["process", "function", "service", "step"],
-		isBaseType: true,
-	},
-	{
-		id: "data_store",
-		label: "Data Store",
-		type: "data_store",
-		icon: "database",
-		category: "Basics",
-		tags: ["data", "store", "storage", "database", "repository"],
-		isBaseType: true,
-	},
-	{
-		id: "external_entity",
-		label: "External Entity",
-		type: "external_entity",
-		icon: "globe",
-		category: "Basics",
-		tags: ["external", "entity", "actor", "user", "third party"],
-		isBaseType: true,
+		category: "Generic",
+		tags: ["generic", "component", "node"],
 	},
 
 	// Services
 	{
 		id: "web_server",
 		label: "Web Server",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "globe",
 		category: "Services",
 		tags: ["web", "server", "http", "nginx", "apache", "iis"],
@@ -117,7 +116,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "api_gateway",
 		label: "API Gateway",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "router",
 		category: "Services",
 		tags: ["api", "gateway", "rest", "graphql", "kong", "apigee"],
@@ -125,7 +125,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "microservice",
 		label: "Microservice",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "boxes",
 		category: "Services",
 		tags: ["microservice", "service", "backend", "container"],
@@ -133,7 +134,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "serverless_function",
 		label: "Serverless Function",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "zap",
 		category: "Services",
 		tags: ["serverless", "lambda", "function", "cloud", "azure functions", "cloud functions"],
@@ -141,7 +143,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "background_worker",
 		label: "Background Worker",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "cog",
 		category: "Services",
 		tags: ["worker", "background", "job", "cron", "scheduler", "queue consumer"],
@@ -151,31 +154,48 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "sql_database",
 		label: "SQL Database",
-		type: "data_store",
+		shape: "database",
+		strideCategory: "store",
 		icon: "database",
 		category: "Databases",
 		tags: ["sql", "database", "postgres", "mysql", "sqlite", "mssql", "relational"],
+		subtypes: [
+			{ id: "rds", label: "AWS RDS", icon: "database" },
+			{ id: "azure_sql", label: "Azure SQL", icon: "database" },
+			{ id: "cloud_sql", label: "Cloud SQL", icon: "database" },
+		],
 	},
 	{
 		id: "nosql_database",
 		label: "NoSQL Database",
-		type: "data_store",
+		shape: "database",
+		strideCategory: "store",
 		icon: "hard-drive",
 		category: "Databases",
 		tags: ["nosql", "mongodb", "dynamodb", "cassandra", "couchdb", "document"],
+		subtypes: [
+			{ id: "dynamodb", label: "DynamoDB", icon: "hard-drive" },
+			{ id: "cosmosdb", label: "Cosmos DB", icon: "hard-drive" },
+		],
 	},
 	{
 		id: "cache",
 		label: "Cache",
-		type: "data_store",
+		shape: "database",
+		strideCategory: "store",
 		icon: "memory-stick",
 		category: "Databases",
 		tags: ["cache", "redis", "memcached", "in-memory", "session"],
+		subtypes: [
+			{ id: "redis", label: "Redis", icon: "memory-stick" },
+			{ id: "memcached", label: "Memcached", icon: "memory-stick" },
+		],
 	},
 	{
 		id: "search_index",
 		label: "Search Index",
-		type: "data_store",
+		shape: "database",
+		strideCategory: "store",
 		icon: "search",
 		category: "Databases",
 		tags: ["search", "elasticsearch", "solr", "opensearch", "index", "full-text"],
@@ -183,33 +203,50 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "object_storage",
 		label: "Object Storage",
-		type: "data_store",
+		shape: "database",
+		strideCategory: "store",
 		icon: "archive",
 		category: "Databases",
 		tags: ["object", "storage", "s3", "blob", "gcs", "minio", "file"],
+		subtypes: [
+			{ id: "s3", label: "AWS S3", icon: "archive" },
+			{ id: "azure_blob", label: "Azure Blob", icon: "archive" },
+			{ id: "gcs", label: "Google Cloud Storage", icon: "archive" },
+		],
 	},
 
 	// Messaging
 	{
 		id: "message_queue",
 		label: "Message Queue",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "mail-open",
 		category: "Messaging",
 		tags: ["queue", "message", "rabbitmq", "sqs", "amqp", "async"],
+		subtypes: [
+			{ id: "sqs", label: "AWS SQS", icon: "mail-open" },
+			{ id: "rabbitmq", label: "RabbitMQ", icon: "mail-open" },
+		],
 	},
 	{
 		id: "event_bus",
 		label: "Event Bus",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "radio",
 		category: "Messaging",
 		tags: ["event", "bus", "kafka", "sns", "pubsub", "eventbridge"],
+		subtypes: [
+			{ id: "kafka", label: "Kafka", icon: "radio" },
+			{ id: "sns", label: "AWS SNS", icon: "radio" },
+		],
 	},
 	{
 		id: "stream_processor",
 		label: "Stream Processor",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "activity",
 		category: "Messaging",
 		tags: ["stream", "processor", "kinesis", "flink", "spark", "realtime"],
@@ -219,7 +256,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "load_balancer",
 		label: "Load Balancer",
-		type: "process",
+		shape: "hexagon",
+		strideCategory: "service",
 		icon: "scale",
 		category: "Infrastructure",
 		tags: ["load", "balancer", "lb", "alb", "nlb", "haproxy", "traffic"],
@@ -227,15 +265,21 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "cdn",
 		label: "CDN",
-		type: "external_entity",
+		shape: "hexagon",
+		strideCategory: "service",
 		icon: "globe",
 		category: "Infrastructure",
 		tags: ["cdn", "cloudfront", "cloudflare", "akamai", "content", "delivery"],
+		subtypes: [
+			{ id: "cloudfront", label: "CloudFront", icon: "globe" },
+			{ id: "cloudflare", label: "Cloudflare", icon: "globe" },
+		],
 	},
 	{
 		id: "dns",
 		label: "DNS",
-		type: "external_entity",
+		shape: "hexagon",
+		strideCategory: "service",
 		icon: "at-sign",
 		category: "Infrastructure",
 		tags: ["dns", "domain", "route53", "nameserver", "resolution"],
@@ -243,7 +287,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "proxy",
 		label: "Proxy",
-		type: "process",
+		shape: "hexagon",
+		strideCategory: "service",
 		icon: "arrow-left-right",
 		category: "Infrastructure",
 		tags: ["proxy", "reverse", "forward", "envoy", "traefik", "haproxy"],
@@ -251,7 +296,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "container",
 		label: "Container",
-		type: "process",
+		shape: "hexagon",
+		strideCategory: "service",
 		icon: "container",
 		category: "Infrastructure",
 		tags: ["container", "docker", "kubernetes", "k8s", "pod", "orchestration"],
@@ -261,7 +307,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "auth_provider",
 		label: "Auth Provider",
-		type: "external_entity",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "key-round",
 		category: "Security",
 		tags: ["auth", "oauth", "oidc", "saml", "identity", "idp", "okta", "auth0"],
@@ -269,7 +316,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "firewall",
 		label: "Firewall",
-		type: "process",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "shield-check",
 		category: "Security",
 		tags: ["firewall", "waf", "security", "filter", "network", "acl"],
@@ -277,7 +325,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "secret_manager",
 		label: "Secret Manager",
-		type: "data_store",
+		shape: "database",
+		strideCategory: "store",
 		icon: "lock",
 		category: "Security",
 		tags: ["secret", "vault", "hashicorp", "aws secrets", "key management", "kms"],
@@ -285,7 +334,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "certificate_authority",
 		label: "Certificate Authority",
-		type: "external_entity",
+		shape: "rounded",
+		strideCategory: "service",
 		icon: "file-badge",
 		category: "Security",
 		tags: ["certificate", "ca", "tls", "ssl", "pki", "x509"],
@@ -295,7 +345,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "web_browser",
 		label: "Web Browser",
-		type: "external_entity",
+		shape: "rect",
+		strideCategory: "actor",
 		icon: "monitor-smartphone",
 		category: "Clients",
 		tags: ["browser", "web", "client", "frontend", "spa", "pwa"],
@@ -303,7 +354,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "mobile_app",
 		label: "Mobile App",
-		type: "external_entity",
+		shape: "rect",
+		strideCategory: "actor",
 		icon: "smartphone",
 		category: "Clients",
 		tags: ["mobile", "app", "ios", "android", "react native", "flutter"],
@@ -311,7 +363,8 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "desktop_app",
 		label: "Desktop App",
-		type: "external_entity",
+		shape: "rect",
+		strideCategory: "actor",
 		icon: "monitor",
 		category: "Clients",
 		tags: ["desktop", "app", "electron", "tauri", "native", "windows", "macos"],
@@ -319,29 +372,52 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 	{
 		id: "iot_device",
 		label: "IoT Device",
-		type: "external_entity",
+		shape: "rect",
+		strideCategory: "actor",
 		icon: "cpu",
 		category: "Clients",
 		tags: ["iot", "device", "sensor", "embedded", "hardware", "edge"],
 	},
 ];
 
-/** Unique sorted category names */
+/** Unique sorted category names (excluding "Generic" which is a palette-only concept) */
 export const COMPONENT_CATEGORIES: string[] = [
-	...new Set(COMPONENT_LIBRARY.map((c) => c.category)),
+	...new Set(COMPONENT_LIBRARY.filter((c) => c.category !== "Generic").map((c) => c.category)),
 ];
 
-/** Look up a component definition by its subtype ID */
-export function getComponentBySubtype(subtype: string): ComponentDefinition | undefined {
-	return COMPONENT_LIBRARY.find((c) => c.id === subtype);
+/** Look up a component definition by its type ID */
+export function getComponentByType(type: string): ComponentDefinition | undefined {
+	return COMPONENT_LIBRARY.find((c) => c.id === type);
 }
 
-/** Case-insensitive search across label and tags */
+/** @deprecated Use getComponentByType instead */
+export function getComponentBySubtype(subtype: string): ComponentDefinition | undefined {
+	return getComponentByType(subtype);
+}
+
+/** Get the shape category for a component type. Defaults to "rounded". */
+export function getShapeForType(type: string): ShapeCategory {
+	return getComponentByType(type)?.shape ?? "rounded";
+}
+
+/** Get the STRIDE category for a component type. Defaults to "service". */
+export function getStrideCategoryForType(type: string): StrideCategory {
+	return getComponentByType(type)?.strideCategory ?? "service";
+}
+
+/** Get sub-type definitions for a component type. Returns empty array if none. */
+export function getSubtypesForType(type: string): SubtypeDefinition[] {
+	return getComponentByType(type)?.subtypes ?? [];
+}
+
+/** Case-insensitive search across label and tags. Excludes the generic type from results. */
 export function searchComponents(query: string): ComponentDefinition[] {
 	const q = query.toLowerCase().trim();
-	if (!q) return COMPONENT_LIBRARY;
+	if (!q) return COMPONENT_LIBRARY.filter((c) => c.category !== "Generic");
 	return COMPONENT_LIBRARY.filter(
-		(c) => c.label.toLowerCase().includes(q) || c.tags.some((t) => t.toLowerCase().includes(q)),
+		(c) =>
+			c.category !== "Generic" &&
+			(c.label.toLowerCase().includes(q) || c.tags.some((t) => t.toLowerCase().includes(q))),
 	);
 }
 

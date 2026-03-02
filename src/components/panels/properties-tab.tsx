@@ -1,5 +1,11 @@
 import { ArrowLeftRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+	COMPONENT_CATEGORIES,
+	COMPONENT_LIBRARY,
+	getComponentByType,
+	getSubtypesForType,
+} from "@/lib/component-library";
 import { type DfdEdge, useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -153,22 +159,105 @@ function ElementProperties({ elementId }: { elementId: string }) {
 	const model = useModelStore((s) => s.model);
 	const updateElement = useModelStore((s) => s.updateElement);
 
+	// Read current colors from canvas node data (must be before early return for hooks rules)
+	const node = useCanvasStore((s) => s.nodes.find((n) => n.id === elementId));
+	const fillColor = (node?.data.elementFillColor as string) ?? "";
+	const strokeColor = (node?.data.elementStrokeColor as string) ?? "";
+	const fillOpacity = (node?.data.elementFillOpacity as number) ?? 0.15;
+	const strokeOpacity = (node?.data.elementStrokeOpacity as number) ?? 1.0;
+
 	const element = model?.elements.find((e) => e.id === elementId);
 	if (!element) {
 		return <p className="text-xs text-muted-foreground">Element not found.</p>;
 	}
 
-	const elementTypeLabel = element.type
-		.split("_")
-		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-		.join(" ");
-
+	const subtypes = getSubtypesForType(element.type);
 	const relatedThreats = model?.threats.filter((t) => t.element === element.id) ?? [];
+
+	/** Group library components by category for the type dropdown */
+	const componentsByCategory = COMPONENT_CATEGORIES.map((cat) => ({
+		category: cat,
+		items: COMPONENT_LIBRARY.filter((c) => c.category === cat),
+	}));
+
+	const syncElementNodeData = (updates: Record<string, unknown>) => {
+		const nodes = useCanvasStore.getState().nodes;
+		const updatedNodes = nodes.map((n) =>
+			n.id === elementId ? { ...n, data: { ...n.data, ...updates } } : n,
+		);
+		useCanvasStore.setState({ nodes: updatedNodes });
+		useModelStore.getState().markDirty();
+	};
+
+	const handleTypeChange = (newType: string) => {
+		const comp = getComponentByType(newType);
+		updateElement(element.id, {
+			type: newType,
+			subtype: undefined,
+			icon: comp?.icon,
+		});
+		syncElementNodeData({
+			elementType: newType,
+			subtype: undefined,
+			icon: comp?.icon,
+		});
+	};
+
+	const handleSubtypeChange = (newSubtype: string) => {
+		if (newSubtype === "") {
+			updateElement(element.id, { subtype: undefined });
+			syncElementNodeData({ subtype: undefined });
+		} else {
+			updateElement(element.id, { subtype: newSubtype });
+			syncElementNodeData({ subtype: newSubtype });
+		}
+	};
 
 	return (
 		<div className="flex flex-col gap-3">
 			<ReadOnlyField label="ID" value={element.id} />
-			<ReadOnlyField label="Type" value={elementTypeLabel} />
+
+			{/* Type dropdown */}
+			<label className="block">
+				<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">Type</span>
+				<select
+					value={element.type}
+					onChange={(e) => handleTypeChange(e.target.value)}
+					className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+				>
+					<option value="generic">Generic</option>
+					{componentsByCategory.map((group) => (
+						<optgroup key={group.category} label={group.category}>
+							{group.items.map((comp) => (
+								<option key={comp.id} value={comp.id}>
+									{comp.label}
+								</option>
+							))}
+						</optgroup>
+					))}
+				</select>
+			</label>
+
+			{/* Sub-type dropdown (conditional) */}
+			{subtypes.length > 0 && (
+				<label className="block">
+					<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+						Sub Type
+					</span>
+					<select
+						value={element.subtype ?? ""}
+						onChange={(e) => handleSubtypeChange(e.target.value)}
+						className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+					>
+						<option value="">None</option>
+						{subtypes.map((st) => (
+							<option key={st.id} value={st.id}>
+								{st.label}
+							</option>
+						))}
+					</select>
+				</label>
+			)}
 
 			<EditableField
 				label="Name"
@@ -196,16 +285,40 @@ function ElementProperties({ elementId }: { elementId: string }) {
 				onChange={(value) => updateElement(element.id, { description: value })}
 			/>
 
-			<EditableField
+			<CommaSeparatedField
 				label="Technologies"
-				value={(element.technologies ?? []).join(", ")}
+				items={element.technologies ?? []}
 				placeholder="e.g. nginx, TLS, OAuth"
-				onChange={(value) => {
-					const technologies = value
-						.split(",")
-						.map((t) => t.trim())
-						.filter((t) => t.length > 0);
+				onCommit={(technologies) => {
 					updateElement(element.id, { technologies });
+				}}
+			/>
+
+			<ColorField
+				label="Fill Color"
+				color={fillColor}
+				opacity={fillOpacity}
+				onColorChange={(color) => {
+					syncElementNodeData({ elementFillColor: color || undefined });
+					updateElement(element.id, { fill_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncElementNodeData({ elementFillOpacity: opacity });
+					updateElement(element.id, { fill_opacity: opacity });
+				}}
+			/>
+
+			<ColorField
+				label="Stroke Color"
+				color={strokeColor}
+				opacity={strokeOpacity}
+				onColorChange={(color) => {
+					syncElementNodeData({ elementStrokeColor: color || undefined });
+					updateElement(element.id, { stroke_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncElementNodeData({ elementStrokeOpacity: opacity });
+					updateElement(element.id, { stroke_opacity: opacity });
 				}}
 			/>
 
@@ -326,16 +439,28 @@ function TrustBoundaryProperties({ boundaryId }: { boundaryId: string }) {
 				label="Fill Color"
 				color={fillColor}
 				opacity={fillOpacity}
-				onColorChange={(color) => syncBoundaryNodeData({ boundaryFillColor: color })}
-				onOpacityChange={(opacity) => syncBoundaryNodeData({ boundaryFillOpacity: opacity })}
+				onColorChange={(color) => {
+					syncBoundaryNodeData({ boundaryFillColor: color || undefined });
+					updateTrustBoundary(boundary.id, { fill_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncBoundaryNodeData({ boundaryFillOpacity: opacity });
+					updateTrustBoundary(boundary.id, { fill_opacity: opacity });
+				}}
 			/>
 
 			<ColorField
 				label="Stroke Color"
 				color={strokeColor}
 				opacity={strokeOpacity}
-				onColorChange={(color) => syncBoundaryNodeData({ boundaryStrokeColor: color })}
-				onOpacityChange={(opacity) => syncBoundaryNodeData({ boundaryStrokeOpacity: opacity })}
+				onColorChange={(color) => {
+					syncBoundaryNodeData({ boundaryStrokeColor: color || undefined });
+					updateTrustBoundary(boundary.id, { stroke_color: color || undefined });
+				}}
+				onOpacityChange={(opacity) => {
+					syncBoundaryNodeData({ boundaryStrokeOpacity: opacity });
+					updateTrustBoundary(boundary.id, { stroke_opacity: opacity });
+				}}
 			/>
 		</div>
 	);

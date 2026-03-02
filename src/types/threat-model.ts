@@ -3,7 +3,8 @@
  * These types are used for Tauri IPC communication and Zustand state.
  */
 
-export type ElementType = "process" | "data_store" | "external_entity";
+/** Component type — a string identifying the component kind (e.g. "api_gateway", "sql_database"). */
+export type ElementType = string;
 
 export type StrideCategory =
 	| "Spoofing"
@@ -52,6 +53,10 @@ export interface Element {
 	stores?: string[];
 	encryption?: string;
 	position?: Position;
+	fill_color?: string;
+	stroke_color?: string;
+	fill_opacity?: number;
+	stroke_opacity?: number;
 }
 
 export interface DataFlow {

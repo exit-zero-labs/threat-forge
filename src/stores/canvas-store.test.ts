@@ -18,7 +18,7 @@ function createTestModel(): ThreatModel {
 		elements: [
 			{
 				id: "process-1",
-				type: "process",
+				type: "web_server",
 				name: "Web App",
 				trust_zone: "internal",
 				description: "",
@@ -26,7 +26,7 @@ function createTestModel(): ThreatModel {
 			},
 			{
 				id: "data-store-1",
-				type: "data_store",
+				type: "sql_database",
 				name: "Database",
 				trust_zone: "internal",
 				description: "",
@@ -116,11 +116,11 @@ describe("canvas-store", () => {
 		useCanvasStore.getState().syncFromModel();
 
 		// Drop outside any boundary so position isn't adjusted
-		useCanvasStore.getState().addElement("external_entity", { x: 600, y: 600 });
+		useCanvasStore.getState().addElement("web_browser", { x: 600, y: 600 });
 
 		const { nodes } = useCanvasStore.getState();
 		const newNode = nodes.find(
-			(n) => n.data.elementType === "external_entity" && n.data.label === "New External Entity",
+			(n) => n.data.elementType === "web_browser" && n.data.label === "Web Browser",
 		);
 		expect(newNode).toBeDefined();
 		expect(newNode?.type).toBe("dfdElement");
@@ -129,7 +129,7 @@ describe("canvas-store", () => {
 		// Model store should also have the new element
 		const model = useModelStore.getState().model;
 		expect(model?.elements).toHaveLength(3);
-		expect(model?.elements[2].type).toBe("external_entity");
+		expect(model?.elements[2].type).toBe("web_browser");
 	});
 
 	it("adds a data flow between nodes", () => {
@@ -184,7 +184,7 @@ describe("canvas-store", () => {
 		useModelStore.getState().markClean();
 		useCanvasStore.getState().syncFromModel();
 
-		useCanvasStore.getState().addElement("process", { x: 0, y: 0 });
+		useCanvasStore.getState().addElement("api_gateway", { x: 0, y: 0 });
 
 		expect(useModelStore.getState().isDirty).toBe(true);
 	});
@@ -193,11 +193,12 @@ describe("canvas-store", () => {
 		useModelStore.getState().setModel(createTestModel(), null);
 		useCanvasStore.getState().syncFromModel();
 
-		// Adding a new element should get ID "process-2" (since process-1 exists)
-		useCanvasStore.getState().addElement("process", { x: 0, y: 0 });
+		// Existing IDs: process-1, data-store-1 → counter resets to max(1,1) = 1
+		// Adding a new element should get "comp-2"
+		useCanvasStore.getState().addElement("api_gateway", { x: 0, y: 0 });
 		const model = useModelStore.getState().model;
 		const newElement = model?.elements[model.elements.length - 1];
-		expect(newElement?.id).toBe("process-2");
+		expect(newElement?.id).toBe("comp-2");
 	});
 
 	it("prevents self-loop when adding data flow", () => {
@@ -264,8 +265,8 @@ describe("canvas-store", () => {
 
 	it("duplicateElement preserves subtype and icon", () => {
 		const model = createTestModel();
-		model.elements[0].subtype = "api_gateway";
-		model.elements[0].icon = "router";
+		model.elements[0].subtype = "cloudfront";
+		model.elements[0].icon = "globe";
 		useModelStore.getState().setModel(model, null);
 		useCanvasStore.getState().syncFromModel();
 
@@ -274,14 +275,14 @@ describe("canvas-store", () => {
 		const { nodes } = useCanvasStore.getState();
 		const copy = nodes.find((n) => n.data.label === "Web App (copy)");
 		expect(copy).toBeDefined();
-		expect(copy?.data.subtype).toBe("api_gateway");
-		expect(copy?.data.icon).toBe("router");
+		expect(copy?.data.subtype).toBe("cloudfront");
+		expect(copy?.data.icon).toBe("globe");
 
 		const m = useModelStore.getState().model;
 		const newEl = m?.elements.find((e) => e.name === "Web App (copy)");
 		expect(newEl).toBeDefined();
-		expect(newEl?.subtype).toBe("api_gateway");
-		expect(newEl?.icon).toBe("router");
+		expect(newEl?.subtype).toBe("cloudfront");
+		expect(newEl?.icon).toBe("globe");
 	});
 
 	it("reverses an edge direction", () => {
@@ -306,11 +307,12 @@ describe("canvas-store", () => {
 
 		// Boundary-1 is at default position (50, 50) with size 400x300
 		// Drop a new element inside it
-		useCanvasStore.getState().addElement("process", { x: 100, y: 100 });
+		useCanvasStore.getState().addElement("microservice", { x: 100, y: 100 });
 
 		const model = useModelStore.getState().model;
 		const boundary = model?.trust_boundaries.find((b) => b.id === "boundary-1");
-		expect(boundary?.contains).toContain("process-2");
+		// New element gets comp-2 ID (counter resets to 1 from existing model)
+		expect(boundary?.contains).toContain("comp-2");
 	});
 
 	it("reads inline positions from model via pending layout", () => {
@@ -376,6 +378,23 @@ describe("canvas-store", () => {
 		expect(boundaryNode?.data.boundaryStrokeColor).toBe("#1e40af");
 		expect(boundaryNode?.data.boundaryFillOpacity).toBe(0.15);
 		expect(boundaryNode?.data.boundaryStrokeOpacity).toBe(0.7);
+	});
+
+	it("reads element colors from model fields", () => {
+		const model = createTestModel();
+		model.elements[0].fill_color = "#10b981";
+		model.elements[0].stroke_color = "#059669";
+		model.elements[0].fill_opacity = 0.2;
+		model.elements[0].stroke_opacity = 0.8;
+
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		const elementNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
+		expect(elementNode?.data.elementFillColor).toBe("#10b981");
+		expect(elementNode?.data.elementStrokeColor).toBe("#059669");
+		expect(elementNode?.data.elementFillOpacity).toBe(0.2);
+		expect(elementNode?.data.elementStrokeOpacity).toBe(0.8);
 	});
 
 	it("reads label offset from data flow model fields", () => {
@@ -483,10 +502,9 @@ describe("canvas-store", () => {
 		useCanvasStore.getState().syncFromModel();
 
 		useCanvasStore.getState().addElement(
-			"process",
+			"api_gateway",
 			{ x: 600, y: 600 },
 			{
-				subtype: "api_gateway",
 				icon: "router",
 				name: "API Gateway",
 			},
@@ -496,46 +514,42 @@ describe("canvas-store", () => {
 		const newNode = nodes.find((n) => n.data.label === "API Gateway");
 		expect(newNode).toBeDefined();
 		expect(newNode?.type).toBe("dfdElement");
-		expect(newNode?.data.subtype).toBe("api_gateway");
 		expect(newNode?.data.icon).toBe("router");
 
-		// Model store should have subtype and icon
+		// Model store should have icon
 		const model = useModelStore.getState().model;
 		const newElement = model?.elements.find((e) => e.name === "API Gateway");
 		expect(newElement).toBeDefined();
-		expect(newElement?.subtype).toBe("api_gateway");
 		expect(newElement?.icon).toBe("router");
-		expect(newElement?.type).toBe("process");
+		expect(newElement?.type).toBe("api_gateway");
 	});
 
-	it("creates base type element with icon only (no subtype)", () => {
+	it("creates element with library defaults when no opts provided", () => {
 		useModelStore.getState().setModel(createTestModel(), null);
 		useCanvasStore.getState().syncFromModel();
 
-		useCanvasStore.getState().addElement("data_store", { x: 300, y: 300 }, { icon: "database" });
+		useCanvasStore.getState().addElement("sql_database", { x: 300, y: 300 });
 
 		const { nodes } = useCanvasStore.getState();
-		const newNode = nodes.find((n) => n.data.label === "New Data Store");
+		const newNode = nodes.find((n) => n.data.label === "SQL Database");
 		expect(newNode).toBeDefined();
-		expect(newNode?.data.subtype).toBeUndefined();
-		expect(newNode?.data.icon).toBe("database");
 
 		const model = useModelStore.getState().model;
-		const newElement = model?.elements.find((e) => e.name === "New Data Store");
-		expect(newElement?.icon).toBe("database");
-		expect(newElement?.subtype).toBeUndefined();
+		const newElement = model?.elements.find((e) => e.name === "SQL Database");
+		expect(newElement).toBeDefined();
+		expect(newElement?.type).toBe("sql_database");
 	});
 
 	it("syncFromModel preserves subtype and icon in node data", () => {
 		const model = createTestModel();
-		model.elements[0].subtype = "web_server";
+		model.elements[0].subtype = "cloudfront";
 		model.elements[0].icon = "globe";
 
 		useModelStore.getState().setModel(model, null);
 		useCanvasStore.getState().syncFromModel();
 
 		const processNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
-		expect(processNode?.data.subtype).toBe("web_server");
+		expect(processNode?.data.subtype).toBe("cloudfront");
 		expect(processNode?.data.icon).toBe("globe");
 	});
 });

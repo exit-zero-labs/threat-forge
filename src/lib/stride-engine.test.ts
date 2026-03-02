@@ -15,7 +15,7 @@ function sampleModel(): ThreatModel {
 		elements: [
 			{
 				id: "web-app",
-				type: "process",
+				type: "web_server",
 				name: "Web Application",
 				trust_zone: "internal",
 				description: "",
@@ -23,7 +23,7 @@ function sampleModel(): ThreatModel {
 			},
 			{
 				id: "db",
-				type: "data_store",
+				type: "sql_database",
 				name: "Database",
 				trust_zone: "internal",
 				description: "",
@@ -31,7 +31,7 @@ function sampleModel(): ThreatModel {
 			},
 			{
 				id: "user",
-				type: "external_entity",
+				type: "web_browser",
 				name: "End User",
 				trust_zone: "external",
 				description: "",
@@ -62,25 +62,25 @@ function sampleModel(): ThreatModel {
 }
 
 describe("analyzeStride", () => {
-	it("generates 6 threats for a process", () => {
+	it("generates 6 threats for a service (web_server)", () => {
 		const model = sampleModel();
 		const threats = analyzeStride(model);
-		const processThreats = threats.filter((t) => t.element === "web-app");
-		expect(processThreats).toHaveLength(6);
+		const serviceThreats = threats.filter((t) => t.element === "web-app");
+		expect(serviceThreats).toHaveLength(6);
 	});
 
-	it("generates 3 threats for a data store", () => {
+	it("generates 3 threats for a store (sql_database)", () => {
 		const model = sampleModel();
 		const threats = analyzeStride(model);
-		const dsThreats = threats.filter((t) => t.element === "db");
-		expect(dsThreats).toHaveLength(3);
+		const storeThreats = threats.filter((t) => t.element === "db");
+		expect(storeThreats).toHaveLength(3);
 	});
 
-	it("generates 2 threats for an external entity", () => {
+	it("generates 2 threats for an actor (web_browser)", () => {
 		const model = sampleModel();
 		const threats = analyzeStride(model);
-		const eeThreats = threats.filter((t) => t.element === "user");
-		expect(eeThreats).toHaveLength(2);
+		const actorThreats = threats.filter((t) => t.element === "user");
+		expect(actorThreats).toHaveLength(2);
 	});
 
 	it("generates 3 threats for a data flow", () => {
@@ -149,5 +149,14 @@ describe("analyzeStride", () => {
 		);
 		expect(dosThreat).toBeDefined();
 		expect(dosThreat?.severity).toBe("medium");
+	});
+
+	it("maps legacy process type to service category", () => {
+		const model = sampleModel();
+		model.elements[0].type = "process";
+		const threats = analyzeStride(model);
+		// "process" defaults to service category → should get 6 threats
+		const processThreats = threats.filter((t) => t.element === "web-app");
+		expect(processThreats).toHaveLength(6);
 	});
 });
