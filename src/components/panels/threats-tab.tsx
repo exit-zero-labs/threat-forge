@@ -8,6 +8,7 @@ import {
 	Zap,
 } from "lucide-react";
 import { useState } from "react";
+import { getComponentByType } from "@/lib/component-library";
 import { cn } from "@/lib/utils";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -284,7 +285,8 @@ function ThreatEditor({ threat }: { threat: Threat }) {
 						}}
 						className="text-xs text-primary hover:underline"
 					>
-						{linkedElement.name} ({linkedElement.type.replace("_", " ")})
+						{linkedElement.name} (
+						{getComponentByType(linkedElement.type)?.label ?? linkedElement.type.replace("_", " ")})
 					</button>
 				</FieldGroup>
 			)}

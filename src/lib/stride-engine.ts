@@ -7,8 +7,11 @@
  */
 
 import { generateThreatId } from "@/lib/ai-utils";
+import {
+	type StrideCategory as ComponentStrideCategory,
+	getStrideCategoryForType,
+} from "@/lib/component-library";
 import type {
-	ElementType,
 	Severity,
 	StrideCategory,
 	Threat,
@@ -18,7 +21,7 @@ import type {
 
 interface ThreatRule {
 	category: StrideCategory;
-	applicableElements: ElementType[];
+	applicableCategories: ComponentStrideCategory[];
 	targetsFlows: boolean;
 	titleTemplate: string;
 	descriptionTemplate: string;
@@ -27,10 +30,10 @@ interface ThreatRule {
 
 function buildRules(): ThreatRule[] {
 	return [
-		// Process threats
+		// Service threats
 		{
 			category: "Spoofing",
-			applicableElements: ["process"],
+			applicableCategories: ["service"],
 			targetsFlows: false,
 			titleTemplate: "Spoofing of {name}",
 			descriptionTemplate:
@@ -39,7 +42,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Tampering",
-			applicableElements: ["process"],
+			applicableCategories: ["service"],
 			targetsFlows: false,
 			titleTemplate: "Tampering with {name}",
 			descriptionTemplate:
@@ -48,7 +51,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Repudiation",
-			applicableElements: ["process"],
+			applicableCategories: ["service"],
 			targetsFlows: false,
 			titleTemplate: "Repudiation threat for {name}",
 			descriptionTemplate:
@@ -57,7 +60,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Information Disclosure",
-			applicableElements: ["process"],
+			applicableCategories: ["service"],
 			targetsFlows: false,
 			titleTemplate: "Information disclosure from {name}",
 			descriptionTemplate:
@@ -66,7 +69,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Denial of Service",
-			applicableElements: ["process"],
+			applicableCategories: ["service"],
 			targetsFlows: false,
 			titleTemplate: "Denial of service on {name}",
 			descriptionTemplate:
@@ -75,7 +78,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Elevation of Privilege",
-			applicableElements: ["process"],
+			applicableCategories: ["service"],
 			targetsFlows: false,
 			titleTemplate: "Elevation of privilege via {name}",
 			descriptionTemplate:
@@ -83,10 +86,10 @@ function buildRules(): ThreatRule[] {
 			severity: "high",
 		},
 
-		// Data Store threats
+		// Store threats
 		{
 			category: "Tampering",
-			applicableElements: ["data_store"],
+			applicableCategories: ["store"],
 			targetsFlows: false,
 			titleTemplate: "Tampering with data in {name}",
 			descriptionTemplate:
@@ -95,7 +98,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Information Disclosure",
-			applicableElements: ["data_store"],
+			applicableCategories: ["store"],
 			targetsFlows: false,
 			titleTemplate: "Information disclosure from {name}",
 			descriptionTemplate:
@@ -104,7 +107,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Denial of Service",
-			applicableElements: ["data_store"],
+			applicableCategories: ["store"],
 			targetsFlows: false,
 			titleTemplate: "Denial of service on {name}",
 			descriptionTemplate:
@@ -112,10 +115,10 @@ function buildRules(): ThreatRule[] {
 			severity: "medium",
 		},
 
-		// External Entity threats
+		// Actor threats
 		{
 			category: "Spoofing",
-			applicableElements: ["external_entity"],
+			applicableCategories: ["actor"],
 			targetsFlows: false,
 			titleTemplate: "Spoofing of {name}",
 			descriptionTemplate:
@@ -124,7 +127,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Repudiation",
-			applicableElements: ["external_entity"],
+			applicableCategories: ["actor"],
 			targetsFlows: false,
 			titleTemplate: "Repudiation by {name}",
 			descriptionTemplate:
@@ -135,7 +138,7 @@ function buildRules(): ThreatRule[] {
 		// Data Flow threats
 		{
 			category: "Tampering",
-			applicableElements: [],
+			applicableCategories: [],
 			targetsFlows: true,
 			titleTemplate: "Tampering with data flow between {source} and {target}",
 			descriptionTemplate:
@@ -144,7 +147,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Information Disclosure",
-			applicableElements: [],
+			applicableCategories: [],
 			targetsFlows: true,
 			titleTemplate: "Information disclosure on flow between {source} and {target}",
 			descriptionTemplate:
@@ -153,7 +156,7 @@ function buildRules(): ThreatRule[] {
 		},
 		{
 			category: "Denial of Service",
-			applicableElements: [],
+			applicableCategories: [],
 			targetsFlows: true,
 			titleTemplate: "Denial of service on flow between {source} and {target}",
 			descriptionTemplate:
@@ -209,9 +212,10 @@ export function analyzeStride(model: ThreatModel): Threat[] {
 
 	// Element-based rules
 	for (const element of model.elements) {
+		const elementCategory = getStrideCategoryForType(element.type);
 		for (const rule of rules) {
 			if (rule.targetsFlows) continue;
-			if (!rule.applicableElements.includes(element.type)) continue;
+			if (!rule.applicableCategories.includes(elementCategory)) continue;
 
 			const key = `${element.id}::${rule.category}`;
 			if (existing.has(key)) continue;

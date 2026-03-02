@@ -171,3 +171,112 @@ Consolidate layout data from separate `.threatforge/layouts/*.json` sidecar file
   - [x] Import + call `resetCaptureDebounce()` in `beforeEach`
 - [x] Validate: `npx vitest --run` — 114 tests passing
 - [x] Validate: `npm run ci:local` — all checks passed
+
+---
+
+## 2026-03-01 — WS2: Entity System Revamp + Component Library
+
+Add component library with ~25 pre-defined technology components, searchable library palette, and icon rendering on canvas nodes. Consolidate 3 identical node components into one.
+
+### Plan
+- [x] Step 1: Schema changes (Rust + TypeScript)
+  - [x] Add `subtype: Option<String>` to Rust `Element` struct
+  - [x] Fix Rust Element struct literals in stride/mod.rs and ai/prompt.rs
+  - [x] Add `subtype?: string` to TypeScript `Element` interface
+  - [x] Validate: `cargo test` (37 pass) + `cargo clippy` (clean)
+- [x] Step 2: Create component library registry (`src/lib/component-library.ts`)
+  - [x] Define ComponentDefinition interface
+  - [x] 28 components across 7 categories (Basics + 6 domain categories)
+  - [x] Search, category, subtype lookup, and icon mapping helpers
+- [x] Step 3+4: Consolidate node components + update canvas store
+  - [x] Create unified `DfdElementNode` component
+  - [x] Add `subtype` + `icon` to `DfdNodeData`
+  - [x] Update `elementTypeToNodeType` → always return `"dfdElement"`
+  - [x] Update `elementToNode` to pass subtype + icon
+  - [x] Update `addElement` to accept opts with subtype/icon/name
+  - [x] Update `dfd-canvas.tsx` node type registration
+  - [x] Add `setDraggedComponent` to canvas store for library drag state
+- [x] Step 5: Revamp palette with library section
+  - [x] Generic section: Entity + Boundary (2 items)
+  - [x] Library section: search + category tabs + draggable items
+  - [x] Base types (Process, Data Store, External Entity) in "Basics" category
+- [x] Step 6: Fix other Rust consumers (done with Step 1)
+- [x] Step 7: Update tests
+  - [x] Update canvas-store.test.ts node type assertions (`"process"` → `"dfdElement"`)
+  - [x] Add subtype/icon tests (2 new tests)
+  - [x] Add component library tests (14 new tests)
+  - [x] Add Rust round-trip test for subtype (2 new tests)
+- [x] Step 8: Clean up + validation
+  - [x] Delete old node files (process-node.tsx, data-store-node.tsx, external-entity-node.tsx)
+  - [x] `npx biome check --write .` — clean
+  - [x] `cargo test` (39 pass) + `cargo clippy` (clean)
+  - [x] `npx vitest --run` — 130 tests passing
+  - [x] `npm run ci:local` — ALL PASSED
+
+### Notes
+- Consolidated 3 nearly-identical node components (87 lines each) into 1 DfdElementNode
+- 28 components total: 3 base DFD types + 25 technology subtypes across 7 categories
+- All 28 lucide icons verified present in lucide-react v0.575.0
+- Canvas store drag state expanded with `setDraggedComponent` for library items carrying subtype/icon/name
+- 130 frontend tests (up from 114), 39 Rust tests (up from 37) — all passing
+
+---
+
+## 2026-03-01 — Unified Component System + Visual Customization
+
+Flatten ElementType hierarchy from 3-value enum to string-based component types. Add 4 shape categories, 3 STRIDE categories, per-element visual customization, sub-types with icon overrides, and fix technologies input.
+
+### Plan
+- [x] Step 1: Schema changes (TypeScript + Rust)
+  - [x] Changed `ElementType` from `"process" | "data_store" | "external_entity"` to `string` (TS)
+  - [x] Removed `ElementType` enum from Rust, changed to `String`
+  - [x] Added `fill_color`, `stroke_color`, `fill_opacity`, `stroke_opacity` to Element (both TS + Rust)
+  - [x] Updated `ai/prompt.rs` formatting (`{:?}` → `{}`) and test literals
+  - [x] Updated `stride/mod.rs` with `ComponentStrideCategory` enum and `stride_category_for_type()` mapper
+  - [x] Validate: `cargo test` (40 pass) + `cargo clippy` (clean)
+- [x] Step 2: Update component library
+  - [x] Added `ShapeCategory`, `StrideCategory`, `SubtypeDefinition` types
+  - [x] Changed `ComponentDefinition`: replaced `type: ElementType` + `isBaseType` with `shape` + `strideCategory`
+  - [x] Added `generic` entry as default component type
+  - [x] Removed old "Basics" category (process, data_store, external_entity)
+  - [x] Added subtypes to 7 components (sql_database, nosql_database, cache, object_storage, message_queue, event_bus, cdn)
+  - [x] Added `getShapeForType()`, `getStrideCategoryForType()`, `getSubtypesForType()` helpers
+- [x] Step 3: Update STRIDE engine (TS)
+  - [x] Changed rules from `applicableElements: ElementType[]` to `applicableCategories: ComponentStrideCategory[]`
+  - [x] Uses `getStrideCategoryForType()` for element-to-category mapping
+- [x] Step 4: Update canvas store
+  - [x] `DfdNodeData.elementType`: `ElementType` → `string`
+  - [x] Added element color fields to `DfdNodeData`
+  - [x] `generateElementId()` → always produces `comp-N` IDs
+  - [x] `defaultElementName()` → looks up component library label
+  - [x] `elementToNode()` passes color fields from Element to node data
+- [x] Step 5: Update node rendering (shapes + colors)
+  - [x] 4 shape categories: rounded, database, rect, hexagon (via CSS clip-path)
+  - [x] Custom color rendering with `hexToRgba()` + inline styles
+  - [x] `resolveIcon()` checks subtype defs → component type → direct icon field
+- [x] Step 6: Update properties panel
+  - [x] Type dropdown grouped by category
+  - [x] Conditional Sub Type dropdown when type has subtypes
+  - [x] `ColorField` components for fill/stroke colors on elements
+  - [x] Fixed technologies: replaced `EditableField` with `CommaSeparatedField`
+- [x] Step 7: Update palette
+  - [x] Renamed "Entity" → "Component", type `"process"` → `"generic"`
+  - [x] Library items pass `type: component.id` directly (component IS the type)
+  - [x] Removed `isBaseType` logic and `as ElementType` casts
+- [x] Step 8: AI prompts — no TS change needed (already uses `el.type` string); Rust done in Step 1
+- [x] Step 9: Update tests
+  - [x] `component-library.test.ts` — rewritten for new `shape`/`strideCategory` fields, subtypes, categories
+  - [x] `canvas-store.test.ts` — updated types, ID assertions (`comp-N`), new element color test
+  - [x] `stride-engine.test.ts` — updated to use component types, added legacy type mapping test
+- [x] Step 10: Cleanup + validation
+  - [x] `npx biome check --write .` — clean
+  - [x] `npx vitest --run` — 140 tests passing
+  - [x] `cargo test` — 40 tests passing
+  - [x] `cargo clippy` — clean
+
+### Notes
+- Old element types (`process`, `data_store`, `external_entity`) still parse as valid strings for backward compat
+- STRIDE category mapping defaults to "service" for unknown types, ensuring forward compat
+- Hexagon shape uses CSS `clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)`
+- Sub-type system is additive: setting a subtype overrides the icon, clearing it reverts to the component type default
+- 140 frontend tests (up from 130), 40 Rust tests — all passing

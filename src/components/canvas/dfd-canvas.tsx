@@ -15,18 +15,13 @@ import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
-import type { ElementType } from "@/types/threat-model";
 import { buildEdgeMenuItems, buildNodeMenuItems, CanvasContextMenu } from "./canvas-context-menu";
 import { DataFlowEdge } from "./edges/data-flow-edge";
-import { DataStoreNode } from "./nodes/data-store-node";
-import { ExternalEntityNode } from "./nodes/external-entity-node";
-import { ProcessNode } from "./nodes/process-node";
+import { DfdElementNode } from "./nodes/dfd-element-node";
 import { TrustBoundaryNode } from "./nodes/trust-boundary-node";
 
 const nodeTypes = {
-	process: ProcessNode,
-	dataStore: DataStoreNode,
-	externalEntity: ExternalEntityNode,
+	dfdElement: DfdElementNode,
 	trustBoundary: TrustBoundaryNode,
 };
 
@@ -141,7 +136,8 @@ export function DfdCanvas() {
 
 			// Read type from Zustand store — workaround for WKWebView dataTransfer issues
 			// where getData() returns empty for custom MIME types during drop events
-			const draggedType = useCanvasStore.getState().draggedType;
+			const store = useCanvasStore.getState();
+			const draggedType = store.draggedType;
 			if (!draggedType) return;
 
 			// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
@@ -153,10 +149,18 @@ export function DfdCanvas() {
 			if (draggedType === "trust_boundary") {
 				addTrustBoundary("New Boundary", position);
 			} else {
-				addElement(draggedType as ElementType, position);
+				const opts =
+					store.draggedSubtype || store.draggedIcon || store.draggedName
+						? {
+								subtype: store.draggedSubtype ?? undefined,
+								icon: store.draggedIcon ?? undefined,
+								name: store.draggedName ?? undefined,
+							}
+						: undefined;
+				addElement(draggedType, position, opts);
 			}
 
-			useCanvasStore.getState().setDraggedType(null);
+			useCanvasStore.getState().setDraggedComponent(null);
 		},
 		[addElement, addTrustBoundary, screenToFlowPosition],
 	);

@@ -1,14 +1,37 @@
 use std::collections::HashSet;
 
 use crate::models::{
-    generate_threat_id, ElementType, Severity, StrideCategory, Threat, ThreatModel, TrustBoundary,
+    generate_threat_id, Severity, StrideCategory, Threat, ThreatModel, TrustBoundary,
 };
+
+/// STRIDE category for threat matching — determined by component type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ComponentStrideCategory {
+    Service,
+    Store,
+    Actor,
+}
+
+/// Map a component type string to its STRIDE category.
+fn stride_category_for_type(element_type: &str) -> ComponentStrideCategory {
+    match element_type {
+        // Databases / stores
+        "sql_database" | "nosql_database" | "cache" | "search_index" | "object_storage"
+        | "secret_manager" | "data_store" => ComponentStrideCategory::Store,
+        // Clients / actors
+        "web_browser" | "mobile_app" | "desktop_app" | "iot_device" | "external_entity" => {
+            ComponentStrideCategory::Actor
+        }
+        // Everything else is a service (services, messaging, infra, security, generic, process)
+        _ => ComponentStrideCategory::Service,
+    }
+}
 
 /// A rule template for generating STRIDE threats.
 struct ThreatRule {
     category: StrideCategory,
-    /// Which element types this rule applies to. Empty = applies to data flows.
-    applicable_elements: Vec<ElementType>,
+    /// Which STRIDE categories this rule applies to.
+    applicable_categories: Vec<ComponentStrideCategory>,
     /// Whether this rule targets data flows instead of elements.
     targets_flows: bool,
     title_template: &'static str,
@@ -19,16 +42,16 @@ struct ThreatRule {
 /// Build the hardcoded set of STRIDE threat rules.
 ///
 /// Rules are derived from Microsoft's STRIDE-per-element methodology:
-/// - Process: Spoofing, Tampering, Repudiation, Information Disclosure, DoS, EoP
-/// - Data Store: Tampering, Information Disclosure, Denial of Service
-/// - External Entity: Spoofing, Repudiation
+/// - Service: Spoofing, Tampering, Repudiation, Information Disclosure, DoS, EoP
+/// - Store: Tampering, Information Disclosure, Denial of Service
+/// - Actor: Spoofing, Repudiation
 /// - Data Flow: Tampering, Information Disclosure, Denial of Service
 fn build_rules() -> Vec<ThreatRule> {
     vec![
-        // ── Process threats ──────────────────────────────────────────
+        // ── Service threats ──────────────────────────────────────────
         ThreatRule {
             category: StrideCategory::Spoofing,
-            applicable_elements: vec![ElementType::Process],
+            applicable_categories: vec![ComponentStrideCategory::Service],
             targets_flows: false,
             title_template: "Spoofing of {name}",
             description_template: "An attacker may impersonate {name} to gain unauthorized access. Ensure authentication mechanisms verify the identity of callers.",
@@ -36,7 +59,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::Tampering,
-            applicable_elements: vec![ElementType::Process],
+            applicable_categories: vec![ComponentStrideCategory::Service],
             targets_flows: false,
             title_template: "Tampering with {name}",
             description_template: "An attacker may modify the behavior or inputs of {name}. Validate all inputs and ensure integrity checks are in place.",
@@ -44,7 +67,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::Repudiation,
-            applicable_elements: vec![ElementType::Process],
+            applicable_categories: vec![ComponentStrideCategory::Service],
             targets_flows: false,
             title_template: "Repudiation threat for {name}",
             description_template: "{name} may perform actions without adequate logging. Implement audit logging to ensure all operations are traceable.",
@@ -52,7 +75,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::InformationDisclosure,
-            applicable_elements: vec![ElementType::Process],
+            applicable_categories: vec![ComponentStrideCategory::Service],
             targets_flows: false,
             title_template: "Information disclosure from {name}",
             description_template: "{name} may leak sensitive information through error messages, logs, or side channels. Review outputs for data exposure.",
@@ -60,7 +83,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::DenialOfService,
-            applicable_elements: vec![ElementType::Process],
+            applicable_categories: vec![ComponentStrideCategory::Service],
             targets_flows: false,
             title_template: "Denial of service on {name}",
             description_template: "An attacker may overwhelm {name} with excessive requests or malformed inputs. Implement rate limiting and input validation.",
@@ -68,17 +91,17 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::ElevationOfPrivilege,
-            applicable_elements: vec![ElementType::Process],
+            applicable_categories: vec![ComponentStrideCategory::Service],
             targets_flows: false,
             title_template: "Elevation of privilege via {name}",
             description_template: "An attacker may exploit {name} to gain unauthorized privileges. Apply least-privilege principles and validate authorization.",
             severity: Severity::High,
         },
 
-        // ── Data Store threats ───────────────────────────────────────
+        // ── Store threats ───────────────────────────────────────
         ThreatRule {
             category: StrideCategory::Tampering,
-            applicable_elements: vec![ElementType::DataStore],
+            applicable_categories: vec![ComponentStrideCategory::Store],
             targets_flows: false,
             title_template: "Tampering with data in {name}",
             description_template: "An attacker may modify data in {name}. Use access controls, integrity constraints, and audit trails to detect unauthorized changes.",
@@ -86,7 +109,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::InformationDisclosure,
-            applicable_elements: vec![ElementType::DataStore],
+            applicable_categories: vec![ComponentStrideCategory::Store],
             targets_flows: false,
             title_template: "Information disclosure from {name}",
             description_template: "Sensitive data stored in {name} may be exposed to unauthorized users. Apply encryption at rest and strict access controls.",
@@ -94,17 +117,17 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::DenialOfService,
-            applicable_elements: vec![ElementType::DataStore],
+            applicable_categories: vec![ComponentStrideCategory::Store],
             targets_flows: false,
             title_template: "Denial of service on {name}",
             description_template: "An attacker may corrupt or exhaust {name} to disrupt service. Implement backups, storage quotas, and connection limits.",
             severity: Severity::Medium,
         },
 
-        // ── External Entity threats ──────────────────────────────────
+        // ── Actor threats ──────────────────────────────────
         ThreatRule {
             category: StrideCategory::Spoofing,
-            applicable_elements: vec![ElementType::ExternalEntity],
+            applicable_categories: vec![ComponentStrideCategory::Actor],
             targets_flows: false,
             title_template: "Spoofing of {name}",
             description_template: "An attacker may impersonate {name}. Verify the identity of external actors through authentication and certificate validation.",
@@ -112,7 +135,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::Repudiation,
-            applicable_elements: vec![ElementType::ExternalEntity],
+            applicable_categories: vec![ComponentStrideCategory::Actor],
             targets_flows: false,
             title_template: "Repudiation by {name}",
             description_template: "{name} may deny having performed an action. Implement non-repudiation mechanisms such as digital signatures or audit logs.",
@@ -122,7 +145,7 @@ fn build_rules() -> Vec<ThreatRule> {
         // ── Data Flow threats ────────────────────────────────────────
         ThreatRule {
             category: StrideCategory::Tampering,
-            applicable_elements: vec![],
+            applicable_categories: vec![],
             targets_flows: true,
             title_template: "Tampering with data flow between {source} and {target}",
             description_template: "Data in transit between {source} and {target} may be modified by an attacker. Use TLS/encryption and message integrity verification.",
@@ -130,7 +153,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::InformationDisclosure,
-            applicable_elements: vec![],
+            applicable_categories: vec![],
             targets_flows: true,
             title_template: "Information disclosure on flow between {source} and {target}",
             description_template: "Sensitive data flowing between {source} and {target} may be intercepted. Ensure encryption in transit and minimize data exposure.",
@@ -138,7 +161,7 @@ fn build_rules() -> Vec<ThreatRule> {
         },
         ThreatRule {
             category: StrideCategory::DenialOfService,
-            applicable_elements: vec![],
+            applicable_categories: vec![],
             targets_flows: true,
             title_template: "Denial of service on flow between {source} and {target}",
             description_template: "The communication channel between {source} and {target} may be disrupted. Implement redundancy, timeouts, and retry logic.",
@@ -195,11 +218,12 @@ pub fn analyze(model: &ThreatModel) -> Vec<Threat> {
 
     // Element-based rules
     for element in &model.elements {
+        let element_category = stride_category_for_type(&element.element_type);
         for rule in &rules {
             if rule.targets_flows {
                 continue;
             }
-            if !rule.applicable_elements.contains(&element.element_type) {
+            if !rule.applicable_categories.contains(&element_category) {
                 continue;
             }
             let key = (element.id.clone(), format!("{:?}", rule.category));
@@ -277,7 +301,7 @@ pub fn analyze(model: &ThreatModel) -> Vec<Threat> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{DataFlow, Element, ElementType, Metadata, ThreatModel, TrustBoundary};
+    use crate::models::{DataFlow, Element, Metadata, ThreatModel, TrustBoundary};
     use chrono::NaiveDate;
 
     fn sample_model() -> ThreatModel {
@@ -293,39 +317,54 @@ mod tests {
             elements: vec![
                 Element {
                     id: "web-app".to_string(),
-                    element_type: ElementType::Process,
+                    element_type: "web_server".to_string(),
                     name: "Web Application".to_string(),
                     trust_zone: "internal".to_string(),
+                    subtype: None,
                     icon: None,
                     description: String::new(),
                     technologies: vec![],
                     stores: None,
                     encryption: None,
                     position: None,
+                    fill_color: None,
+                    stroke_color: None,
+                    fill_opacity: None,
+                    stroke_opacity: None,
                 },
                 Element {
                     id: "db".to_string(),
-                    element_type: ElementType::DataStore,
+                    element_type: "sql_database".to_string(),
                     name: "Database".to_string(),
                     trust_zone: "internal".to_string(),
+                    subtype: None,
                     icon: None,
                     description: String::new(),
                     technologies: vec!["PostgreSQL".to_string()],
                     stores: None,
                     encryption: None,
                     position: None,
+                    fill_color: None,
+                    stroke_color: None,
+                    fill_opacity: None,
+                    stroke_opacity: None,
                 },
                 Element {
                     id: "user".to_string(),
-                    element_type: ElementType::ExternalEntity,
+                    element_type: "web_browser".to_string(),
                     name: "End User".to_string(),
                     trust_zone: "external".to_string(),
+                    subtype: None,
                     icon: None,
                     description: String::new(),
                     technologies: vec![],
                     stores: None,
                     encryption: None,
                     position: None,
+                    fill_color: None,
+                    stroke_color: None,
+                    fill_opacity: None,
+                    stroke_opacity: None,
                 },
             ],
             data_flows: vec![DataFlow {
@@ -355,43 +394,43 @@ mod tests {
     }
 
     #[test]
-    fn test_generates_threats_for_process() {
+    fn test_generates_threats_for_service() {
         let model = sample_model();
         let threats = analyze(&model);
-        let process_threats: Vec<_> = threats
+        let service_threats: Vec<_> = threats
             .iter()
             .filter(|t| t.element.as_deref() == Some("web-app"))
             .collect();
-        // Process should get: Spoofing, Tampering, Repudiation, InfoDisclosure, DoS, EoP
+        // Service should get: Spoofing, Tampering, Repudiation, InfoDisclosure, DoS, EoP
         assert_eq!(
-            process_threats.len(),
+            service_threats.len(),
             6,
-            "Process should have 6 STRIDE threats"
+            "Service should have 6 STRIDE threats"
         );
     }
 
     #[test]
-    fn test_generates_threats_for_data_store() {
+    fn test_generates_threats_for_store() {
         let model = sample_model();
         let threats = analyze(&model);
         let ds_threats: Vec<_> = threats
             .iter()
             .filter(|t| t.element.as_deref() == Some("db"))
             .collect();
-        // DataStore should get: Tampering, InfoDisclosure, DoS
-        assert_eq!(ds_threats.len(), 3, "DataStore should have 3 threats");
+        // Store should get: Tampering, InfoDisclosure, DoS
+        assert_eq!(ds_threats.len(), 3, "Store should have 3 threats");
     }
 
     #[test]
-    fn test_generates_threats_for_external_entity() {
+    fn test_generates_threats_for_actor() {
         let model = sample_model();
         let threats = analyze(&model);
         let ee_threats: Vec<_> = threats
             .iter()
             .filter(|t| t.element.as_deref() == Some("user"))
             .collect();
-        // ExternalEntity should get: Spoofing, Repudiation
-        assert_eq!(ee_threats.len(), 2, "ExternalEntity should have 2 threats");
+        // Actor should get: Spoofing, Repudiation
+        assert_eq!(ee_threats.len(), 2, "Actor should have 2 threats");
     }
 
     #[test]
@@ -410,7 +449,7 @@ mod tests {
     fn test_total_threat_count() {
         let model = sample_model();
         let threats = analyze(&model);
-        // 6 (process) + 3 (data_store) + 2 (external_entity) + 3 (flow) = 14
+        // 6 (service) + 3 (store) + 2 (actor) + 3 (flow) = 14
         assert_eq!(
             threats.len(),
             14,
@@ -512,6 +551,38 @@ mod tests {
             dos_threat.unwrap().severity,
             Severity::Medium,
             "Same-boundary flow should keep base severity Medium"
+        );
+    }
+
+    #[test]
+    fn test_stride_category_mapping() {
+        assert_eq!(
+            stride_category_for_type("api_gateway"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("sql_database"),
+            ComponentStrideCategory::Store
+        );
+        assert_eq!(
+            stride_category_for_type("web_browser"),
+            ComponentStrideCategory::Actor
+        );
+        assert_eq!(
+            stride_category_for_type("generic"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("process"),
+            ComponentStrideCategory::Service
+        );
+        assert_eq!(
+            stride_category_for_type("data_store"),
+            ComponentStrideCategory::Store
+        );
+        assert_eq!(
+            stride_category_for_type("external_entity"),
+            ComponentStrideCategory::Actor
         );
     }
 }
