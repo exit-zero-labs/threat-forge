@@ -72,6 +72,8 @@ pub struct Element {
     pub name: String,
     #[serde(default)]
     pub trust_zone: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtype: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(default)]
@@ -499,6 +501,50 @@ unknown_field: "should be tolerated"
             result.is_ok(),
             "Unknown fields should be tolerated for forward compatibility"
         );
+    }
+
+    #[test]
+    fn test_subtype_round_trip() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "Subtype Test"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: api-gw
+    type: process
+    name: "API Gateway"
+    subtype: api_gateway
+    icon: router
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Failed to parse");
+        assert_eq!(model.elements[0].subtype, Some("api_gateway".to_string()));
+        assert_eq!(model.elements[0].icon, Some("router".to_string()));
+
+        // Round-trip
+        let reserialized = serde_yaml::to_string(&model).expect("Failed to serialize");
+        let reparsed: ThreatModel = serde_yaml::from_str(&reserialized).expect("Failed to reparse");
+        assert_eq!(model, reparsed, "Round-trip should produce equal models");
+    }
+
+    #[test]
+    fn test_yaml_without_subtype_parses() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "No Subtype"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: app
+    type: process
+    name: "App"
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Old format should parse");
+        assert!(model.elements[0].subtype.is_none());
     }
 
     #[test]

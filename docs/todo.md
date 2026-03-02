@@ -171,3 +171,51 @@ Consolidate layout data from separate `.threatforge/layouts/*.json` sidecar file
   - [x] Import + call `resetCaptureDebounce()` in `beforeEach`
 - [x] Validate: `npx vitest --run` — 114 tests passing
 - [x] Validate: `npm run ci:local` — all checks passed
+
+---
+
+## 2026-03-01 — WS2: Entity System Revamp + Component Library
+
+Add component library with ~25 pre-defined technology components, searchable library palette, and icon rendering on canvas nodes. Consolidate 3 identical node components into one.
+
+### Plan
+- [x] Step 1: Schema changes (Rust + TypeScript)
+  - [x] Add `subtype: Option<String>` to Rust `Element` struct
+  - [x] Fix Rust Element struct literals in stride/mod.rs and ai/prompt.rs
+  - [x] Add `subtype?: string` to TypeScript `Element` interface
+  - [x] Validate: `cargo test` (37 pass) + `cargo clippy` (clean)
+- [x] Step 2: Create component library registry (`src/lib/component-library.ts`)
+  - [x] Define ComponentDefinition interface
+  - [x] 28 components across 7 categories (Basics + 6 domain categories)
+  - [x] Search, category, subtype lookup, and icon mapping helpers
+- [x] Step 3+4: Consolidate node components + update canvas store
+  - [x] Create unified `DfdElementNode` component
+  - [x] Add `subtype` + `icon` to `DfdNodeData`
+  - [x] Update `elementTypeToNodeType` → always return `"dfdElement"`
+  - [x] Update `elementToNode` to pass subtype + icon
+  - [x] Update `addElement` to accept opts with subtype/icon/name
+  - [x] Update `dfd-canvas.tsx` node type registration
+  - [x] Add `setDraggedComponent` to canvas store for library drag state
+- [x] Step 5: Revamp palette with library section
+  - [x] Generic section: Entity + Boundary (2 items)
+  - [x] Library section: search + category tabs + draggable items
+  - [x] Base types (Process, Data Store, External Entity) in "Basics" category
+- [x] Step 6: Fix other Rust consumers (done with Step 1)
+- [x] Step 7: Update tests
+  - [x] Update canvas-store.test.ts node type assertions (`"process"` → `"dfdElement"`)
+  - [x] Add subtype/icon tests (2 new tests)
+  - [x] Add component library tests (14 new tests)
+  - [x] Add Rust round-trip test for subtype (2 new tests)
+- [x] Step 8: Clean up + validation
+  - [x] Delete old node files (process-node.tsx, data-store-node.tsx, external-entity-node.tsx)
+  - [x] `npx biome check --write .` — clean
+  - [x] `cargo test` (39 pass) + `cargo clippy` (clean)
+  - [x] `npx vitest --run` — 130 tests passing
+  - [x] `npm run ci:local` — ALL PASSED
+
+### Notes
+- Consolidated 3 nearly-identical node components (87 lines each) into 1 DfdElementNode
+- 28 components total: 3 base DFD types + 25 technology subtypes across 7 categories
+- All 28 lucide icons verified present in lucide-react v0.575.0
+- Canvas store drag state expanded with `setDraggedComponent` for library items carrying subtype/icon/name
+- 130 frontend tests (up from 114), 39 Rust tests (up from 37) — all passing

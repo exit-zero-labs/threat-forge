@@ -19,6 +19,8 @@ export type DfdNodeData = {
 	[key: string]: unknown;
 	label: string;
 	elementType: ElementType;
+	subtype?: string;
+	icon?: string;
 	trustZone: string;
 	description: string;
 	technologies: string[];
@@ -59,6 +61,12 @@ interface CanvasState {
 
 	/** Element type currently being dragged from palette (workaround for WKWebView dataTransfer issues) */
 	draggedType: string | null;
+	/** Subtype for the element being dragged from the library */
+	draggedSubtype: string | null;
+	/** Icon for the element being dragged from the library */
+	draggedIcon: string | null;
+	/** Display name for the element being dragged from the library */
+	draggedName: string | null;
 
 	/** Layout to apply on next syncFromModel (set before loading a model) */
 	pendingLayout: DiagramLayout | null;
@@ -70,10 +78,22 @@ interface CanvasState {
 
 	// Drag state
 	setDraggedType: (type: string | null) => void;
+	setDraggedComponent: (
+		info: {
+			type: string;
+			subtype?: string;
+			icon?: string;
+			name?: string;
+		} | null,
+	) => void;
 	setPendingLayout: (layout: DiagramLayout | null) => void;
 
 	// Canvas actions
-	addElement: (type: ElementType, position: { x: number; y: number }) => void;
+	addElement: (
+		type: ElementType,
+		position: { x: number; y: number },
+		opts?: { subtype?: string; icon?: string; name?: string },
+	) => void;
 	addDataFlow: (
 		sourceId: string,
 		targetId: string,
@@ -136,15 +156,8 @@ function generateBoundaryId(): string {
 	return `boundary-${boundaryCounter}`;
 }
 
-function elementTypeToNodeType(type: ElementType): string {
-	switch (type) {
-		case "process":
-			return "process";
-		case "data_store":
-			return "dataStore";
-		case "external_entity":
-			return "externalEntity";
-	}
+function elementTypeToNodeType(_type: ElementType): string {
+	return "dfdElement";
 }
 
 function elementToNode(element: Element, position: { x: number; y: number }): DfdNode {
@@ -155,6 +168,8 @@ function elementToNode(element: Element, position: { x: number; y: number }): Df
 		data: {
 			label: element.name,
 			elementType: element.type,
+			subtype: element.subtype,
+			icon: element.icon,
 			trustZone: element.trust_zone ?? "",
 			description: element.description ?? "",
 			technologies: element.technologies ?? [],
@@ -224,6 +239,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 	edges: [],
 	viewport: { x: 0, y: 0, zoom: 1 },
 	draggedType: null,
+	draggedSubtype: null,
+	draggedIcon: null,
+	draggedName: null,
 	pendingLayout: null,
 
 	onNodesChange: (changes) => {
@@ -295,17 +313,31 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 	setViewport: (viewport) => set({ viewport }),
 	setDraggedType: (type) => set({ draggedType: type }),
+	setDraggedComponent: (info) => {
+		if (info) {
+			set({
+				draggedType: info.type,
+				draggedSubtype: info.subtype ?? null,
+				draggedIcon: info.icon ?? null,
+				draggedName: info.name ?? null,
+			});
+		} else {
+			set({ draggedType: null, draggedSubtype: null, draggedIcon: null, draggedName: null });
+		}
+	},
 	setPendingLayout: (layout) => set({ pendingLayout: layout }),
 
-	addElement: (type, position) => {
+	addElement: (type, position, opts) => {
 		const id = generateElementId(type);
-		const name = defaultElementName(type);
+		const name = opts?.name ?? defaultElementName(type);
 
 		const newElement: Element = {
 			id,
 			type,
 			name,
 			trust_zone: "",
+			subtype: opts?.subtype,
+			icon: opts?.icon,
 			description: "",
 			technologies: [],
 		};

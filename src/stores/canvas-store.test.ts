@@ -84,12 +84,12 @@ describe("canvas-store", () => {
 		// Element nodes follow
 		const processNode = nodes.find((n) => n.id === "process-1");
 		expect(processNode).toBeDefined();
-		expect(processNode?.type).toBe("process");
+		expect(processNode?.type).toBe("dfdElement");
 		expect(processNode?.data.label).toBe("Web App");
 
 		const dataStoreNode = nodes.find((n) => n.id === "data-store-1");
 		expect(dataStoreNode).toBeDefined();
-		expect(dataStoreNode?.type).toBe("dataStore");
+		expect(dataStoreNode?.type).toBe("dfdElement");
 
 		// Edge maps flow correctly
 		expect(edges[0].id).toBe("flow-1");
@@ -119,9 +119,11 @@ describe("canvas-store", () => {
 		useCanvasStore.getState().addElement("external_entity", { x: 600, y: 600 });
 
 		const { nodes } = useCanvasStore.getState();
-		const newNode = nodes.find((n) => n.type === "externalEntity");
+		const newNode = nodes.find(
+			(n) => n.data.elementType === "external_entity" && n.data.label === "New External Entity",
+		);
 		expect(newNode).toBeDefined();
-		expect(newNode?.data.label).toBe("New External Entity");
+		expect(newNode?.type).toBe("dfdElement");
 		expect(newNode?.position).toEqual({ x: 600, y: 600 });
 
 		// Model store should also have the new element
@@ -258,6 +260,28 @@ describe("canvas-store", () => {
 
 		const model = useModelStore.getState().model;
 		expect(model?.elements).toHaveLength(3);
+	});
+
+	it("duplicateElement preserves subtype and icon", () => {
+		const model = createTestModel();
+		model.elements[0].subtype = "api_gateway";
+		model.elements[0].icon = "router";
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		useCanvasStore.getState().duplicateElement("process-1");
+
+		const { nodes } = useCanvasStore.getState();
+		const copy = nodes.find((n) => n.data.label === "Web App (copy)");
+		expect(copy).toBeDefined();
+		expect(copy?.data.subtype).toBe("api_gateway");
+		expect(copy?.data.icon).toBe("router");
+
+		const m = useModelStore.getState().model;
+		const newEl = m?.elements.find((e) => e.name === "Web App (copy)");
+		expect(newEl).toBeDefined();
+		expect(newEl?.subtype).toBe("api_gateway");
+		expect(newEl?.icon).toBe("router");
 	});
 
 	it("reverses an edge direction", () => {
@@ -452,5 +476,48 @@ describe("canvas-store", () => {
 		// Position should be restored to pre-drag
 		const restoredNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
 		expect(restoredNode?.position).toEqual({ x: 100, y: 100 });
+	});
+
+	it("creates element with subtype and icon from opts", () => {
+		useModelStore.getState().setModel(createTestModel(), null);
+		useCanvasStore.getState().syncFromModel();
+
+		useCanvasStore.getState().addElement(
+			"process",
+			{ x: 600, y: 600 },
+			{
+				subtype: "api_gateway",
+				icon: "router",
+				name: "API Gateway",
+			},
+		);
+
+		const { nodes } = useCanvasStore.getState();
+		const newNode = nodes.find((n) => n.data.label === "API Gateway");
+		expect(newNode).toBeDefined();
+		expect(newNode?.type).toBe("dfdElement");
+		expect(newNode?.data.subtype).toBe("api_gateway");
+		expect(newNode?.data.icon).toBe("router");
+
+		// Model store should have subtype and icon
+		const model = useModelStore.getState().model;
+		const newElement = model?.elements.find((e) => e.name === "API Gateway");
+		expect(newElement).toBeDefined();
+		expect(newElement?.subtype).toBe("api_gateway");
+		expect(newElement?.icon).toBe("router");
+		expect(newElement?.type).toBe("process");
+	});
+
+	it("syncFromModel preserves subtype and icon in node data", () => {
+		const model = createTestModel();
+		model.elements[0].subtype = "web_server";
+		model.elements[0].icon = "globe";
+
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		const processNode = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
+		expect(processNode?.data.subtype).toBe("web_server");
+		expect(processNode?.data.icon).toBe("globe");
 	});
 });

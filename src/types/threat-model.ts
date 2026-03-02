@@ -45,6 +45,7 @@ export interface Element {
 	type: ElementType;
 	name: string;
 	trust_zone: string;
+	subtype?: string;
 	icon?: string;
 	description: string;
 	technologies: string[];

@@ -58,6 +58,9 @@ export function buildSystemPrompt(model: ThreatModel): string {
 		parts.push("Elements:\n");
 		for (const el of model.elements) {
 			let line = `  - ${el.name} (id: ${el.id}, type: ${el.type}, trust_zone: ${el.trust_zone}`;
+			if (el.subtype) {
+				line += `, subtype: ${el.subtype}`;
+			}
 			if (el.technologies && el.technologies.length > 0) {
 				line += `, technologies: [${el.technologies.join(", ")}]`;
 			}

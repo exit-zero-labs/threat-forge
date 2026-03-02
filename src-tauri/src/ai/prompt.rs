@@ -52,6 +52,9 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
                 "  - {} (id: {}, type: {:?}, trust_zone: {}",
                 el.name, el.id, el.element_type, el.trust_zone
             ));
+            if let Some(ref subtype) = el.subtype {
+                prompt.push_str(&format!(", subtype: {subtype}"));
+            }
             if !el.technologies.is_empty() {
                 prompt.push_str(&format!(", technologies: [{}]", el.technologies.join(", ")));
             }
@@ -148,6 +151,7 @@ mod tests {
             element_type: ElementType::Process,
             name: "API Gateway".to_string(),
             trust_zone: "dmz".to_string(),
+            subtype: None,
             icon: None,
             description: "Main entry point".to_string(),
             technologies: vec!["nginx".to_string()],
