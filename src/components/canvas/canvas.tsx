@@ -1,6 +1,7 @@
 import { FolderOpen, Github } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
+import { openExternalUrl } from "@/lib/platform";
 import { TIPS } from "@/lib/tips";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -39,8 +40,8 @@ function EmptyCanvas() {
 		>
 			{/* Main content — centered with upward bias */}
 			<div className="flex flex-1 flex-col items-center justify-center pb-24">
-				<img src="/logo_square.png" alt="ThreatForge" className="mb-6 h-20 w-20 drop-shadow-md" />
-				<h2 className="text-xl font-semibold tracking-tight">ThreatForge</h2>
+				<img src="/logo_square.png" alt="Threat Forge" className="mb-6 h-20 w-20 drop-shadow-md" />
+				<h2 className="text-xl font-semibold tracking-tight">Threat Forge</h2>
 				<p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
 					Create a new threat model or open an existing one to get started.
 				</p>
@@ -76,13 +77,7 @@ function EmptyCanvas() {
 				<span className="text-muted-foreground/30">·</span>
 				<button
 					type="button"
-					onClick={() =>
-						window.open(
-							"https://github.com/exit-zero-labs/threat-forge",
-							"_blank",
-							"noopener,noreferrer",
-						)
-					}
+					onClick={() => void openExternalUrl("https://github.com/exit-zero-labs/threat-forge")}
 					className="flex items-center gap-1 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
 				>
 					<Github className="h-3 w-3" />

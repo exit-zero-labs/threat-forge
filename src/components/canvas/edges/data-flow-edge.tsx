@@ -92,6 +92,10 @@ export function DataFlowEdge({
 			? getWaypointPath(sourceX, sourceY, targetX, targetY, labelX, labelY)
 			: defaultPath;
 
+	const customStrokeColor = edgeData?.strokeColor as string | undefined;
+	const customStrokeOpacity = (edgeData?.strokeOpacity as number) ?? 1;
+	const hasCustomColor = !!customStrokeColor;
+
 	const [isHovered, setIsHovered] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
 	const { zoom } = useViewport();
@@ -228,12 +232,24 @@ export function DataFlowEdge({
 				markerEnd={markerEnd}
 				className={cn(
 					"!stroke-2 transition-colors",
-					selected
-						? "!stroke-tf-signal"
-						: isHovered
-							? "!stroke-muted-foreground/80"
-							: "!stroke-muted-foreground/50",
+					hasCustomColor
+						? selected
+							? "!stroke-tf-signal"
+							: ""
+						: selected
+							? "!stroke-tf-signal"
+							: isHovered
+								? "!stroke-muted-foreground/80"
+								: "!stroke-muted-foreground/50",
 				)}
+				style={
+					hasCustomColor && !selected
+						? {
+								stroke: customStrokeColor,
+								strokeOpacity: isHovered ? 1 : customStrokeOpacity,
+							}
+						: undefined
+				}
 			/>
 			{/* Animated flow direction dashes on hover/selection (only for non-authenticated edges) */}
 			{(isHovered || selected) && !isAuthenticated && (
@@ -241,9 +257,13 @@ export function DataFlowEdge({
 					d={edgePath}
 					fill="none"
 					strokeWidth={2}
-					className="stroke-tf-signal/40"
+					className={hasCustomColor ? undefined : "stroke-tf-signal/40"}
 					strokeDasharray="6 4"
-					style={{ pointerEvents: "none" }}
+					style={
+						hasCustomColor
+							? { pointerEvents: "none", stroke: customStrokeColor, strokeOpacity: 0.4 }
+							: { pointerEvents: "none" }
+					}
 				>
 					<animate
 						attributeName="stroke-dashoffset"

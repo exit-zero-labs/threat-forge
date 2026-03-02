@@ -4,7 +4,7 @@ import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 import type { FileAdapter } from "./file-adapter";
 
 const YAML_FILTER = {
-	name: "ThreatForge Model",
+	name: "Threat Forge Model",
 	extensions: ["thf"],
 };
 

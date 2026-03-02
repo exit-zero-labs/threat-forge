@@ -190,6 +190,8 @@ mod tests {
             label_offset: None,
             source_handle: None,
             target_handle: None,
+            stroke_color: None,
+            stroke_opacity: None,
         });
 
         let prompt = build_system_prompt(&model);

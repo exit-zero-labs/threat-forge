@@ -382,6 +382,8 @@ mod tests {
                 label_offset: None,
                 source_handle: None,
                 target_handle: None,
+                stroke_color: None,
+                stroke_opacity: None,
             }],
             trust_boundaries: vec![TrustBoundary {
                 id: "boundary-1".to_string(),
@@ -523,6 +525,8 @@ mod tests {
             label_offset: None,
             source_handle: None,
             target_handle: None,
+            stroke_color: None,
+            stroke_opacity: None,
         });
 
         let threats = analyze(&model);

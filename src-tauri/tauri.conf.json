@@ -1,6 +1,6 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "ThreatForge",
+	"productName": "Threat Forge",
 	"version": "0.1.0",
 	"identifier": "com.exitzerolabs.threatforge",
 	"build": {
@@ -12,7 +12,7 @@
 	"app": {
 		"windows": [
 			{
-				"title": "ThreatForge",
+				"title": "Threat Forge",
 				"width": 1280,
 				"height": 800,
 				"minWidth": 900,
@@ -34,6 +34,14 @@
 			"icons/128x128@2x.png",
 			"icons/icon.icns",
 			"icons/icon.ico"
+		],
+		"fileAssociations": [
+			{
+				"ext": ["thf"],
+				"mimeType": "application/x-threatforge",
+				"description": "Threat Forge Model",
+				"role": "Editor"
+			}
 		]
 	}
 }

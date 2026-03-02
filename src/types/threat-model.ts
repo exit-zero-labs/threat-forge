@@ -88,6 +88,8 @@ export interface DataFlow {
 	label_offset?: Position;
 	source_handle?: string;
 	target_handle?: string;
+	stroke_color?: string;
+	stroke_opacity?: number;
 }
 
 export interface TrustBoundary {

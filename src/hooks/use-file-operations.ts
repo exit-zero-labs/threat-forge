@@ -62,6 +62,8 @@ function captureCanvasIntoModel(model: ThreatModel): ThreatModel {
 				: f.label_offset,
 			source_handle: edge.sourceHandle ?? f.source_handle,
 			target_handle: edge.targetHandle ?? f.target_handle,
+			stroke_color: edgeData?.strokeColor ?? f.stroke_color,
+			stroke_opacity: edgeData?.strokeOpacity ?? f.stroke_opacity,
 		};
 	});
 

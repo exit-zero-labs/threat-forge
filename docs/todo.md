@@ -4,6 +4,55 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-02 — Mac icon, file association, UX fixes, app naming
+
+### Plan
+- [x] Mac icon padding — resize artwork to ~80% of canvas with transparent margin (Apple guidelines)
+  - [x] Regenerate all icon sizes: 32x32, 64x64, 128x128, 128x128@2x, icon.png, icon.icns, icon.ico
+  - [x] Regenerate all Windows Store logos (Square*.png)
+  - [x] Regenerate all iOS and Android icons
+- [x] File association — associate `.thf` extension with Threat Forge on all platforms
+  - [x] Add `fileAssociations` config to `tauri.conf.json` (ext: "thf", mimeType, description, role)
+  - [x] Add file-open handler in `lib.rs` (check `std::env::args()` for `.thf` path, emit `open-file` event)
+  - [x] Add `openFileByPath()` helper and `open-file` event listener in `use-native-menu.ts`
+- [x] API key paste + show/hide toggle in `ai-settings-content.tsx`
+  - [x] Add `showKey` state with Eye/EyeOff toggle button
+  - [x] Add `e.stopPropagation()` on input `onKeyDown` to prevent keyboard shortcut interception
+  - [x] Reset `showKey` to false after save
+- [x] Fix Cmd+A/C/V/X in text inputs — native Tauri menu was intercepting keystrokes
+  - [x] Root cause: `use-native-menu.ts` unconditionally routed edit actions to canvas clipboard store
+  - [x] Fix: check if input/textarea is focused; if so, use `document.execCommand()` / `el.select()`
+- [x] App name "Threat Forge" (two words) in all user-facing strings
+  - [x] `tauri.conf.json`: productName, window title
+  - [x] `menu.rs`: "About Threat Forge"
+  - [x] `canvas.tsx`, `top-menu-bar.tsx`, `settings-dialog.tsx`, `index.html`
+  - [x] `onboarding/guides.ts`, `whats-new-overlay.tsx`, `tauri-file-adapter.ts`
+  - [x] Added website link (exitzerolabs.com) to support section in settings
+- [x] Validate: `npm run ci:local` — all 6 checks pass (Biome, tsc, cargo fmt, Clippy, 244 Vitest, 43 cargo test)
+
+---
+
+## 2026-03-02 — Color customization: all components + connector colors
+
+### Plan
+- [x] Enable fill/stroke color controls for ALL library components (remove isPrefab gate)
+  - [x] `properties-tab.tsx`: Remove `{!isPrefab && (` wrapper on ColorField controls
+  - [x] `properties-tab.tsx`: Remove color-clearing logic in `handleTypeChange` when switching to prefab
+- [x] Add stroke_color / stroke_opacity to DataFlow (connector color)
+  - [x] `src/types/threat-model.ts`: Add `stroke_color?: string` and `stroke_opacity?: number` to `DataFlow`
+  - [x] `src-tauri/src/models/threat_model.rs`: Add same fields to Rust `DataFlow` struct
+  - [x] `src/stores/canvas-store.ts`: Add `strokeColor`/`strokeOpacity` to `DfdEdgeData`, update `flowToEdge()`
+  - [x] `src/components/canvas/edges/data-flow-edge.tsx`: Render custom edge color when set
+  - [x] `src/components/panels/properties-tab.tsx`: Add color controls to `EdgeProperties`
+  - [x] `src/hooks/use-file-operations.ts`: Capture edge colors in `captureCanvasIntoModel`
+- [x] Rust test: DataFlow stroke_color round-trip
+- [x] Validate: `npx vitest --run`
+- [x] Validate: `cargo test`
+- [x] Validate: `npx biome check --write .`
+- [x] Validate: `npm run ci:local`
+
+---
+
 ## 2026-03-02 — Feature batch: UX improvements, file format, theming, bugs
 
 ### Overview

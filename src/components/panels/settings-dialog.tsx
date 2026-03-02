@@ -2,6 +2,7 @@ import {
 	Bug,
 	ExternalLink,
 	Github,
+	Globe,
 	Keyboard,
 	LifeBuoy,
 	Lightbulb,
@@ -15,6 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import { useState } from "react";
+import { openExternalUrl } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type SettingsTab, useSettingsStore } from "@/stores/settings-store";
 import { KEYBOARD_SHORTCUTS } from "@/types/settings";
@@ -315,7 +317,7 @@ function ShortcutsSection() {
 
 function SupportSection() {
 	const openExternal = (url: string) => {
-		window.open(url, "_blank", "noopener,noreferrer");
+		void openExternalUrl(url);
 	};
 
 	return (
@@ -348,6 +350,12 @@ function SupportSection() {
 					}
 				/>
 				<SupportLink
+					icon={<Globe className="h-4 w-4" />}
+					label="Website"
+					description="exitzerolabs.com"
+					onClick={() => openExternal("https://www.exitzerolabs.com")}
+				/>
+				<SupportLink
 					icon={<Mail className="h-4 w-4" />}
 					label="Contact Us"
 					description="admin@exitzerolabs.com"
@@ -357,7 +365,7 @@ function SupportSection() {
 
 			<div className="border-t border-border pt-4">
 				<p className="text-xs text-muted-foreground">
-					ThreatForge is open-source software built by Exit Zero Labs LLC.
+					Threat Forge is open-source software built by Exit Zero Labs LLC.
 				</p>
 				<p className="mt-1 text-xs text-muted-foreground/70">Version {__APP_VERSION__ ?? "dev"}</p>
 			</div>

@@ -137,7 +137,7 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
     let help_about = MenuItem::with_id(
         handle,
         "help-about",
-        "About ThreatForge",
+        "About Threat Forge",
         true,
         None::<&str>,
     )?;

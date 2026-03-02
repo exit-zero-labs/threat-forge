@@ -35,8 +35,8 @@ export function TopMenuBar() {
 				.pop()
 				?.replace(/\.[^.]+$/, "") ??
 			model?.metadata.title ??
-			"ThreatForge")
-		: (model?.metadata.title ?? "ThreatForge");
+			"Threat Forge")
+		: (model?.metadata.title ?? "Threat Forge");
 	const displayTitle = isDirty ? `${title} *` : title;
 	const isMac = navigator.platform.includes("Mac");
 	const modKey = isMac ? "\u2318" : "Ctrl+";
@@ -63,7 +63,7 @@ export function TopMenuBar() {
 		>
 			{/* App title / branding */}
 			<div className="flex items-center gap-2">
-				<img src="/logo_square.png" alt="ThreatForge" className="h-5 w-5" />
+				<img src="/logo_square.png" alt="Threat Forge" className="h-5 w-5" />
 				{editingTitle && model ? (
 					<input
 						ref={titleInputRef}

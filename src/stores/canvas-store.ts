@@ -1,5 +1,5 @@
 import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
-import { applyEdgeChanges, applyNodeChanges } from "@xyflow/react";
+import { applyEdgeChanges, applyNodeChanges, MarkerType } from "@xyflow/react";
 import { create } from "zustand";
 import {
 	getSelfLoopHandlePair,
@@ -62,6 +62,10 @@ export type DfdEdgeData = {
 	labelOffsetX?: number;
 	/** Dragged label Y offset from default position */
 	labelOffsetY?: number;
+	/** Custom edge stroke color (hex) */
+	strokeColor?: string;
+	/** Custom edge stroke opacity (0-1) */
+	strokeOpacity?: number;
 };
 
 export type DfdNode = Node<DfdNodeData>;
@@ -252,6 +256,16 @@ export function flowToEdge(flow: DataFlow): DfdEdge {
 		type: "dataFlow",
 		sourceHandle: flow.source_handle,
 		targetHandle: flow.target_handle,
+		...(flow.stroke_color
+			? {
+					markerEnd: {
+						type: MarkerType.ArrowClosed,
+						width: 16,
+						height: 16,
+						color: flow.stroke_color,
+					},
+				}
+			: {}),
 		data: {
 			name: flow.name ?? "",
 			protocol: flow.protocol,
@@ -259,6 +273,8 @@ export function flowToEdge(flow: DataFlow): DfdEdge {
 			authenticated: flow.authenticated,
 			labelOffsetX: flow.label_offset?.x,
 			labelOffsetY: flow.label_offset?.y,
+			strokeColor: flow.stroke_color,
+			strokeOpacity: flow.stroke_opacity,
 		},
 	};
 }
