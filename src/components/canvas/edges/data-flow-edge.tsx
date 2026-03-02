@@ -120,6 +120,10 @@ export function DataFlowEdge({
 		const el = labelRef.current;
 		if (!el) return;
 
+		// Track active document listeners for cleanup on unmount
+		let activeMoveListener: ((ev: PointerEvent) => void) | null = null;
+		let activeUpListener: (() => void) | null = null;
+
 		const handlePointerDown = (e: PointerEvent) => {
 			if (e.button !== 0) return;
 			// Native stopPropagation — prevents ReactFlow from seeing this event
@@ -208,10 +212,17 @@ export function DataFlowEdge({
 
 			document.addEventListener("pointermove", onPointerMove);
 			document.addEventListener("pointerup", onPointerUp);
+			activeMoveListener = onPointerMove;
+			activeUpListener = onPointerUp;
 		};
 
 		el.addEventListener("pointerdown", handlePointerDown);
-		return () => el.removeEventListener("pointerdown", handlePointerDown);
+		return () => {
+			el.removeEventListener("pointerdown", handlePointerDown);
+			// Clean up document listeners if component unmounts mid-drag
+			if (activeMoveListener) document.removeEventListener("pointermove", activeMoveListener);
+			if (activeUpListener) document.removeEventListener("pointerup", activeUpListener);
+		};
 	}, [id, setEdges]);
 
 	return (

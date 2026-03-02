@@ -25,6 +25,10 @@ async fn main() {
         eprintln!("File not found: {}", file_path.display());
         std::process::exit(1);
     }
+    if file_path.extension().and_then(|e| e.to_str()) != Some("thf") {
+        eprintln!("Expected a .thf file, got: {}", file_path.display());
+        std::process::exit(1);
+    }
 
     let server = match ThreatForgeServer::new(file_path) {
         Ok(s) => s,

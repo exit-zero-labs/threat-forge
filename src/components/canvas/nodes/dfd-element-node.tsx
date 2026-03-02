@@ -16,8 +16,12 @@ import { ThreatBadge, useThreatCount } from "./threat-badge";
 
 /**
  * Convert a hex color (#rrggbb) + opacity (0-1) to an rgba string.
+ * Returns a neutral gray fallback for invalid hex values.
  */
 function hexToRgba(hex: string, opacity: number): string {
+	if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+		return `rgba(136, 136, 136, ${opacity})`;
+	}
 	const r = Number.parseInt(hex.slice(1, 3), 16);
 	const g = Number.parseInt(hex.slice(3, 5), 16);
 	const b = Number.parseInt(hex.slice(5, 7), 16);

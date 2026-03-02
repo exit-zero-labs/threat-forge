@@ -12,10 +12,11 @@ The MCP server binary is built alongside the main application:
 
 ```bash
 cd src-tauri
-cargo build --bin threatforge-mcp
+cargo build --bin threatforge-mcp            # Debug build
+cargo build --release --bin threatforge-mcp  # Release build (optimized)
 ```
 
-The binary will be at `src-tauri/target/debug/threatforge-mcp` (or `release/` for release builds).
+The binary will be at `src-tauri/target/debug/threatforge-mcp` (debug) or `src-tauri/target/release/threatforge-mcp` (release). Use the release build for production.
 
 ## Usage
 

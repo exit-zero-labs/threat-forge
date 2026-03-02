@@ -22,6 +22,8 @@ interface UpdateState {
 	skippedVersion: string | null;
 	/** Whether the update notification bar is dismissed for this session */
 	dismissed: boolean;
+	/** Error message from a failed install attempt */
+	installError: string | null;
 
 	// Actions
 	checkForUpdate: () => Promise<void>;
@@ -42,6 +44,7 @@ export const useUpdateStore = create<UpdateState>()(
 			lastCheckTime: null,
 			skippedVersion: null,
 			dismissed: false,
+			installError: null,
 
 			checkForUpdate: async () => {
 				if (!isTauri() || get().isChecking) return;
@@ -54,8 +57,11 @@ export const useUpdateStore = create<UpdateState>()(
 						lastCheckTime: Date.now(),
 						dismissed: false,
 					});
-				} catch {
-					// Silently fail — updater may not be configured yet
+				} catch (err) {
+					// Update check may fail if updater is not configured or network is down.
+					// Still record the check time to avoid retrying too frequently.
+					console.warn("Update check failed:", err);
+					set({ lastCheckTime: Date.now() });
 				} finally {
 					set({ isChecking: false });
 				}
@@ -64,11 +70,12 @@ export const useUpdateStore = create<UpdateState>()(
 			installUpdate: async () => {
 				if (!isTauri() || get().isInstalling) return;
 
-				set({ isInstalling: true });
+				set({ isInstalling: true, installError: null });
 				try {
 					await invoke("install_update");
-				} catch {
-					// Install may fail if no update available or network issues
+				} catch (err) {
+					const message = err instanceof Error ? err.message : String(err);
+					set({ installError: message });
 				} finally {
 					set({ isInstalling: false });
 				}

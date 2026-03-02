@@ -17,10 +17,10 @@ pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, Stri
     let update = updater.check().await.map_err(|e| e.to_string())?;
 
     match update {
-        Some(update) => Ok(Some(UpdateInfo {
-            version: update.version.clone(),
-            date: update.date.map(|d| d.to_string()),
-            body: update.body.clone(),
+        Some(ref u) => Ok(Some(UpdateInfo {
+            version: u.version.clone(),
+            date: u.date.map(|d| d.to_string()),
+            body: u.body.clone(),
         })),
         None => Ok(None),
     }

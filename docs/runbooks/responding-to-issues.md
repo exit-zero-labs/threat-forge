@@ -9,7 +9,7 @@ Guide for triaging and resolving GitHub issues for ThreatForge.
 When a new issue arrives:
 
 - **Bug report**: Can you reproduce it? Check the `.thf` file if attached.
-- **Feature request**: Does it align with the project roadmap (`docs/plans/roadmap.md`)?
+- **Feature request**: Does it align with the project backlog (`docs/plans/backlog.md`)?
 - **Question**: Can it be answered from docs? Point to relevant documentation.
 
 ### 2. Apply Labels

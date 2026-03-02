@@ -53,6 +53,9 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 		}
 
 		case "add_data_flow": {
+			// Validate that referenced elements exist
+			if (!model.elements.some((e) => e.id === action.data_flow.from)) return null;
+			if (!model.elements.some((e) => e.id === action.data_flow.to)) return null;
 			const id = generateFlowId();
 			// Compute next flow number
 			const maxNum = model.data_flows.reduce((max, f) => Math.max(max, f.flow_number ?? 0), 0);
@@ -89,10 +92,14 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 
 		case "add_trust_boundary": {
 			const id = generateBoundaryId();
+			// Filter out any contains refs that don't match existing elements
+			const validContains = (action.trust_boundary.contains ?? []).filter((c) =>
+				model.elements.some((e) => e.id === c),
+			);
 			const newBoundary: TrustBoundary = {
 				id,
 				name: action.trust_boundary.name,
-				contains: action.trust_boundary.contains ?? [],
+				contains: validContains,
 			};
 			return { ...model, trust_boundaries: [...model.trust_boundaries, newBoundary] };
 		}

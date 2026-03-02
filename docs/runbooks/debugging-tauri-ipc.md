@@ -118,6 +118,7 @@ const unlisten = await listen("my-event", (event) => {
 
 Open the webview DevTools:
 - **macOS**: Right-click > Inspect Element, or `Cmd+Option+I`
+- **Windows**: Right-click > Inspect Element, or `Ctrl+Shift+I`
 - **Linux**: Right-click > Inspect Element, or `Ctrl+Shift+I`
 
 Use the Console and Network tabs to inspect IPC calls.

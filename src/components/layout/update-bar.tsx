@@ -6,6 +6,7 @@ export function UpdateBar() {
 	const skippedVersion = useUpdateStore((s) => s.skippedVersion);
 	const dismissed = useUpdateStore((s) => s.dismissed);
 	const isInstalling = useUpdateStore((s) => s.isInstalling);
+	const installError = useUpdateStore((s) => s.installError);
 	const installUpdate = useUpdateStore((s) => s.installUpdate);
 	const dismissUpdate = useUpdateStore((s) => s.dismissUpdate);
 	const skipVersion = useUpdateStore((s) => s.skipVersion);
@@ -20,6 +21,9 @@ export function UpdateBar() {
 				<span>
 					Update available: <strong>v{updateAvailable.version}</strong>
 				</span>
+				{installError && (
+					<span className="text-xs text-destructive">Install failed: {installError}</span>
+				)}
 			</div>
 			<div className="flex items-center gap-1.5">
 				<button
