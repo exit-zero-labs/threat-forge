@@ -32,6 +32,7 @@ You are a threat modeling domain expert with deep knowledge of STRIDE, DREAD, LI
 
 ## Key Reference
 
-The full YAML schema example is in `docs/project-document.md` Section 4.3.
+The full YAML schema spec and examples are in `docs/knowledge/file-format.md`.
 The STRIDE engine rules should align with Microsoft's STRIDE-per-element methodology.
 Threat severity should follow a consistent rubric (likelihood x impact).
+See `docs/knowledge/glossary.md` for the element-to-STRIDE threat mapping table.

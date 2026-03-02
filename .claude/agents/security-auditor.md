@@ -19,7 +19,7 @@ This is a security tool — our own security posture must be exemplary.
 
 ### File I/O
 - Path traversal prevention — all file paths must be scoped via Tauri's path resolver
-- YAML deserialization must use `deny_unknown_fields` on top-level types
+- YAML deserialization must validate schema version; unknown fields are tolerated for forward compatibility
 - No arbitrary file reads/writes outside the user's threat model directory
 - File permissions checked on save operations
 

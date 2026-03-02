@@ -25,9 +25,7 @@ ThreatForge fills that gap.
 
 ## Status
 
-ThreatForge is in early development. The core architecture is defined and the scaffolding is in place, but no custom application code has been written yet. See the [implementation plan](docs/implementation-plan.md) for the roadmap.
-
-**Phase 0** (current): File format validation + ReactFlow DFD prototype spike.
+ThreatForge is production-ready. The core application is fully functional with a modern diagramming canvas (40+ typed components), STRIDE threat engine, AI chat pane (BYOK), 13+ themes, keyboard shortcuts, and more. See the [roadmap](docs/plans/roadmap.md) for remaining launch tasks and future plans.
 
 ## Development
 
@@ -127,7 +125,7 @@ threats:
       description: "Parameterized queries via ORM"
 ```
 
-Layout coordinates are stored separately in `.threatforge/layouts/` so repositioning elements on the canvas never pollutes your threat model diffs.
+Layout positions are stored inline on each element, keeping everything in a single portable file. See the full [file format spec](docs/knowledge/file-format.md).
 
 ## Contributing
 

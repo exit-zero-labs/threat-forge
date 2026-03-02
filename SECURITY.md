@@ -55,7 +55,7 @@ ThreatForge follows these security principles:
 - **AI API calls** go directly from the user's machine with the user's key -- no proxy server
 - **LLM output** is treated as untrusted input and sanitized before rendering
 - **File operations** are scoped via Tauri's path resolver to prevent directory traversal
-- **YAML deserialization** uses strict mode (`deny_unknown_fields`) to reject malformed input
+- **YAML deserialization** uses strict serde validation with schema version checking; unknown fields are tolerated for forward compatibility
 - **Content Security Policy** is strict by default -- no inline scripts, no remote code loading
 - **Auto-updates** use Tauri's built-in signature verification via GitHub Releases
 
