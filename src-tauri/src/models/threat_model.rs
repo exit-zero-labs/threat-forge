@@ -30,6 +30,7 @@ impl ThreatModel {
                 created: today,
                 modified: today,
                 description: String::new(),
+                settings: None,
             },
             elements: Vec::new(),
             data_flows: Vec::new(),
@@ -53,6 +54,23 @@ pub struct Metadata {
     pub modified: NaiveDate,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settings: Option<FileSettings>,
+}
+
+/// Per-file settings stored in the YAML metadata section.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FileSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grid_size: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_element_fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_element_stroke: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_boundary_fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_boundary_stroke: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -545,6 +563,67 @@ elements:
 "#;
         let model: ThreatModel = serde_yaml::from_str(yaml).expect("Old format should parse");
         assert!(model.elements[0].subtype.is_none());
+    }
+
+    #[test]
+    fn test_file_settings_round_trip() {
+        let yaml = r##"
+version: "1.0"
+metadata:
+  title: "Settings Test"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+  settings:
+    grid_size: 24
+    default_element_fill: "#3b82f6"
+    default_element_stroke: "#1e40af"
+    default_boundary_fill: "#22c55e"
+    default_boundary_stroke: "#15803d"
+"##;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Failed to parse");
+        let settings = model
+            .metadata
+            .settings
+            .as_ref()
+            .expect("settings should be present");
+        assert_eq!(settings.grid_size, Some(24));
+        assert_eq!(settings.default_element_fill, Some("#3b82f6".to_string()));
+        assert_eq!(settings.default_element_stroke, Some("#1e40af".to_string()));
+        assert_eq!(settings.default_boundary_fill, Some("#22c55e".to_string()));
+        assert_eq!(
+            settings.default_boundary_stroke,
+            Some("#15803d".to_string())
+        );
+
+        // Round-trip
+        let reserialized = serde_yaml::to_string(&model).expect("Failed to serialize");
+        let reparsed: ThreatModel = serde_yaml::from_str(&reserialized).expect("Failed to reparse");
+        assert_eq!(model, reparsed, "Round-trip should produce equal models");
+    }
+
+    #[test]
+    fn test_yaml_without_settings_parses() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "No Settings"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Should parse without settings");
+        assert!(model.metadata.settings.is_none());
+    }
+
+    #[test]
+    fn test_file_settings_omitted_when_none() {
+        let model = ThreatModel::new("Test", "Author");
+        let yaml = serde_yaml::to_string(&model).expect("Failed to serialize");
+        assert!(
+            !yaml.contains("settings"),
+            "settings should be omitted from YAML when None"
+        );
     }
 
     #[test]

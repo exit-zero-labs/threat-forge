@@ -1,4 +1,5 @@
 import {
+	BookOpen,
 	FilePlus,
 	FolderOpen,
 	HelpCircle,
@@ -7,10 +8,12 @@ import {
 	Save,
 	Settings,
 } from "lucide-react";
+import { useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
+import { GuidePicker } from "../onboarding/guide-picker";
 import { Keytip } from "../ui/keytip";
 
 export function TopMenuBar() {
@@ -22,6 +25,7 @@ export function TopMenuBar() {
 	const openShortcutsDialog = useSettingsStore((s) => s.openShortcutsDialog);
 	const keytipsVisible = useSettingsStore((s) => s.settings.keytipsVisible);
 	const { newModel, openModel, saveModel } = useFileOperations();
+	const [guidePickerOpen, setGuidePickerOpen] = useState(false);
 
 	const title = model?.metadata.title ?? "ThreatForge";
 	const displayTitle = isDirty ? `${title} *` : title;
@@ -90,6 +94,12 @@ export function TopMenuBar() {
 			{/* Settings + Help */}
 			<div className="flex items-center gap-0.5">
 				<MenuButton
+					testId="btn-guide-picker"
+					icon={<BookOpen className="h-4 w-4" />}
+					tooltip="Guided Tours"
+					onClick={() => setGuidePickerOpen(true)}
+				/>
+				<MenuButton
 					testId="btn-shortcuts-dialog"
 					icon={<HelpCircle className="h-4 w-4" />}
 					tooltip={`Keyboard Shortcuts (${modKey}/)`}
@@ -102,6 +112,7 @@ export function TopMenuBar() {
 					onClick={openSettingsDialog}
 				/>
 			</div>
+			{guidePickerOpen && <GuidePicker onClose={() => setGuidePickerOpen(false)} />}
 		</header>
 	);
 }

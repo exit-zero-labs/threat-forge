@@ -68,6 +68,11 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const threatCount = useThreatCount(id);
 
+	// Glow when a connected edge is selected
+	const connectedToSelectedEdge = useCanvasStore((s) =>
+		s.edges.some((e) => e.selected && (e.source === id || e.target === id)),
+	);
+
 	const shape = getShapeForType(nodeData.elementType);
 	const Icon = resolveIcon(nodeData.elementType, nodeData.subtype, nodeData.icon);
 
@@ -166,7 +171,10 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 				data-testid={`node-${id}`}
 				className="relative"
 				style={{
-					filter: "drop-shadow(0 4px 3px rgba(0,0,0,0.07)) drop-shadow(0 2px 2px rgba(0,0,0,0.06))",
+					filter:
+						connectedToSelectedEdge && !selected
+							? "drop-shadow(0 0 6px hsl(var(--tf-signal) / 0.3)) drop-shadow(0 4px 3px rgba(0,0,0,0.07))"
+							: "drop-shadow(0 4px 3px rgba(0,0,0,0.07)) drop-shadow(0 2px 2px rgba(0,0,0,0.06))",
 				}}
 			>
 				{/* Hexagonal fill background */}
@@ -209,6 +217,7 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 				shapeClass(shape),
 				!hasCustomColors && (selected ? "border-tf-signal shadow-tf-signal/20" : "border-border"),
 				hasCustomColors && selected && "ring-2 ring-tf-signal ring-offset-1 ring-offset-background",
+				connectedToSelectedEdge && !selected && "ring-2 ring-tf-signal/30",
 			)}
 			style={hasCustomColors ? customStyle : undefined}
 		>

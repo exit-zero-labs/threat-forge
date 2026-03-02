@@ -23,12 +23,21 @@ export type MitigationStatus =
 	| "accepted"
 	| "transferred";
 
+export interface FileSettings {
+	grid_size?: number;
+	default_element_fill?: string;
+	default_element_stroke?: string;
+	default_boundary_fill?: string;
+	default_boundary_stroke?: string;
+}
+
 export interface Metadata {
 	title: string;
 	author: string;
 	created: string; // ISO date string (YYYY-MM-DD)
 	modified: string;
 	description: string;
+	settings?: FileSettings;
 }
 
 export interface Position {
@@ -39,6 +48,12 @@ export interface Position {
 export interface Size {
 	width: number;
 	height: number;
+}
+
+export interface Viewport {
+	x: number;
+	y: number;
+	zoom: number;
 }
 
 export interface Element {
@@ -115,13 +130,7 @@ export interface ThreatModel {
 	diagrams: Diagram[];
 }
 
-// Layout types (stored in separate JSON files)
-
-export interface Viewport {
-	x: number;
-	y: number;
-	zoom: number;
-}
+// Layout types (used by legacy sidecar JSON migration)
 
 export interface NodePosition {
 	id: string;

@@ -57,7 +57,20 @@ export function DfdCanvas() {
 		screenToFlowPosition,
 		setViewport: setReactFlowViewport,
 		fitView: fitViewFn,
+		zoomIn: zoomInFn,
+		zoomOut: zoomOutFn,
 	} = useReactFlow();
+
+	const canvasLocked = useUiStore((s) => s.canvasLocked);
+
+	// Expose ReactFlow actions to the canvas store so keyboard shortcuts can use them
+	useEffect(() => {
+		useCanvasStore.getState().setReactFlowActions({
+			fitView: () => fitViewFn(),
+			zoomIn: () => zoomInFn(),
+			zoomOut: () => zoomOutFn(),
+		});
+	}, [fitViewFn, zoomInFn, zoomOutFn]);
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{
@@ -308,6 +321,9 @@ export function DfdCanvas() {
 				multiSelectionKeyCode="Shift"
 				selectionMode={SelectionMode.Partial}
 				deleteKeyCode={null}
+				nodesDraggable={!canvasLocked}
+				nodesConnectable={!canvasLocked}
+				elementsSelectable={!canvasLocked}
 				className="bg-background"
 				proOptions={{ hideAttribution: true }}
 			>

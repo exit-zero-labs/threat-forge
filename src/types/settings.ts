@@ -23,11 +23,8 @@ export interface UserSettings {
 	reduceMotion: boolean;
 }
 
-/** File-level settings stored alongside the threat model */
-export interface FileSettings {
-	/** Diagram-specific grid size override */
-	gridSize?: number;
-}
+/** File-level settings stored alongside the threat model (re-exported from threat-model.ts) */
+export type { FileSettings } from "./threat-model";
 
 /** Keyboard shortcut definition for the shortcuts cheat sheet */
 export interface KeyboardShortcut {
@@ -179,5 +176,68 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 		macKeys: "⌘A",
 		winKeys: "Ctrl+A",
 		category: "canvas",
+	},
+	{
+		id: "toggle-left-panel",
+		label: "Toggle Left Panel",
+		macKeys: "⌘B",
+		winKeys: "Ctrl+B",
+		category: "view",
+	},
+	{
+		id: "toggle-right-panel",
+		label: "Toggle Right Panel",
+		macKeys: "⌘I",
+		winKeys: "Ctrl+I",
+		category: "view",
+	},
+	{
+		id: "open-ai-tab",
+		label: "Open AI Tab",
+		macKeys: "⌘⇧I",
+		winKeys: "Ctrl+Shift+I",
+		category: "view",
+	},
+	{
+		id: "fit-view",
+		label: "Fit to View",
+		macKeys: "⌘0",
+		winKeys: "Ctrl+0",
+		category: "canvas",
+	},
+	{
+		id: "zoom-in",
+		label: "Zoom In",
+		macKeys: "⌘= / +",
+		winKeys: "Ctrl+= / +",
+		category: "canvas",
+	},
+	{
+		id: "zoom-out",
+		label: "Zoom Out",
+		macKeys: "⌘- / -",
+		winKeys: "Ctrl+- / -",
+		category: "canvas",
+	},
+	{
+		id: "nudge",
+		label: "Nudge Selected",
+		macKeys: "↑↓←→",
+		winKeys: "↑↓←→",
+		category: "canvas",
+	},
+	{
+		id: "canvas-lock",
+		label: "Lock/Unlock Canvas",
+		macKeys: "⌘⇧L",
+		winKeys: "Ctrl+Shift+L",
+		category: "canvas",
+	},
+	{
+		id: "command-palette",
+		label: "Command Palette",
+		macKeys: "⌘K",
+		winKeys: "Ctrl+K",
+		category: "view",
 	},
 ];

@@ -53,6 +53,29 @@ export function useKeyboardShortcuts() {
 							useModelStore.getState().setSelectedThreat(null);
 						}
 						return;
+					case "=":
+					case "+":
+						e.preventDefault();
+						useCanvasStore.getState().rfZoomIn?.();
+						return;
+					case "-":
+						e.preventDefault();
+						useCanvasStore.getState().rfZoomOut?.();
+						return;
+					case "ArrowUp":
+					case "ArrowDown":
+					case "ArrowLeft":
+					case "ArrowRight": {
+						const gridSize = 16;
+						const dx = e.key === "ArrowRight" ? gridSize : e.key === "ArrowLeft" ? -gridSize : 0;
+						const dy = e.key === "ArrowDown" ? gridSize : e.key === "ArrowUp" ? -gridSize : 0;
+						const hasSelection = useCanvasStore.getState().nodes.some((n) => n.selected);
+						if (hasSelection) {
+							e.preventDefault();
+							useCanvasStore.getState().nudgeSelected(dx, dy);
+						}
+						return;
+					}
 				}
 			}
 
@@ -115,10 +138,56 @@ export function useKeyboardShortcuts() {
 					}
 					break;
 				}
+				case "b":
+					if (!isInputFocused) {
+						e.preventDefault();
+						useUiStore.getState().toggleLeftPanel();
+					}
+					break;
+				case "i":
+					if (!isInputFocused) {
+						e.preventDefault();
+						if (e.shiftKey) {
+							// Cmd+Shift+I — open AI tab in right panel
+							if (!useUiStore.getState().rightPanelOpen) {
+								useUiStore.getState().toggleRightPanel();
+							}
+							setRightPanelTab("ai");
+						} else {
+							// Cmd+I — toggle right panel
+							useUiStore.getState().toggleRightPanel();
+						}
+					}
+					break;
 				case "l":
+					if (e.shiftKey && !isInputFocused) {
+						// Cmd+Shift+L — toggle canvas lock
+						e.preventDefault();
+						useUiStore.getState().toggleCanvasLock();
+					} else {
+						// Cmd+L — focus AI chat
+						e.preventDefault();
+						useUiStore.getState().rightPanelOpen || useUiStore.getState().toggleRightPanel();
+						setRightPanelTab("ai");
+					}
+					break;
+				case "0":
 					e.preventDefault();
-					useUiStore.getState().rightPanelOpen || useUiStore.getState().toggleRightPanel();
-					setRightPanelTab("ai");
+					useCanvasStore.getState().rfFitView?.();
+					break;
+				case "=":
+					e.preventDefault();
+					useCanvasStore.getState().rfZoomIn?.();
+					break;
+				case "-":
+					e.preventDefault();
+					useCanvasStore.getState().rfZoomOut?.();
+					break;
+				case "k":
+					if (!isInputFocused) {
+						e.preventDefault();
+						useUiStore.getState().openCommandPalette();
+					}
 					break;
 				case ",":
 					e.preventDefault();

@@ -14,14 +14,14 @@ import { extractThreats, suggestionToThreat } from "@/lib/ai-utils";
 import { cn } from "@/lib/utils";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
 import { useModelStore } from "@/stores/model-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
-import { AiSettingsDialog } from "./ai-settings-dialog";
 
 export function AiChatTab() {
 	const model = useModelStore((s) => s.model);
 	const hasApiKey = useChatStore((s) => s.hasApiKey);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
-	const [showSettings, setShowSettings] = useState(false);
+	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
 
 	// Check API key on mount
 	useEffect(() => {
@@ -34,6 +34,8 @@ export function AiChatTab() {
 		);
 	}
 
+	const openAiSettings = () => openSettingsDialogAtTab("ai");
+
 	return (
 		<div className="flex h-full flex-col">
 			{/* Header with settings */}
@@ -44,7 +46,7 @@ export function AiChatTab() {
 				</div>
 				<button
 					type="button"
-					onClick={() => setShowSettings(true)}
+					onClick={openAiSettings}
 					className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
 					title="AI Settings"
 				>
@@ -52,9 +54,7 @@ export function AiChatTab() {
 				</button>
 			</div>
 
-			{!hasApiKey ? <EmptyState onConfigure={() => setShowSettings(true)} /> : <ChatView />}
-
-			{showSettings && <AiSettingsDialog onClose={() => setShowSettings(false)} />}
+			{!hasApiKey ? <EmptyState onConfigure={openAiSettings} /> : <ChatView />}
 		</div>
 	);
 }

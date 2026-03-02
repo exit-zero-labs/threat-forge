@@ -10,15 +10,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { useSettingsStore } from "@/stores/settings-store";
+import { type SettingsTab, useSettingsStore } from "@/stores/settings-store";
 import { KEYBOARD_SHORTCUTS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
 import { ThemePicker } from "./theme-picker";
 
-type SettingsSection = "general" | "appearance" | "editor" | "ai" | "shortcuts";
-
 const SECTIONS: {
-	id: SettingsSection;
+	id: SettingsTab;
 	label: string;
 	icon: React.ReactNode;
 }[] = [
@@ -43,7 +41,8 @@ const SECTIONS: {
 
 export function SettingsDialog() {
 	const closeSettingsDialog = useSettingsStore((s) => s.closeSettingsDialog);
-	const [section, setSection] = useState<SettingsSection>("general");
+	const initialTab = useSettingsStore((s) => s.settingsDialogInitialTab);
+	const [section, setSection] = useState<SettingsTab>(initialTab ?? "general");
 
 	function handleKeyDown(e: React.KeyboardEvent) {
 		if (e.key === "Escape") {

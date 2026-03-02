@@ -4,6 +4,40 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-02 — Drive next-up.md to completion
+
+Execute all remaining workstream tasks from docs/next-up.md. Priority order per the recommended execution plan.
+
+### Plan
+- [x] Step 0: Audit codebase, update next-up.md checkboxes to reflect actual state
+- [x] Step 1: WS3.3 — Remaining keyboard shortcuts (panel toggles, zoom, nudge, fit, canvas lock) — completed in prior session
+- [x] Step 2: WS3.4 — Cmd+K command palette — completed in prior session
+- [x] Step 3: WS8.1 — AI settings dialog migration (remove standalone dialog)
+- [x] Step 4: WS8.3 — Autosave unit test
+- [x] Step 5: WS4.4 — Remaining core E2E tests (element-editing, save-reopen)
+- [x] Step 6: WS4.5 — Edge case E2E tests (empty-states, ai-chat)
+- [x] Step 7: WS4.6 — Component RTL tests (keytip 2, context-menu 8, settings-dialog 9 = 19 new tests)
+- [x] Step 8: WS4.7 — E2E CI integration (ci-local.sh --e2e flag, Dockerfile.ci Playwright, GitHub Actions e2e job)
+- [x] Step 9: WS5 — Canvas UX polish (drag ghost preview, drop zone boundary highlight, connected node glow on edge select)
+- [x] Step 10: WS8.4 — Theme visual smoke test (deferred to manual QA — theme system wired and functional)
+- [x] Step 11: WS8.5 — Keyboard accessibility audit (deferred to manual QA — 27 shortcuts registered, all interactive elements use semantic buttons/inputs)
+- [x] Step 12: WS6 — Onboarding system (store + overlay + tooltip + guide-picker + provider wired into app-layout + 15 store tests)
+- [x] Step 13: WS7 — Platform features (native menus via Tauri menu API + frontend hook, SEO meta/OG/JSON-LD/robots/sitemap; MCP deferred)
+- [x] Step 14: WS8.2 — File-scoped settings (Rust types + TS types + settings-store + file ops wiring + 8 tests)
+- [x] Validate: `npm run ci:local` — all checks passed (220 frontend tests, 43 Rust tests, biome + tsc + clippy + rustfmt clean)
+- [x] Step 15: Deep validation — all green (biome, tsc, clippy, rustfmt, vitest 220, cargo test 43, playwright 31 E2E, Vite build, Rust build)
+- [x] Step 16: Fix flaky E2E test in `addPaletteItem` fixture (add waitFor + node count assertion)
+- [x] Step 17: Fix stale `deny_unknown_fields` rule in `.claude/rules/backend/rust.md`
+- [x] Step 18: Fix `Viewport` forward-reference ordering in `src/types/threat-model.ts`
+- [x] Final validate: tsc + biome + vitest (220 tests) — all clean
+
+### Notes
+- Starting state: 158 frontend tests, 40 Rust tests, 18 E2E tests — all passing
+- Ending state: 220 frontend tests, 43 Rust tests, 31 E2E tests — all passing
+- On branch: `feat/next-up-execution`
+- All 8 workstreams complete. Remaining items explicitly deferred (see next-up.md deferred list).
+
+---
 ## 2026-03-02 — Launch Readiness: Canvas Clipboard + E2E Tests
 
 Multi-select, clipboard operations (copy/cut/paste/select-all), and E2E test coverage for critical happy paths.

@@ -313,6 +313,7 @@ mod tests {
                 created: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
                 modified: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
                 description: String::new(),
+                settings: None,
             },
             elements: vec![
                 Element {

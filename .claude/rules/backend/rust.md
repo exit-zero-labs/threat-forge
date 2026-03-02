@@ -22,7 +22,7 @@ paths:
 - Use `serde` + `serde_yaml` for YAML. `serde_json` for layout files and IPC.
 - Derive `Serialize`, `Deserialize`, `Clone`, `Debug` on all model types.
 - Use `#[serde(rename_all = "snake_case")]` for YAML field names.
-- Use `#[serde(deny_unknown_fields)]` on top-level types to catch schema mismatches.
+- Do NOT use `#[serde(deny_unknown_fields)]` on YAML model types — unknown fields must be tolerated for forward compatibility (see `yaml-format.md`). Use it only on internal/IPC-only types where strict validation is desired.
 
 ## Error Handling
 - Define custom error types with `thiserror`. No `.unwrap()` in production code.

@@ -5,6 +5,7 @@ import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { ThreatModel } from "@/types/threat-model";
 
 function todayString(): string {
@@ -82,6 +83,7 @@ export function useFileOperations() {
 		useCanvasStore.getState().setPendingLayout(null);
 		setModel(created, null);
 		useHistoryStore.getState().clear();
+		useSettingsStore.getState().clearFileSettings();
 		// syncFromModel is called by the useEffect in DfdCanvas when model changes
 	}, [isDirty, setModel]);
 
@@ -112,6 +114,7 @@ export function useFileOperations() {
 
 		setModel(loaded, path);
 		useHistoryStore.getState().clear();
+		useSettingsStore.getState().loadFileSettings(loaded.metadata.settings);
 		// syncFromModel is called by the useEffect in DfdCanvas when model changes
 	}, [isDirty, setModel]);
 
@@ -153,6 +156,7 @@ export function useFileOperations() {
 		}
 		clearModel();
 		useHistoryStore.getState().clear();
+		useSettingsStore.getState().clearFileSettings();
 		// DfdCanvas unmounts when model is null, so useEffect won't fire — clear canvas directly
 		useCanvasStore.getState().syncFromModel();
 	}, [isDirty, clearModel]);
