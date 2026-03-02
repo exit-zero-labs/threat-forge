@@ -133,6 +133,15 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
 
+## Support the Project
+
+ThreatForge is free and open source. If it's useful to you, consider supporting development:
+
+- [**Sponsor on GitHub**](https://github.com/sponsors/exit-zero-labs) -- recurring or one-time contributions
+- **Star the repo** -- helps others discover the project
+- **Contribute** -- bug fixes, features, docs, threat rules ([CONTRIBUTING.md](CONTRIBUTING.md))
+- **Spread the word** -- share with your team or on social media
+
 ## Security
 
 If you discover a security vulnerability, please report it responsibly. See [SECURITY.md](SECURITY.md) for details. Do not open a public issue for security vulnerabilities.
