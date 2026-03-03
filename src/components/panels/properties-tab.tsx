@@ -206,6 +206,8 @@ function FlowThreats({ flowId }: { flowId: string }) {
 	);
 }
 
+const FONT_SIZE_OPTIONS = [12, 14, 16, 20, 24, 32, 48];
+
 function ElementProperties({ elementId }: { elementId: string }) {
 	const model = useModelStore((s) => s.model);
 	const updateElement = useModelStore((s) => s.updateElement);
@@ -222,6 +224,7 @@ function ElementProperties({ elementId }: { elementId: string }) {
 		return <p className="text-xs text-muted-foreground">Element not found.</p>;
 	}
 
+	const isTextAnnotation = element.type === "text";
 	const subtypes = getSubtypesForType(element.type);
 	const relatedThreats = model?.threats.filter((t) => t.element === element.id) ?? [];
 
@@ -268,29 +271,33 @@ function ElementProperties({ elementId }: { elementId: string }) {
 		<div className="flex flex-col gap-3">
 			<ReadOnlyField label="ID" value={element.id} />
 
-			{/* Type dropdown */}
-			<label className="block">
-				<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">Type</span>
-				<select
-					value={element.type}
-					onChange={(e) => handleTypeChange(e.target.value)}
-					className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
-				>
-					<option value="generic">Generic</option>
-					{componentsByCategory.map((group) => (
-						<optgroup key={group.category} label={group.category}>
-							{group.items.map((comp) => (
-								<option key={comp.id} value={comp.id}>
-									{comp.label}
-								</option>
-							))}
-						</optgroup>
-					))}
-				</select>
-			</label>
+			{/* Type dropdown — hidden for text annotations */}
+			{!isTextAnnotation && (
+				<label className="block">
+					<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">Type</span>
+					<select
+						value={element.type}
+						onChange={(e) => handleTypeChange(e.target.value)}
+						className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+					>
+						<option value="generic">Generic</option>
+						{componentsByCategory.map((group) => (
+							<optgroup key={group.category} label={group.category}>
+								{group.items.map((comp) => (
+									<option key={comp.id} value={comp.id}>
+										{comp.label}
+									</option>
+								))}
+							</optgroup>
+						))}
+					</select>
+				</label>
+			)}
 
-			{/* Sub-type dropdown (conditional) */}
-			{subtypes.length > 0 && (
+			{isTextAnnotation && <ReadOnlyField label="Type" value="Text Annotation" />}
+
+			{/* Sub-type dropdown (conditional, not for text) */}
+			{!isTextAnnotation && subtypes.length > 0 && (
 				<label className="block">
 					<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
 						Sub Type
@@ -311,7 +318,7 @@ function ElementProperties({ elementId }: { elementId: string }) {
 			)}
 
 			<EditableField
-				label="Name"
+				label={isTextAnnotation ? "Text" : "Name"}
 				value={element.name}
 				onChange={(value) => {
 					updateElement(element.id, { name: value });
@@ -319,15 +326,18 @@ function ElementProperties({ elementId }: { elementId: string }) {
 				}}
 			/>
 
-			<EditableField
-				label="Trust Zone"
-				value={element.trust_zone}
-				placeholder="e.g. internal, dmz, external"
-				onChange={(value) => {
-					updateElement(element.id, { trust_zone: value });
-					syncNodeTrustZone(element.id, value);
-				}}
-			/>
+			{/* Trust Zone — not for text annotations */}
+			{!isTextAnnotation && (
+				<EditableField
+					label="Trust Zone"
+					value={element.trust_zone}
+					placeholder="e.g. internal, dmz, external"
+					onChange={(value) => {
+						updateElement(element.id, { trust_zone: value });
+						syncNodeTrustZone(element.id, value);
+					}}
+				/>
+			)}
 
 			<EditableTextarea
 				label="Description"
@@ -336,44 +346,119 @@ function ElementProperties({ elementId }: { elementId: string }) {
 				onChange={(value) => updateElement(element.id, { description: value })}
 			/>
 
-			<CommaSeparatedField
-				label="Technologies"
-				items={element.technologies ?? []}
-				placeholder="e.g. nginx, TLS, OAuth"
-				onCommit={(technologies) => {
-					updateElement(element.id, { technologies });
-				}}
-			/>
+			{/* Technologies — not for text annotations */}
+			{!isTextAnnotation && (
+				<CommaSeparatedField
+					label="Technologies"
+					items={element.technologies ?? []}
+					placeholder="e.g. nginx, TLS, OAuth"
+					onCommit={(technologies) => {
+						updateElement(element.id, { technologies });
+					}}
+				/>
+			)}
 
-			<ColorField
-				label="Fill Color"
-				color={fillColor}
-				opacity={fillOpacity}
-				onColorChange={(color) => {
-					syncElementNodeData({ elementFillColor: color || undefined });
-					updateElement(element.id, { fill_color: color || undefined });
-				}}
-				onOpacityChange={(opacity) => {
-					syncElementNodeData({ elementFillOpacity: opacity });
-					updateElement(element.id, { fill_opacity: opacity });
-				}}
-			/>
+			{/* Text-specific styling controls */}
+			{isTextAnnotation && (
+				<>
+					<ColorField
+						label="Text Color"
+						color={fillColor}
+						opacity={(node?.data.elementFillOpacity as number) ?? 1.0}
+						onColorChange={(color) => {
+							syncElementNodeData({ elementFillColor: color || undefined });
+							updateElement(element.id, { fill_color: color || undefined });
+						}}
+						onOpacityChange={(opacity) => {
+							syncElementNodeData({ elementFillOpacity: opacity });
+							updateElement(element.id, { fill_opacity: opacity });
+						}}
+					/>
 
-			<ColorField
-				label="Stroke Color"
-				color={strokeColor}
-				opacity={strokeOpacity}
-				onColorChange={(color) => {
-					syncElementNodeData({ elementStrokeColor: color || undefined });
-					updateElement(element.id, { stroke_color: color || undefined });
-				}}
-				onOpacityChange={(opacity) => {
-					syncElementNodeData({ elementStrokeOpacity: opacity });
-					updateElement(element.id, { stroke_opacity: opacity });
-				}}
-			/>
+					<label className="block">
+						<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+							Font Size
+						</span>
+						<select
+							value={element.font_size ?? 14}
+							onChange={(e) => {
+								const size = Number.parseInt(e.target.value, 10);
+								updateElement(element.id, { font_size: size });
+								syncElementNodeData({ fontSize: size });
+							}}
+							className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+						>
+							{FONT_SIZE_OPTIONS.map((size) => (
+								<option key={size} value={size}>
+									{size}px
+								</option>
+							))}
+						</select>
+					</label>
 
-			{relatedThreats.length > 0 && (
+					<div>
+						<span className="mb-0.5 block text-[10px] font-medium text-muted-foreground">
+							Font Weight
+						</span>
+						<div className="flex gap-1">
+							{(["normal", "bold"] as const).map((weight) => (
+								<button
+									key={weight}
+									type="button"
+									onClick={() => {
+										updateElement(element.id, { font_weight: weight });
+										syncElementNodeData({ fontWeight: weight });
+									}}
+									className={`flex-1 rounded border px-2 py-1 text-xs transition-colors ${
+										(element.font_weight ?? "normal") === weight
+											? "border-primary bg-accent text-accent-foreground"
+											: "border-border bg-background text-muted-foreground hover:bg-accent/50"
+									}`}
+									style={{ fontWeight: weight }}
+								>
+									{weight === "normal" ? "Normal" : "Bold"}
+								</button>
+							))}
+						</div>
+					</div>
+				</>
+			)}
+
+			{/* Fill/Stroke colors — not for text annotations */}
+			{!isTextAnnotation && (
+				<>
+					<ColorField
+						label="Fill Color"
+						color={fillColor}
+						opacity={fillOpacity}
+						onColorChange={(color) => {
+							syncElementNodeData({ elementFillColor: color || undefined });
+							updateElement(element.id, { fill_color: color || undefined });
+						}}
+						onOpacityChange={(opacity) => {
+							syncElementNodeData({ elementFillOpacity: opacity });
+							updateElement(element.id, { fill_opacity: opacity });
+						}}
+					/>
+
+					<ColorField
+						label="Stroke Color"
+						color={strokeColor}
+						opacity={strokeOpacity}
+						onColorChange={(color) => {
+							syncElementNodeData({ elementStrokeColor: color || undefined });
+							updateElement(element.id, { stroke_color: color || undefined });
+						}}
+						onOpacityChange={(opacity) => {
+							syncElementNodeData({ elementStrokeOpacity: opacity });
+							updateElement(element.id, { stroke_opacity: opacity });
+						}}
+					/>
+				</>
+			)}
+
+			{/* Related threats — not for text annotations */}
+			{!isTextAnnotation && relatedThreats.length > 0 && (
 				<div className="border-t border-border pt-3">
 					<p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
 						Related Threats ({relatedThreats.length})

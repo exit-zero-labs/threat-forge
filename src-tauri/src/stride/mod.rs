@@ -10,6 +10,7 @@ enum ComponentStrideCategory {
     Service,
     Store,
     Actor,
+    Annotation,
 }
 
 /// Map a component type string to its STRIDE category.
@@ -22,6 +23,8 @@ fn stride_category_for_type(element_type: &str) -> ComponentStrideCategory {
         // Clients / actors
         "web_browser" | "mobile_app" | "desktop_app" | "iot_device" | "external_entity"
         | "api_client" | "cli_tool" => ComponentStrideCategory::Actor,
+        // Annotations — excluded from STRIDE analysis
+        "text" => ComponentStrideCategory::Annotation,
         // Everything else is a service (services, messaging, infra, security, networking, cloud, generic, process)
         _ => ComponentStrideCategory::Service,
     }
@@ -219,6 +222,9 @@ pub fn analyze(model: &ThreatModel) -> Vec<Threat> {
     // Element-based rules
     for element in &model.elements {
         let element_category = stride_category_for_type(&element.element_type);
+        if element_category == ComponentStrideCategory::Annotation {
+            continue;
+        }
         for rule in &rules {
             if rule.targets_flows {
                 continue;
@@ -335,6 +341,8 @@ mod tests {
                     stroke_color: None,
                     fill_opacity: None,
                     stroke_opacity: None,
+                    font_size: None,
+                    font_weight: None,
                 },
                 Element {
                     id: "db".to_string(),
@@ -352,6 +360,8 @@ mod tests {
                     stroke_color: None,
                     fill_opacity: None,
                     stroke_opacity: None,
+                    font_size: None,
+                    font_weight: None,
                 },
                 Element {
                     id: "user".to_string(),
@@ -369,6 +379,8 @@ mod tests {
                     stroke_color: None,
                     fill_opacity: None,
                     stroke_opacity: None,
+                    font_size: None,
+                    font_weight: None,
                 },
             ],
             data_flows: vec![DataFlow {
@@ -651,6 +663,54 @@ mod tests {
         assert_eq!(
             stride_category_for_type("cli_tool"),
             ComponentStrideCategory::Actor
+        );
+
+        // Annotations
+        assert_eq!(
+            stride_category_for_type("text"),
+            ComponentStrideCategory::Annotation
+        );
+    }
+
+    #[test]
+    fn test_text_elements_produce_zero_threats() {
+        let mut model = sample_model();
+        model.elements.push(Element {
+            id: "text-1".to_string(),
+            element_type: "text".to_string(),
+            name: "API Gateway Cluster".to_string(),
+            trust_zone: String::new(),
+            subtype: None,
+            icon: None,
+            description: String::new(),
+            technologies: vec![],
+            stores: None,
+            encryption: None,
+            position: None,
+            fill_color: None,
+            stroke_color: None,
+            fill_opacity: None,
+            stroke_opacity: None,
+            font_size: Some(20.0),
+            font_weight: Some("bold".to_string()),
+        });
+
+        let threats = analyze(&model);
+        let text_threats: Vec<_> = threats
+            .iter()
+            .filter(|t| t.element.as_deref() == Some("text-1"))
+            .collect();
+        assert_eq!(
+            text_threats.len(),
+            0,
+            "Text annotation elements should produce zero STRIDE threats"
+        );
+
+        // Total count should remain the same as without the text element (14)
+        assert_eq!(
+            threats.len(),
+            14,
+            "Total threat count should not change when adding a text element"
         );
     }
 }

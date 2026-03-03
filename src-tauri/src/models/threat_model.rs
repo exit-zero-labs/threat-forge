@@ -113,6 +113,10 @@ pub struct Element {
     pub fill_opacity: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stroke_opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_size: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -742,5 +746,67 @@ data_flows:
         let deserialized: DiagramLayout =
             serde_json::from_str(&json).expect("Failed to deserialize layout");
         assert_eq!(layout, deserialized);
+    }
+
+    #[test]
+    fn test_font_size_font_weight_round_trip() {
+        let yaml = r##"
+version: "1.0"
+metadata:
+  title: "Font Test"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: text-1
+    type: text
+    name: "API Gateway Cluster"
+    font_size: 20.0
+    font_weight: bold
+    fill_color: "#94A3B8"
+    fill_opacity: 0.8
+"##;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Failed to parse");
+        assert_eq!(model.elements[0].element_type, "text");
+        assert_eq!(model.elements[0].font_size, Some(20.0));
+        assert_eq!(model.elements[0].font_weight, Some("bold".to_string()));
+
+        // Round-trip
+        let reserialized = serde_yaml::to_string(&model).expect("Failed to serialize");
+        let reparsed: ThreatModel = serde_yaml::from_str(&reserialized).expect("Failed to reparse");
+        assert_eq!(model, reparsed, "Round-trip should produce equal models");
+    }
+
+    #[test]
+    fn test_font_fields_omitted_when_none() {
+        let model = ThreatModel::new("Test", "Author");
+        let yaml = serde_yaml::to_string(&model).expect("Failed to serialize");
+        assert!(
+            !yaml.contains("font_size"),
+            "font_size should be omitted from YAML when None"
+        );
+        assert!(
+            !yaml.contains("font_weight"),
+            "font_weight should be omitted from YAML when None"
+        );
+    }
+
+    #[test]
+    fn test_old_yaml_without_font_fields_parses() {
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "No Font Fields"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+elements:
+  - id: app
+    type: process
+    name: "App"
+"#;
+        let model: ThreatModel = serde_yaml::from_str(yaml).expect("Old format should parse");
+        assert!(model.elements[0].font_size.is_none());
+        assert!(model.elements[0].font_weight.is_none());
     }
 }

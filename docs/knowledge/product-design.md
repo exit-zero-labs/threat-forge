@@ -17,12 +17,12 @@
 
 | Feature | Description |
 |---------|-------------|
-| Diagramming canvas | DFD canvas with drag-and-drop, trust boundaries, data flows, 40+ typed components |
+| Diagramming canvas | DFD canvas with drag-and-drop, trust boundaries, data flows, text annotations, 44 typed components |
 | `.thf` YAML file format | Human-readable, git-diffable, schema-validated, single-file |
 | STRIDE threat engine | Auto-generated threats per element type, rule-based |
 | AI chat pane (BYOK) | OpenAI, Anthropic, Ollama support; conversational threat analysis |
 | Cross-platform | macOS, Windows, Linux via Tauri v2 |
-| Component library | 40+ typed components across 9 categories with lucide icons |
+| Component library | 44 typed components across 10 categories (incl. Annotations) with lucide icons |
 | Themes | 13+ themes (light and dark), separate light/dark selection |
 | Keyboard shortcuts | 27+ shortcuts, Cmd+K command palette |
 | Resizable panes | Draggable left/right panels with min/max constraints |

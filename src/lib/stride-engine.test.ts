@@ -159,4 +159,34 @@ describe("analyzeStride", () => {
 		const processThreats = threats.filter((t) => t.element === "web-app");
 		expect(processThreats).toHaveLength(6);
 	});
+
+	it("generates zero threats for text annotation elements", () => {
+		const model = sampleModel();
+		model.elements.push({
+			id: "text-1",
+			type: "text",
+			name: "API Gateway Cluster",
+			trust_zone: "",
+			description: "",
+			technologies: [],
+		});
+		const threats = analyzeStride(model);
+		const textThreats = threats.filter((t) => t.element === "text-1");
+		expect(textThreats).toHaveLength(0);
+	});
+
+	it("does not affect other element threat counts when text element is present", () => {
+		const model = sampleModel();
+		model.elements.push({
+			id: "text-1",
+			type: "text",
+			name: "Some annotation",
+			trust_zone: "",
+			description: "",
+			technologies: [],
+		});
+		const threats = analyzeStride(model);
+		// Same counts as before: 6 (service) + 3 (store) + 2 (actor) + 3 (flow) = 14
+		expect(threats).toHaveLength(14);
+	});
 });

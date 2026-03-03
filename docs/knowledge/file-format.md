@@ -21,7 +21,7 @@ version → metadata → elements → data_flows → trust_boundaries → threat
 |---------|---------|
 | `version` | Schema version (currently `"1.0"`). Always first field. |
 | `metadata` | Title, author, dates, description, authoring info |
-| `elements` | DFD nodes: processes, data stores, external entities |
+| `elements` | DFD nodes: processes, data stores, external entities, text annotations |
 | `data_flows` | Connections between elements with protocol and data info |
 | `trust_boundaries` | Security boundary groups containing elements |
 | `threats` | STRIDE threats linked to elements/flows |

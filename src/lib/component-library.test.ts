@@ -157,11 +157,36 @@ describe("component-library", () => {
 	});
 
 	it("every component has a valid shape and stride category", () => {
-		const validShapes = ["rounded", "database", "rect", "hexagon"];
-		const validStride = ["service", "store", "actor"];
+		const validShapes = ["rounded", "database", "rect", "hexagon", "text"];
+		const validStride = ["service", "store", "actor", "none"];
 		for (const comp of COMPONENT_LIBRARY) {
 			expect(validShapes, `Invalid shape for ${comp.id}`).toContain(comp.shape);
 			expect(validStride, `Invalid strideCategory for ${comp.id}`).toContain(comp.strideCategory);
 		}
+	});
+
+	it("has a text component with shape 'text' and strideCategory 'none'", () => {
+		const text = getComponentByType("text");
+		expect(text).toBeDefined();
+		expect(text?.shape).toBe("text");
+		expect(text?.strideCategory).toBe("none");
+		expect(text?.category).toBe("Annotations");
+	});
+
+	it("includes Annotations in COMPONENT_CATEGORIES", () => {
+		expect(COMPONENT_CATEGORIES).toContain("Annotations");
+	});
+
+	it("getShapeForType returns 'text' for text type", () => {
+		expect(getShapeForType("text")).toBe("text");
+	});
+
+	it("getStrideCategoryForType returns 'none' for text type", () => {
+		expect(getStrideCategoryForType("text")).toBe("none");
+	});
+
+	it("searchComponents finds text by annotation tag", () => {
+		const results = searchComponents("annotation");
+		expect(results.some((c) => c.id === "text")).toBe(true);
 	});
 });

@@ -26,6 +26,7 @@
 | Data Store | Tampering, Information Disclosure, Denial of Service |
 | External Entity | Spoofing, Repudiation |
 | Data Flow | Tampering, Information Disclosure, Denial of Service |
+| Text (Annotation) | None — excluded from STRIDE analysis |
 
 ## Comparable Open-Source Projects
 

@@ -75,6 +75,8 @@ export interface Element {
 	stroke_color?: string;
 	fill_opacity?: number;
 	stroke_opacity?: number;
+	font_size?: number;
+	font_weight?: string;
 }
 
 export interface DataFlow {

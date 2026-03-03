@@ -25,7 +25,7 @@ const CHANGELOG: ChangelogEntry[] = [
 		version: "1.0.0",
 		date: "2026-03-02",
 		changes: [
-			"Component library with 28 pre-built technology components",
+			"Component library with 44 pre-built technology components + text annotations",
 			"STRIDE threat analysis engine with auto-generated threats",
 			"AI chat pane with BYOK support (OpenAI, Anthropic, Ollama)",
 			"Human-readable YAML file format — git-diffable",

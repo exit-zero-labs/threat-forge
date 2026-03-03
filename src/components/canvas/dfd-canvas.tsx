@@ -21,10 +21,12 @@ import { useUiStore } from "@/stores/ui-store";
 import { buildEdgeMenuItems, buildNodeMenuItems, CanvasContextMenu } from "./canvas-context-menu";
 import { DataFlowEdge } from "./edges/data-flow-edge";
 import { DfdElementNode } from "./nodes/dfd-element-node";
+import { TextAnnotationNode } from "./nodes/text-annotation-node";
 import { TrustBoundaryNode } from "./nodes/trust-boundary-node";
 
 const nodeTypes = {
 	dfdElement: DfdElementNode,
+	textAnnotation: TextAnnotationNode,
 	trustBoundary: TrustBoundaryNode,
 };
 
@@ -169,10 +171,18 @@ export function DfdCanvas() {
 	);
 
 	/** Validates whether a connection is allowed */
-	const isValidConnection = useCallback((connection: Connection | DfdEdge) => {
-		if (!connection.source || !connection.target) return false;
-		return true;
-	}, []);
+	const isValidConnection = useCallback(
+		(connection: Connection | DfdEdge) => {
+			if (!connection.source || !connection.target) return false;
+			// Reject connections to/from text annotation nodes
+			const sourceNode = nodes.find((n) => n.id === connection.source);
+			const targetNode = nodes.find((n) => n.id === connection.target);
+			if (sourceNode?.type === "textAnnotation" || targetNode?.type === "textAnnotation")
+				return false;
+			return true;
+		},
+		[nodes],
+	);
 
 	const onDragOver = useCallback((event: React.DragEvent) => {
 		event.preventDefault();
@@ -349,6 +359,7 @@ export function DfdCanvas() {
 	const contextMenuItems = useMemo(() => {
 		if (!contextMenu) return [];
 		if (contextMenu.nodeId) {
+			const node = useCanvasStore.getState().nodes.find((n) => n.id === contextMenu.nodeId);
 			return buildNodeMenuItems({
 				onEditProperties: () => {
 					useModelStore.getState().setSelectedElement(contextMenu.nodeId ?? null);
@@ -374,6 +385,7 @@ export function DfdCanvas() {
 					useModelStore.getState().setSelectedElement(contextMenu.nodeId ?? null);
 					useUiStore.getState().setRightPanelTab("threats");
 				},
+				isTextAnnotation: node?.type === "textAnnotation",
 			});
 		}
 		if (contextMenu.edgeId) {

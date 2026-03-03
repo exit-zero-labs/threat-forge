@@ -1,5 +1,5 @@
 import { useReactFlow } from "@xyflow/react";
-import { Box, Search, ShieldAlert } from "lucide-react";
+import { Box, Search, ShieldAlert, Type } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
 	COMPONENT_CATEGORIES,
@@ -25,6 +25,12 @@ const GENERIC_ITEMS = [
 		label: "Boundary",
 		icon: ShieldAlert,
 		description: "Trust zone boundary",
+	},
+	{
+		type: "text" as const,
+		label: "Text",
+		icon: Type,
+		description: "Text annotation",
 	},
 ];
 
