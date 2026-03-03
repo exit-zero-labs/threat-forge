@@ -38,6 +38,7 @@ import {
 	Ship,
 	Smartphone,
 	Terminal,
+	Type,
 	UserCheck,
 	Waves,
 	Waypoints,
@@ -46,10 +47,10 @@ import {
 } from "lucide-react";
 
 /** Shape categories determine how a component renders on the canvas. */
-export type ShapeCategory = "rounded" | "database" | "rect" | "hexagon";
+export type ShapeCategory = "rounded" | "database" | "rect" | "hexagon" | "text";
 
 /** STRIDE categories determine which STRIDE threats apply to a component. */
-export type StrideCategory = "service" | "store" | "actor";
+export type StrideCategory = "service" | "store" | "actor" | "none";
 
 export interface SubtypeDefinition {
 	/** Subtype value stored in YAML, e.g. "rds" */
@@ -123,6 +124,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
 	"package-check": PackageCheck,
 	"code-2": Code2,
 	terminal: Terminal,
+	type: Type,
 };
 
 export const COMPONENT_LIBRARY: ComponentDefinition[] = [
@@ -135,6 +137,17 @@ export const COMPONENT_LIBRARY: ComponentDefinition[] = [
 		icon: "box",
 		category: "Generic",
 		tags: ["generic", "component", "node"],
+	},
+
+	// Annotations
+	{
+		id: "text",
+		label: "Text",
+		shape: "text",
+		strideCategory: "none",
+		icon: "type",
+		category: "Annotations",
+		tags: ["text", "label", "annotation", "note"],
 	},
 
 	// Services

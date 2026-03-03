@@ -12,7 +12,7 @@ ThreatForge is an open-source, AI-enhanced, cross-platform desktop threat modeli
 
 ThreatForge's differentiation is the combination of three things no other tool brings together:
 
-1. **UX gap filled** — A modern, keyboard-shortcut-driven interface with drag-and-drop canvas, 40+ typed components, custom themes, and resizable panes. The kind of experience developers expect from tools like Linear, Figma, or VS Code.
+1. **UX gap filled** — A modern, keyboard-shortcut-driven interface with drag-and-drop canvas, 44 typed components + text annotations, custom themes, and resizable panes. The kind of experience developers expect from tools like Linear, Figma, or VS Code.
 
 2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is binary. Threat Dragon's JSON is verbose. Neither can be opened in a text editor and understood.
 
@@ -36,7 +36,7 @@ ThreatForge's differentiation is the combination of three things no other tool b
 
 ThreatForge is production-ready. The core application is fully functional:
 
-- Modern diagramming canvas with 40+ typed components, drag-and-drop, trust boundaries
+- Modern diagramming canvas with 44 typed components, drag-and-drop, trust boundaries, text annotations
 - STRIDE threat engine with auto-generated threats per element
 - AI chat pane (BYOK) with OpenAI, Anthropic, and Ollama support
 - `.thf` YAML file format with clean git diffs

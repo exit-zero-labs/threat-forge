@@ -71,18 +71,23 @@ export function buildNodeMenuItems({
 	onDelete,
 	onDuplicate,
 	onViewThreats,
+	isTextAnnotation,
 }: {
 	onEditProperties: () => void;
 	onDelete: () => void;
 	onDuplicate: () => void;
 	onViewThreats: () => void;
+	isTextAnnotation?: boolean;
 }): ContextMenuItem[] {
-	return [
+	const items: ContextMenuItem[] = [
 		{ label: "Edit Properties", icon: Pencil, onClick: onEditProperties },
-		{ label: "View Threats", icon: Shield, onClick: onViewThreats },
-		{ label: "Duplicate", icon: Copy, onClick: onDuplicate },
-		{ label: "Delete", icon: Trash2, onClick: onDelete, variant: "danger" },
 	];
+	if (!isTextAnnotation) {
+		items.push({ label: "View Threats", icon: Shield, onClick: onViewThreats });
+	}
+	items.push({ label: "Duplicate", icon: Copy, onClick: onDuplicate });
+	items.push({ label: "Delete", icon: Trash2, onClick: onDelete, variant: "danger" });
+	return items;
 }
 
 /** Build menu items for an edge context menu */

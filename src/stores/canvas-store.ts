@@ -37,6 +37,10 @@ export type DfdNodeData = {
 	elementFillOpacity?: number;
 	/** Element stroke opacity (0-1) */
 	elementStrokeOpacity?: number;
+	/** Font size in pixels (for text annotations) */
+	fontSize?: number;
+	/** Font weight: "normal" | "bold" (for text annotations) */
+	fontWeight?: string;
 	/** For trust boundary group nodes */
 	isBoundary?: boolean;
 	boundaryName?: string;
@@ -210,9 +214,10 @@ export function generateBoundaryId(): string {
 }
 
 export function elementToNode(element: Element, position: { x: number; y: number }): DfdNode {
+	const isText = element.type === "text";
 	return {
 		id: element.id,
-		type: "dfdElement",
+		type: isText ? "textAnnotation" : "dfdElement",
 		position,
 		data: {
 			label: element.name,
@@ -226,6 +231,8 @@ export function elementToNode(element: Element, position: { x: number; y: number
 			elementStrokeColor: element.stroke_color,
 			elementFillOpacity: element.fill_opacity,
 			elementStrokeOpacity: element.stroke_opacity,
+			fontSize: element.font_size,
+			fontWeight: element.font_weight,
 		},
 	};
 }

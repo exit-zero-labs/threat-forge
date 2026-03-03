@@ -51,7 +51,7 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
          Supported actions: add_element, update_element, delete_element, add_data_flow, update_data_flow, delete_data_flow, \
          add_trust_boundary, update_trust_boundary, delete_trust_boundary, add_threat, update_threat, delete_threat.\n\
          For updates, only include fields that need to change. For deletes, only the id is needed.\n\
-         Element types: \"process\", \"data_store\", \"external_entity\". \
+         Element types: \"process\", \"data_store\", \"external_entity\", \"text\" (annotation, no STRIDE threats). \
          STRIDE categories: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege. \
          Severities: critical, high, medium, low, info.\n\
          The user will review and approve actions before they are applied.\n\n",
@@ -197,6 +197,8 @@ mod tests {
             stroke_color: None,
             fill_opacity: None,
             stroke_opacity: None,
+            font_size: None,
+            font_weight: None,
         });
 
         let prompt = build_system_prompt(&model);

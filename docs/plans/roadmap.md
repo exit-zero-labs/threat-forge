@@ -6,7 +6,7 @@ ThreatForge is production-ready. All core features are implemented and tested.
 
 ### What's Done
 
-- Diagramming canvas with 40+ typed components, drag-and-drop, trust boundaries, self-loops
+- Diagramming canvas with 44 typed components + text annotations, drag-and-drop, trust boundaries, self-loops
 - `.thf` YAML file format (single-file, inline layout, clean git diffs)
 - STRIDE threat engine with auto-generated threats per element type
 - AI chat pane (BYOK: OpenAI, Anthropic, Ollama)

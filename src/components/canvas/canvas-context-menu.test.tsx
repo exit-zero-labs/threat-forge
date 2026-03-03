@@ -95,6 +95,19 @@ describe("buildNodeMenuItems", () => {
 		const deleteItem = items.find((i) => i.label === "Delete");
 		expect(deleteItem?.variant).toBe("danger");
 	});
+
+	it("excludes View Threats for text annotations", () => {
+		const items = buildNodeMenuItems({
+			onEditProperties: vi.fn(),
+			onDelete: vi.fn(),
+			onDuplicate: vi.fn(),
+			onViewThreats: vi.fn(),
+			isTextAnnotation: true,
+		});
+
+		expect(items).toHaveLength(3);
+		expect(items.map((i) => i.label)).toEqual(["Edit Properties", "Duplicate", "Delete"]);
+	});
 });
 
 describe("buildEdgeMenuItems", () => {

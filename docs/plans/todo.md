@@ -4,6 +4,64 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-03 — Text Element Feature (Architecture Annotations)
+
+### Context
+Adding a Text element type so users can place annotation labels, callouts, and descriptions directly on the canvas. Text elements are non-connectable and excluded from STRIDE analysis.
+
+### Plan
+- [x] Step 1: Data model — add `font_size`, `font_weight` to Element (Rust + TS)
+- [x] Step 2: Component library — add "text" entry with `ShapeCategory: "text"`, `StrideCategory: "none"`
+- [x] Step 3: STRIDE engine exclusion (TS skip "none" category, Rust add `Annotation` variant)
+- [x] Step 4: Canvas store — route text elements to `textAnnotation` node type
+- [x] Step 5: Create `TextAnnotationNode` component (borderless, no handles, inline edit)
+- [x] Step 6: Register `textAnnotation` in DfdCanvas, reject text node connections
+- [x] Step 7: Add "Text" to component palette GENERIC_ITEMS
+- [x] Step 8: Properties panel — text-specific controls (hide irrelevant fields, add font size/weight)
+- [x] Step 9: Tests — component library, STRIDE engine, Rust round-trip + backward compat
+- [x] Step 10: Lint & validate — biome, tsc, vitest (415/415), cargo clippy, cargo test (59/59), cargo fmt
+
+### Deep Audit (breadth pass)
+- [x] AI prompts: add "text" to element type lists in `ai-prompt.ts` and `prompt.rs`
+- [x] MCP server: add "text" to `VALID_ELEMENT_TYPES` in `mcp/server.rs`
+- [x] Context menu: hide "View Threats" for text annotation nodes (`canvas-context-menu.tsx` + `dfd-canvas.tsx`)
+- [x] Context menu test: added test for `isTextAnnotation` flag excluding "View Threats"
+- [x] Docs: update component counts (44 typed + text annotations) in `README.md`, `overview.md`, `product-design.md`, `roadmap.md`
+- [x] Docs: add Text (Annotation) row to STRIDE mapping table in `glossary.md`
+- [x] Docs: add text annotations to elements description in `file-format.md`
+- [x] Onboarding: update component count in `whats-new-overlay.tsx` (28 → 44 + text annotations)
+- [x] Validate: biome clean, tsc clean, vitest 416/416, cargo clippy clean, cargo test 59/59, cargo fmt clean
+
+### Notes
+- New ReactFlow node type `textAnnotation` (alongside `dfdElement` and `trustBoundary`)
+- Text styling via existing `fill_color`/`fill_opacity` (text color) + new `font_size`/`font_weight`
+- No breaking schema changes — new fields are optional with serde defaults
+
+### Files Created
+| File | Purpose |
+|------|---------|
+| `src/components/canvas/nodes/text-annotation-node.tsx` | Text element ReactFlow node component |
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `src-tauri/src/models/threat_model.rs` | Added `font_size`, `font_weight` to `Element` + 3 round-trip tests |
+| `src-tauri/src/stride/mod.rs` | Added `Annotation` category, skip text elements, test for zero threats |
+| `src-tauri/src/ai/prompt.rs` | Updated Element struct literals with new fields |
+| `src-tauri/src/mcp/server.rs` | Updated Element struct literal with new fields |
+| `src/types/threat-model.ts` | Added `font_size`, `font_weight` to `Element` interface |
+| `src/lib/component-library.ts` | Added `"text"` ShapeCategory, `"none"` StrideCategory, Type icon, text component def |
+| `src/lib/component-library.test.ts` | Updated valid shape/stride lists, 5 new text component tests |
+| `src/lib/stride-engine.ts` | Skip `"none"` category elements |
+| `src/lib/stride-engine.test.ts` | 2 new tests: text produces zero threats, doesn't affect other counts |
+| `src/stores/canvas-store.ts` | Route text to `textAnnotation` node type, added `fontSize`/`fontWeight` to DfdNodeData |
+| `src/components/canvas/dfd-canvas.tsx` | Register `TextAnnotationNode`, reject text node connections |
+| `src/components/palette/component-palette.tsx` | Added "Text" to GENERIC_ITEMS |
+| `src/components/panels/properties-tab.tsx` | Text-specific properties (hide irrelevant, add font controls) |
+| `docs/plans/todo.md` | This plan |
+
+---
+
 ## 2026-03-03 — Revamp Pre-Made Templates (Show-Stopper Level)
 
 ### Context

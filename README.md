@@ -25,7 +25,7 @@ ThreatForge fills that gap.
 
 ## Status
 
-ThreatForge is production-ready. The core application is fully functional with a modern diagramming canvas (40+ typed components), STRIDE threat engine, AI chat pane (BYOK), 13+ themes, keyboard shortcuts, and more. See the [roadmap](docs/plans/roadmap.md) for remaining launch tasks and future plans.
+ThreatForge is production-ready. The core application is fully functional with a modern diagramming canvas (44 typed components + text annotations), STRIDE threat engine, AI chat pane (BYOK), 13+ themes, keyboard shortcuts, and more. See the [roadmap](docs/plans/roadmap.md) for remaining launch tasks and future plans.
 
 ## Development
 

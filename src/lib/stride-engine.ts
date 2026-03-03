@@ -213,6 +213,7 @@ export function analyzeStride(model: ThreatModel): Threat[] {
 	// Element-based rules
 	for (const element of model.elements) {
 		const elementCategory = getStrideCategoryForType(element.type);
+		if (elementCategory === "none") continue;
 		for (const rule of rules) {
 			if (rule.targetsFlows) continue;
 			if (!rule.applicableCategories.includes(elementCategory)) continue;

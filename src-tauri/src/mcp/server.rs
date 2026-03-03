@@ -98,7 +98,7 @@ impl ThreatForgeServer {
     }
 
     /// Valid element types accepted by the MCP server.
-    const VALID_ELEMENT_TYPES: &[&str] = &["process", "data_store", "external_entity"];
+    const VALID_ELEMENT_TYPES: &[&str] = &["process", "data_store", "external_entity", "text"];
 
     /// Generate a unique element ID, appending a suffix on collision.
     fn unique_element_id(model: &ThreatModel, base: &str) -> String {
@@ -316,6 +316,8 @@ impl ThreatForgeServer {
             stroke_color: None,
             fill_opacity: None,
             stroke_opacity: None,
+            font_size: None,
+            font_weight: None,
         };
         model.elements.push(element);
         self.save_locked(&model)?;
