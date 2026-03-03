@@ -2,7 +2,7 @@ import { expect, test } from "./fixtures";
 
 test.describe("App Launch", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 	});
 
 	test("shows empty canvas state on launch", async ({ page }) => {

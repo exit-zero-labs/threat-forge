@@ -9,7 +9,6 @@ beforeEach(() => {
 		settings: { ...DEFAULT_USER_SETTINGS },
 		settingsDialogOpen: true,
 		settingsDialogInitialTab: null,
-		shortcutsDialogOpen: false,
 	});
 });
 
@@ -41,15 +40,6 @@ describe("SettingsDialog", () => {
 		expect(screen.getByText("Grid snap")).toBeInTheDocument();
 		expect(screen.getByText("Grid size")).toBeInTheDocument();
 		expect(screen.getByText("Show minimap")).toBeInTheDocument();
-	});
-
-	it("switches to Shortcuts tab on click", () => {
-		render(<SettingsDialog />);
-
-		fireEvent.click(screen.getByRole("button", { name: /Shortcuts/ }));
-
-		expect(screen.getByText("File")).toBeInTheDocument();
-		expect(screen.getByText("Edit")).toBeInTheDocument();
 	});
 
 	it("opens at AI tab when initialTab is set", () => {
@@ -94,7 +84,7 @@ describe("SettingsDialog", () => {
 		expect(useSettingsStore.getState().settings.gridSize).toBe(DEFAULT_USER_SETTINGS.gridSize);
 	});
 
-	it("shows all nav tabs (no Editor tab)", () => {
+	it("shows all nav tabs (no Editor or Shortcuts tab)", () => {
 		render(<SettingsDialog />);
 
 		const dialog = screen.getByTestId("settings-dialog");
@@ -104,7 +94,7 @@ describe("SettingsDialog", () => {
 		expect(tabLabels).toContain("General");
 		expect(tabLabels).toContain("Appearance");
 		expect(tabLabels).toContain("AI");
-		expect(tabLabels).toContain("Shortcuts");
 		expect(tabLabels).not.toContain("Editor");
+		expect(tabLabels).not.toContain("Shortcuts");
 	});
 });

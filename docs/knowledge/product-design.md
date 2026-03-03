@@ -75,7 +75,7 @@ Download ThreatForge → Open App → First-run Welcome
 1. **Main Canvas** — Split view: diagramming surface (center) + properties/threats panel (right). Component palette on left with draggable elements.
 2. **AI Chat Pane** — Collapsible right-side panel. Maintains conversation context about the current model. One-click accept for AI-suggested threats.
 3. **Threat Analysis View** — Table/list of all threats, filterable by STRIDE category, severity, and mitigation status. Linked to diagram elements.
-4. **Settings** — Tabbed dialog: General, Appearance, Editor, AI, Shortcuts, Support.
+4. **Settings** — Tabbed dialog: General, Appearance, AI, Updates, Support.
 5. **Empty State** — Branded welcome with rotating security tips, quick-start buttons, footer with links.
 
 ## Success Metrics (HEART Framework)

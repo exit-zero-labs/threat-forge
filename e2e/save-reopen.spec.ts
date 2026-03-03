@@ -2,7 +2,7 @@ import { addPaletteItem, createModel, expect, test } from "./fixtures";
 
 test.describe("Save and Reopen", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 	});
 

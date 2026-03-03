@@ -172,13 +172,6 @@ export function buildCommands(deps: {
 			shortcut: fmt("\u2318,", "Ctrl+,"),
 			action: () => useSettingsStore.getState().openSettingsDialog(),
 		},
-		{
-			id: "settings:shortcuts",
-			label: "Keyboard Shortcuts",
-			category: "settings",
-			shortcut: fmt("\u2318/", "Ctrl+/"),
-			action: () => useSettingsStore.getState().openShortcutsDialog(),
-		},
 	];
 
 	// Component placement commands — only available when a model is open

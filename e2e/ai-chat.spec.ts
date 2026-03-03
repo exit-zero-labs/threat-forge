@@ -2,7 +2,7 @@ import { createModel, expect, test } from "./fixtures";
 
 test.describe("AI Chat", () => {
 	test("AI tab shows no API key message", async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 		await page.getByTestId("tab-ai").click();
 
@@ -12,7 +12,7 @@ test.describe("AI Chat", () => {
 	});
 
 	test("settings gear in AI tab opens settings dialog at AI section", async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 		await page.getByTestId("tab-ai").click();
 

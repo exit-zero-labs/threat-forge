@@ -51,8 +51,6 @@ export function useKeyboardShortcuts() {
 						// Close dialogs first, then deselect
 						if (useSettingsStore.getState().settingsDialogOpen) {
 							useSettingsStore.getState().closeSettingsDialog();
-						} else if (useSettingsStore.getState().shortcutsDialogOpen) {
-							useSettingsStore.getState().closeShortcutsDialog();
 						} else {
 							useModelStore.getState().setSelectedElement(null);
 							useModelStore.getState().setSelectedThreat(null);
@@ -206,10 +204,6 @@ export function useKeyboardShortcuts() {
 				case ",":
 					e.preventDefault();
 					useSettingsStore.getState().openSettingsDialog();
-					break;
-				case "/":
-					e.preventDefault();
-					useSettingsStore.getState().openShortcutsDialog();
 					break;
 				case "a":
 					if (!isInputFocused) {

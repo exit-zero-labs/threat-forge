@@ -4,7 +4,6 @@ import {
 	ExternalLink,
 	Github,
 	Globe,
-	Keyboard,
 	LifeBuoy,
 	Lightbulb,
 	Loader2,
@@ -22,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { type SettingsTab, useSettingsStore } from "@/stores/settings-store";
 import { useUpdateStore } from "@/stores/update-store";
 import type { FontSize } from "@/types/settings";
-import { KEYBOARD_SHORTCUTS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
 import { ThemePicker } from "./theme-picker";
 
@@ -42,11 +40,6 @@ const SECTIONS: {
 		icon: <Paintbrush className="h-3.5 w-3.5" />,
 	},
 	{ id: "ai", label: "AI", icon: <Sparkles className="h-3.5 w-3.5" /> },
-	{
-		id: "shortcuts",
-		label: "Shortcuts",
-		icon: <Keyboard className="h-3.5 w-3.5" />,
-	},
 	{
 		id: "updates",
 		label: "Updates",
@@ -128,7 +121,6 @@ export function SettingsDialog() {
 						{section === "general" && <GeneralSection />}
 						{section === "appearance" && <AppearanceSection />}
 						{section === "ai" && <AiSettingsContent />}
-						{section === "shortcuts" && <ShortcutsSection />}
 						{section === "updates" && <UpdatesSection />}
 						{section === "support" && <SupportSection />}
 					</div>
@@ -278,50 +270,6 @@ function AppearanceSection() {
 					onChange={(v) => updateSetting("minimapVisible", v)}
 				/>
 			</SettingRow>
-		</div>
-	);
-}
-
-function ShortcutsSection() {
-	const isMac = navigator.platform.includes("Mac");
-	const categories = ["file", "edit", "view", "canvas"] as const;
-	const categoryLabels = {
-		file: "File",
-		edit: "Edit",
-		view: "View",
-		canvas: "Canvas",
-	} as const;
-
-	return (
-		<div className="space-y-4">
-			{categories.map((cat) => {
-				const shortcuts = KEYBOARD_SHORTCUTS.filter((s) => s.category === cat);
-				if (shortcuts.length === 0) return null;
-				return (
-					<div key={cat}>
-						<h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-							{categoryLabels[cat]}
-						</h3>
-						<div className="space-y-1">
-							{shortcuts.map((shortcut) => (
-								<div
-									key={shortcut.id}
-									className="flex items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-accent/30"
-								>
-									<span className="text-foreground">{shortcut.label}</span>
-									<kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-										{isMac ? shortcut.macKeys : shortcut.winKeys}
-									</kbd>
-								</div>
-							))}
-						</div>
-					</div>
-				);
-			})}
-
-			<p className="text-xs text-muted-foreground/70">
-				Custom keyboard shortcuts coming in a future release.
-			</p>
 		</div>
 	);
 }

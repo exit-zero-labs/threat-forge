@@ -165,9 +165,6 @@ export function useNativeMenu() {
 						break;
 
 					// Help
-					case "help-shortcuts":
-						useSettingsStore.getState().openShortcutsDialog();
-						break;
 					case "help-guides":
 						// Handled via a frontend event — guide picker is a React component
 						window.dispatchEvent(new CustomEvent("open-guide-picker"));

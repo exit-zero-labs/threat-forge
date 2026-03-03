@@ -2,7 +2,7 @@ import { createModel, expect, test } from "./fixtures";
 
 test.describe("New Model", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 	});
 
 	test("creates new model via empty state button", async ({ page }) => {

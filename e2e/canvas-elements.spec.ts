@@ -2,7 +2,7 @@ import { addPaletteItem, createModel, expect, modKey, test } from "./fixtures";
 
 test.describe("Canvas Elements", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 	});
 

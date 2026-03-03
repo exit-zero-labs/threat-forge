@@ -45,7 +45,7 @@ test.describe("Canvas Visual Regression", () => {
 	test.skip(!!process.env.CI, "Visual regression tests require platform-specific baselines");
 
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 	});
 
