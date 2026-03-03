@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isTauri } from "@/lib/platform";
@@ -51,6 +50,7 @@ export const useUpdateStore = create<UpdateState>()(
 
 				set({ isChecking: true });
 				try {
+					const { invoke } = await import("@tauri-apps/api/core");
 					const info = await invoke<UpdateInfo | null>("check_for_update");
 					set({
 						updateAvailable: info,
@@ -72,6 +72,7 @@ export const useUpdateStore = create<UpdateState>()(
 
 				set({ isInstalling: true, installError: null });
 				try {
+					const { invoke } = await import("@tauri-apps/api/core");
 					await invoke("install_update");
 				} catch (err) {
 					const message = err instanceof Error ? err.message : String(err);
