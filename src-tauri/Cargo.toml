@@ -1,6 +1,6 @@
 [package]
 name = "threat-forge"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-enhanced threat modeling desktop application"
 authors = ["Exit Zero Labs <admin@exitzerolabs.com>"]
 license = "Apache-2.0"
