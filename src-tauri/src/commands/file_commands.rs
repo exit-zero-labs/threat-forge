@@ -1,5 +1,6 @@
 use crate::file_io;
 use crate::models::{DiagramLayout, ThreatModel};
+use std::fs;
 use std::path::PathBuf;
 
 #[tauri::command]
@@ -31,4 +32,18 @@ pub fn open_layout(path: String) -> Result<DiagramLayout, String> {
 pub fn save_layout(path: String, layout: DiagramLayout) -> Result<(), String> {
     let path = PathBuf::from(path);
     file_io::write_layout(&path, &layout).map_err(|e| e.to_string())
+}
+
+/// Write text content to a file. Only allows `.html` and `.thf` extensions
+/// to prevent misuse as an arbitrary file write primitive.
+#[tauri::command]
+pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !matches!(ext, "html" | "thf") {
+        return Err(format!(
+            "write_text_file only supports .html and .thf files, got: .{ext}"
+        ));
+    }
+    fs::write(&path, content).map_err(|e| e.to_string())
 }

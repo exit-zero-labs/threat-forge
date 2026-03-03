@@ -79,6 +79,7 @@ export interface Element {
 
 export interface DataFlow {
 	id: string;
+	flow_number?: number;
 	name: string;
 	from: string;
 	to: string;

@@ -6,6 +6,7 @@ import {
 	getShapeForType,
 	type ShapeCategory,
 } from "@/lib/component-library";
+import { getServiceIcon } from "@/lib/service-icons";
 import { cn } from "@/lib/utils";
 import type { DfdNodeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
@@ -15,8 +16,12 @@ import { ThreatBadge, useThreatCount } from "./threat-badge";
 
 /**
  * Convert a hex color (#rrggbb) + opacity (0-1) to an rgba string.
+ * Returns a neutral gray fallback for invalid hex values.
  */
 function hexToRgba(hex: string, opacity: number): string {
+	if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+		return `rgba(136, 136, 136, ${opacity})`;
+	}
 	const r = Number.parseInt(hex.slice(1, 3), 16);
 	const g = Number.parseInt(hex.slice(3, 5), 16);
 	const b = Number.parseInt(hex.slice(5, 7), 16);
@@ -38,28 +43,67 @@ function shapeClass(shape: ShapeCategory): string {
 	}
 }
 
+/** Resolved icon: either a Lucide component or an SVG path string. */
+type ResolvedIcon =
+	| { type: "lucide"; component: ReturnType<typeof getIconComponent> }
+	| { type: "svg"; path: string; fillRule?: "evenodd" | "nonzero" };
+
 /**
- * Resolve the lucide icon component for a node.
- * Priority: subtype library icon > component type icon > direct icon field > no icon.
+ * Resolve the icon for a node.
+ * Priority: service icon (subtype/icon) > subtype library icon > component type icon > direct icon field > no icon.
  */
-function resolveIcon(elementType: string, subtype?: string, icon?: string) {
+function resolveIcon(elementType: string, subtype?: string, icon?: string): ResolvedIcon | null {
+	// Check service icon registry first for subtype or icon field
+	const serviceId = subtype || icon;
+	if (serviceId) {
+		const svc = getServiceIcon(serviceId);
+		if (svc) return { type: "svg", path: svc.path, fillRule: svc.fillRule };
+	}
+
 	if (subtype) {
-		// Check if parent component has this subtype defined
 		const parentComp = getComponentByType(elementType);
 		const subtypeDef = parentComp?.subtypes?.find((st) => st.id === subtype);
-		if (subtypeDef) return getIconComponent(subtypeDef.icon);
-		// Fall back to looking up subtype as a component ID
+		if (subtypeDef) {
+			const comp = getIconComponent(subtypeDef.icon);
+			if (comp) return { type: "lucide", component: comp };
+		}
 		const comp = getComponentByType(subtype);
-		if (comp) return getIconComponent(comp.icon);
+		if (comp) {
+			const lucide = getIconComponent(comp.icon);
+			if (lucide) return { type: "lucide", component: lucide };
+		}
 	}
-	// Try the component type's default icon
 	const comp = getComponentByType(elementType);
-	if (comp) return getIconComponent(comp.icon);
-	// Fall back to direct icon field
-	if (icon) {
-		return getIconComponent(icon);
+	if (comp) {
+		const lucide = getIconComponent(comp.icon);
+		if (lucide) return { type: "lucide", component: lucide };
 	}
-	return undefined;
+	if (icon) {
+		const lucide = getIconComponent(icon);
+		if (lucide) return { type: "lucide", component: lucide };
+	}
+	return null;
+}
+
+/** Render a resolved icon as either a Lucide component or inline SVG. */
+function NodeIcon({ resolved }: { resolved: ResolvedIcon }) {
+	if (resolved.type === "lucide" && resolved.component) {
+		const LucideIcon = resolved.component;
+		return <LucideIcon className="h-4 w-4 shrink-0 text-muted-foreground" />;
+	}
+	if (resolved.type === "svg") {
+		return (
+			<svg
+				className="h-4 w-4 shrink-0 text-muted-foreground"
+				viewBox="0 0 24 24"
+				fill="currentColor"
+				aria-hidden="true"
+			>
+				<path d={resolved.path} fillRule={resolved.fillRule ?? "nonzero"} />
+			</svg>
+		);
+	}
+	return null;
 }
 
 export function DfdElementNode({ id, data, selected }: NodeProps) {
@@ -74,7 +118,7 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 	);
 
 	const shape = getShapeForType(nodeData.elementType);
-	const Icon = resolveIcon(nodeData.elementType, nodeData.subtype, nodeData.icon);
+	const resolvedIcon = resolveIcon(nodeData.elementType, nodeData.subtype, nodeData.icon);
 
 	const fillColor = nodeData.elementFillColor as string | undefined;
 	const strokeColor = nodeData.elementStrokeColor as string | undefined;
@@ -138,7 +182,7 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 						className="flex items-center justify-center gap-1.5 text-sm font-medium text-foreground cursor-text"
 						onDoubleClick={() => setIsEditing(true)}
 					>
-						{Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />}
+						{resolvedIcon && <NodeIcon resolved={resolvedIcon} />}
 						<span>{nodeData.label}</span>
 					</div>
 				)}

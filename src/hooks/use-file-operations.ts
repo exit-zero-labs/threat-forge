@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { getFileAdapter } from "@/lib/adapters/get-file-adapter";
+import { generateHtmlReport } from "@/lib/export/export-html";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
@@ -10,6 +11,13 @@ import type { ThreatModel } from "@/types/threat-model";
 
 function todayString(): string {
 	return new Date().toISOString().split("T")[0];
+}
+
+function sanitizeFilename(name: string): string {
+	return name
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
 }
 
 /** Build an author string like "Jane Doe <jane@example.com>" from settings. */
@@ -192,5 +200,16 @@ export function useFileOperations() {
 		useCanvasStore.getState().syncFromModel();
 	}, [isDirty, clearModel]);
 
-	return { newModel, openModel, saveModel, saveModelAs, closeModel };
+	const exportAsHtml = useCallback(async () => {
+		if (!model) return;
+
+		const captured = captureCanvasIntoModel(model);
+		const html = generateHtmlReport(captured);
+		const defaultName = sanitizeFilename(model.metadata.title) || "threat-model-report";
+
+		const adapter = await getFileAdapter();
+		await adapter.exportAsHtml(html, defaultName);
+	}, [model]);
+
+	return { newModel, openModel, saveModel, saveModelAs, closeModel, exportAsHtml };
 }

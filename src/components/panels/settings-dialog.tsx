@@ -1,11 +1,13 @@
 import {
 	Bug,
+	Download,
 	ExternalLink,
 	Github,
 	Globe,
 	Keyboard,
 	LifeBuoy,
 	Lightbulb,
+	Loader2,
 	Mail,
 	Monitor,
 	Paintbrush,
@@ -19,6 +21,7 @@ import { useState } from "react";
 import { openExternalUrl } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type SettingsTab, useSettingsStore } from "@/stores/settings-store";
+import { useUpdateStore } from "@/stores/update-store";
 import { KEYBOARD_SHORTCUTS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
 import { ThemePicker } from "./theme-picker";
@@ -44,6 +47,11 @@ const SECTIONS: {
 		id: "shortcuts",
 		label: "Shortcuts",
 		icon: <Keyboard className="h-3.5 w-3.5" />,
+	},
+	{
+		id: "updates",
+		label: "Updates",
+		icon: <Download className="h-3.5 w-3.5" />,
 	},
 	{
 		id: "support",
@@ -123,6 +131,7 @@ export function SettingsDialog() {
 						{section === "editor" && <EditorSection />}
 						{section === "ai" && <AiSettingsContent />}
 						{section === "shortcuts" && <ShortcutsSection />}
+						{section === "updates" && <UpdatesSection />}
 						{section === "support" && <SupportSection />}
 					</div>
 				</div>
@@ -311,6 +320,70 @@ function ShortcutsSection() {
 			<p className="text-xs text-muted-foreground/70">
 				Custom keyboard shortcuts coming in a future release.
 			</p>
+		</div>
+	);
+}
+
+function UpdatesSection() {
+	const isChecking = useUpdateStore((s) => s.isChecking);
+	const updateAvailable = useUpdateStore((s) => s.updateAvailable);
+	const lastCheckTime = useUpdateStore((s) => s.lastCheckTime);
+	const checkForUpdate = useUpdateStore((s) => s.checkForUpdate);
+
+	const lastChecked = lastCheckTime ? new Date(lastCheckTime).toLocaleString() : "Never";
+
+	return (
+		<div className="space-y-5">
+			<div className="flex items-center justify-between gap-4">
+				<div className="min-w-0">
+					<p className="text-sm font-medium text-foreground">Current version</p>
+					<p className="text-xs text-muted-foreground">{__APP_VERSION__ ?? "dev"}</p>
+				</div>
+			</div>
+
+			<div className="border-t border-border pt-4" />
+
+			<div className="flex items-center justify-between gap-4">
+				<div className="min-w-0">
+					<p className="text-sm font-medium text-foreground">Check for updates</p>
+					<p className="text-xs text-muted-foreground">Last checked: {lastChecked}</p>
+				</div>
+				<button
+					type="button"
+					disabled={isChecking}
+					onClick={() => void checkForUpdate()}
+					className="flex items-center gap-1.5 rounded border border-border px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+				>
+					{isChecking ? (
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+					) : (
+						<Download className="h-3.5 w-3.5" />
+					)}
+					{isChecking ? "Checking..." : "Check Now"}
+				</button>
+			</div>
+
+			{updateAvailable && (
+				<div className="rounded border border-primary/30 bg-primary/5 p-3">
+					<p className="text-sm font-medium text-foreground">
+						Update available: v{updateAvailable.version}
+					</p>
+					{updateAvailable.body && (
+						<p className="mt-1 text-xs text-muted-foreground">{updateAvailable.body}</p>
+					)}
+				</div>
+			)}
+
+			{!updateAvailable && lastCheckTime && !isChecking && (
+				<p className="text-xs text-muted-foreground">You're running the latest version.</p>
+			)}
+
+			<div className="border-t border-border pt-4">
+				<p className="text-xs text-muted-foreground">
+					ThreatForge checks for updates automatically every 24 hours. Updates are downloaded from
+					GitHub Releases and verified with a cryptographic signature.
+				</p>
+			</div>
 		</div>
 	);
 }

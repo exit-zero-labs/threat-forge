@@ -170,4 +170,9 @@ html.light {
 		height: 100%;
 		width: 100%;
 	}
+
+	/* Show connection handles on node hover */
+	.react-flow__node:hover .react-flow__handle {
+		opacity: 1 !important;
+	}
 }

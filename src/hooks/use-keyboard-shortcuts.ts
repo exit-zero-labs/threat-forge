@@ -9,7 +9,7 @@ import { useUiStore } from "@/stores/ui-store";
 import { useFileOperations } from "./use-file-operations";
 
 export function useKeyboardShortcuts() {
-	const { newModel, openModel, saveModel, saveModelAs } = useFileOperations();
+	const { newModel, openModel, saveModel, saveModelAs, exportAsHtml } = useFileOperations();
 	const setRightPanelTab = useUiStore((s) => s.setRightPanelTab);
 
 	useEffect(() => {
@@ -27,6 +27,11 @@ export function useKeyboardShortcuts() {
 
 			if (!isInputFocused && !mod) {
 				switch (e.key) {
+					case "Delete":
+					case "Backspace":
+						e.preventDefault();
+						useCanvasStore.getState().deleteSelected();
+						return;
 					case "1":
 						e.preventDefault();
 						useUiStore.getState().rightPanelOpen || useUiStore.getState().toggleRightPanel();
@@ -100,6 +105,12 @@ export function useKeyboardShortcuts() {
 					} else {
 						e.preventDefault();
 						void saveModel();
+					}
+					break;
+				case "e":
+					if (e.shiftKey) {
+						e.preventDefault();
+						void exportAsHtml();
 					}
 					break;
 				case "z": {
@@ -229,5 +240,5 @@ export function useKeyboardShortcuts() {
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [newModel, openModel, saveModel, saveModelAs, setRightPanelTab]);
+	}, [newModel, openModel, saveModel, saveModelAs, exportAsHtml, setRightPanelTab]);
 }

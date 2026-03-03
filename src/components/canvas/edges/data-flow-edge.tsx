@@ -75,8 +75,8 @@ export function DataFlowEdge({
 	const isAuthenticated = edgeData?.authenticated === true;
 	const hasTextLabel =
 		edgeData?.name || edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0);
-	// Show the label chip if there's text content OR the edge is authenticated (lock icon)
-	const hasLabel = hasTextLabel || isAuthenticated;
+	// Show the label chip if there's text content, authenticated (lock icon), or flow number
+	const hasLabel = hasTextLabel || isAuthenticated || edgeData?.flowNumber != null;
 
 	// Custom label position (user-dragged offset from default)
 	const offsetX = (edgeData?.labelOffsetX as number) ?? 0;
@@ -119,6 +119,10 @@ export function DataFlowEdge({
 	useEffect(() => {
 		const el = labelRef.current;
 		if (!el) return;
+
+		// Track active document listeners for cleanup on unmount
+		let activeMoveListener: ((ev: PointerEvent) => void) | null = null;
+		let activeUpListener: (() => void) | null = null;
 
 		const handlePointerDown = (e: PointerEvent) => {
 			if (e.button !== 0) return;
@@ -208,10 +212,17 @@ export function DataFlowEdge({
 
 			document.addEventListener("pointermove", onPointerMove);
 			document.addEventListener("pointerup", onPointerUp);
+			activeMoveListener = onPointerMove;
+			activeUpListener = onPointerUp;
 		};
 
 		el.addEventListener("pointerdown", handlePointerDown);
-		return () => el.removeEventListener("pointerdown", handlePointerDown);
+		return () => {
+			el.removeEventListener("pointerdown", handlePointerDown);
+			// Clean up document listeners if component unmounts mid-drag
+			if (activeMoveListener) document.removeEventListener("pointermove", activeMoveListener);
+			if (activeUpListener) document.removeEventListener("pointerup", activeUpListener);
+		};
 	}, [id, setEdges]);
 
 	return (
@@ -289,6 +300,11 @@ export function DataFlowEdge({
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}
 					>
+						{edgeData?.flowNumber != null && (
+							<span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">
+								{edgeData.flowNumber}
+							</span>
+						)}
 						{isAuthenticated && <Lock className="h-3 w-3 shrink-0 text-tf-signal" />}
 						{hasTextLabel && (
 							<div>
