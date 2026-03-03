@@ -4,6 +4,54 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-03 — Revamp Pre-Made Templates (Show-Stopper Level)
+
+### Context
+Current templates are basic — generic types (no proper shapes/icons), no colors, no threats, linear/wonky layouts, only 3 templates. Need to make them professional, complex, and visually impressive.
+
+### Plan
+- [x] Rewrite 3 existing templates with proper component library types
+  - [x] Use `web_browser`, `api_gateway`, `sql_database`, `cdn`, `load_balancer`, etc. for proper shapes (hexagon, database barrel, rect)
+  - [x] Add 12-13 elements per template (up from 5-8)
+  - [x] Add colored trust boundaries (different colors per zone type)
+  - [x] Add 5 pre-populated STRIDE threats with mitigations per template
+  - [x] Add rich descriptions, technologies, stores on all elements
+  - [x] Design professional spatial layouts (layered, hub-and-spoke)
+- [x] Add 3 new templates (total 6 for 2x3 grid)
+  - [x] SaaS Platform
+  - [x] IoT Smart Building
+  - [x] Healthcare Data Platform
+- [x] Update EmptyCanvas grid layout for 6 templates (2x3 grid, per-template icons + accent colors)
+- [x] Visual validation with Playwright
+  - [x] Screenshot each template after loading
+  - [x] Fix onboarding suppression (correct localStorage keys + format)
+  - [x] Iterate on positions — spread columns wider for flow label clarity
+  - [x] Verify colors, shapes, boundary sizing — all rendering correctly
+- [x] Validate: biome clean, tsc clean, vitest 408/408 pass
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `src/lib/templates.ts` | Complete rewrite — 6 templates (was 3), 12-13 elements each, colored boundaries, 5 STRIDE threats per template, proper component library types |
+| `src/components/canvas/canvas.tsx` | 2x3 template grid (was max-w-lg), per-template Lucide icons + accent colors |
+| `e2e/screenshot-templates.spec.ts` | New — Playwright visual validation script for all templates |
+| `docs/plans/todo.md` | This plan |
+
+### Files Deleted
+| File | Why |
+|------|-----|
+| `scripts/screenshot-templates.ts` | Superseded by `e2e/screenshot-templates.spec.ts` |
+
+### Notes
+- Template 1: E-Commerce Platform (revamp of Web Application)
+- Template 2: Cloud Microservices (revamp of Microservices)
+- Template 3: Mobile Banking (revamp of Mobile App)
+- Template 4: SaaS Platform (new)
+- Template 5: IoT Smart Building (new)
+- Template 6: Healthcare Data Platform (new)
+
+---
+
 ## 2026-03-03 — Remove Keyboard Shortcuts Dialog + Fix Broken E2E Tests
 
 ### Context

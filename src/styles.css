@@ -176,6 +176,11 @@ html.light {
 		opacity: 1 !important;
 	}
 
+	/* Ensure edge labels render above connector lines */
+	.react-flow__edgelabel-renderer {
+		z-index: 5;
+	}
+
 	/* Edge reconnect grab handles — circles at edge endpoints for drag-to-reconnect */
 	.react-flow__edgeupdater {
 		width: 14px;

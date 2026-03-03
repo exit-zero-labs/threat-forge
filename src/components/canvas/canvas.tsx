@@ -1,4 +1,15 @@
-import { FileText, FolderOpen, Github } from "lucide-react";
+import {
+	Building2,
+	Cloud,
+	CreditCard,
+	FolderOpen,
+	Github,
+	HeartPulse,
+	type LucideIcon,
+	Radio,
+	ShoppingCart,
+	Smartphone,
+} from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
@@ -85,7 +96,7 @@ function EmptyCanvas() {
 				</div>
 
 				{/* Templates */}
-				<div className="mt-8 w-full max-w-lg">
+				<div className="mt-8 w-full max-w-2xl">
 					<p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
 						Start from a template
 					</p>
@@ -120,6 +131,25 @@ function EmptyCanvas() {
 	);
 }
 
+const TEMPLATE_ICONS: Record<string, LucideIcon> = {
+	"ecommerce-platform": ShoppingCart,
+	"cloud-microservices": Cloud,
+	"mobile-banking": Smartphone,
+	"saas-platform": CreditCard,
+	"iot-smart-building": Building2,
+	"healthcare-system": HeartPulse,
+};
+
+/** Accent colors per template (matching boundary color families) */
+const TEMPLATE_ACCENT: Record<string, string> = {
+	"ecommerce-platform": "text-orange-400",
+	"cloud-microservices": "text-blue-400",
+	"mobile-banking": "text-red-400",
+	"saas-platform": "text-purple-400",
+	"iot-smart-building": "text-emerald-400",
+	"healthcare-system": "text-rose-400",
+};
+
 function TemplateCard({
 	template,
 	onSelect,
@@ -127,6 +157,9 @@ function TemplateCard({
 	template: TemplateInfo;
 	onSelect: (id: string) => void;
 }) {
+	const Icon = TEMPLATE_ICONS[template.id] ?? Radio;
+	const accentClass = TEMPLATE_ACCENT[template.id] ?? "text-muted-foreground";
+
 	return (
 		<button
 			type="button"
@@ -134,7 +167,7 @@ function TemplateCard({
 			onClick={() => onSelect(template.id)}
 			className="flex flex-col items-start gap-1.5 rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent/50 hover:border-accent"
 		>
-			<FileText className="h-4 w-4 text-muted-foreground" />
+			<Icon className={`h-4 w-4 ${accentClass}`} />
 			<span className="text-sm font-medium text-foreground">{template.name}</span>
 			<span className="text-xs text-muted-foreground leading-snug">{template.description}</span>
 		</button>
