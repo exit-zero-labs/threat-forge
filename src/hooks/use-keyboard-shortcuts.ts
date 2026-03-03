@@ -27,6 +27,11 @@ export function useKeyboardShortcuts() {
 
 			if (!isInputFocused && !mod) {
 				switch (e.key) {
+					case "Delete":
+					case "Backspace":
+						e.preventDefault();
+						useCanvasStore.getState().deleteSelected();
+						return;
 					case "1":
 						e.preventDefault();
 						useUiStore.getState().rightPanelOpen || useUiStore.getState().toggleRightPanel();

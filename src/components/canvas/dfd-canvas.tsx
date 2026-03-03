@@ -49,7 +49,6 @@ export function DfdCanvas() {
 	const addElement = useCanvasStore((s) => s.addElement);
 	const addDataFlow = useCanvasStore((s) => s.addDataFlow);
 	const addTrustBoundary = useCanvasStore((s) => s.addTrustBoundary);
-	const deleteSelected = useCanvasStore((s) => s.deleteSelected);
 	const duplicateElement = useCanvasStore((s) => s.duplicateElement);
 	const reverseEdge = useCanvasStore((s) => s.reverseEdge);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
@@ -195,15 +194,6 @@ export function DfdCanvas() {
 		[addElement, addTrustBoundary, screenToFlowPosition],
 	);
 
-	const onKeyDown = useCallback(
-		(event: React.KeyboardEvent) => {
-			if (event.key === "Delete" || event.key === "Backspace") {
-				deleteSelected();
-			}
-		},
-		[deleteSelected],
-	);
-
 	const onPaneClick = useCallback(() => {
 		useModelStore.getState().setSelectedElement(null);
 		useModelStore.getState().setSelectedEdge(null);
@@ -323,7 +313,7 @@ export function DfdCanvas() {
 	}, [effectivePresetId]);
 
 	return (
-		<div className="h-full w-full" onKeyDown={onKeyDown}>
+		<div className="h-full w-full">
 			<ReactFlow<DfdNode, DfdEdge>
 				nodes={nodes}
 				edges={edges}
