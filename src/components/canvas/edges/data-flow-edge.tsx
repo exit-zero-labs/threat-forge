@@ -291,7 +291,7 @@ export function DataFlowEdge({
 						ref={labelRef}
 						type="button"
 						className={cn(
-							"pointer-events-auto nodrag nopan absolute flex items-center gap-1 rounded border px-1.5 py-0.5 text-left transition-colors",
+							"pointer-events-auto nodrag nopan absolute z-10 flex flex-col items-start gap-0.5 rounded border px-1.5 py-1 text-left transition-colors",
 							selected
 								? "border-tf-signal bg-tf-signal/10 text-foreground cursor-grab active:cursor-grabbing"
 								: "border-border bg-card text-muted-foreground hover:border-muted-foreground cursor-pointer",
@@ -300,29 +300,22 @@ export function DataFlowEdge({
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}
 					>
-						{edgeData?.flowNumber != null && (
-							<span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">
-								{edgeData.flowNumber}
-							</span>
-						)}
-						{isAuthenticated && <Lock className="h-3 w-3 shrink-0 text-tf-signal" />}
-						{hasTextLabel && (
-							<div>
-								{edgeData?.name && (
-									<div className="text-[11px] font-medium text-foreground">{edgeData.name}</div>
+						{(edgeData?.flowNumber != null || isAuthenticated) && (
+							<div className="flex items-center gap-1">
+								{edgeData?.flowNumber != null && (
+									<span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">
+										{edgeData.flowNumber}
+									</span>
 								)}
-								{(edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0)) && (
-									<div className="text-[9px]">
-										{edgeData?.protocol && <span>{edgeData.protocol}</span>}
-										{edgeData?.protocol && edgeData?.data && edgeData.data.length > 0 && (
-											<span> · </span>
-										)}
-										{edgeData?.data && edgeData.data.length > 0 && (
-											<span>{edgeData.data.join(", ")}</span>
-										)}
-									</div>
-								)}
+								{isAuthenticated && <Lock className="h-3 w-3 shrink-0 text-tf-signal" />}
 							</div>
+						)}
+						{edgeData?.name && (
+							<div className="text-[11px] font-medium text-foreground">{edgeData.name}</div>
+						)}
+						{edgeData?.protocol && <div className="text-[9px]">{edgeData.protocol}</div>}
+						{edgeData?.data && edgeData.data.length > 0 && (
+							<div className="text-[9px]">{edgeData.data.join(", ")}</div>
 						)}
 					</button>
 				)}
@@ -340,7 +333,7 @@ export function DataFlowEdge({
 				{!hasLabel && !isEditing && (isHovered || selected) && (
 					<button
 						type="button"
-						className="pointer-events-auto nodrag nopan absolute flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-accent"
+						className="pointer-events-auto nodrag nopan absolute z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-accent"
 						style={{
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}
