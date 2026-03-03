@@ -14,7 +14,7 @@ const HANDLE_STYLE =
 
 /**
  * Shared bidirectional handles for all DFD element nodes.
- * 4 connection points: top, bottom, left, right.
+ * 8 connection points: 4 cardinal (top, bottom, left, right) + 4 corners.
  * Each point has both a source and target handle for bidirectional connections.
  *
  * Handles are invisible by default and appear on:
@@ -24,56 +24,76 @@ const HANDLE_STYLE =
 export function NodeHandles() {
 	const isConnecting = useCanvasStore((s) => s.isConnecting);
 	const visibleClass = isConnecting ? "!opacity-100" : "";
+	const cls = `${HANDLE_STYLE} ${visibleClass}`;
 
 	return (
 		<>
+			{/* Cardinal handles */}
+			<Handle id="top-target" type="target" position={Position.Top} className={cls} />
+			<Handle id="top-source" type="source" position={Position.Top} className={cls} />
+			<Handle id="bottom-target" type="target" position={Position.Bottom} className={cls} />
+			<Handle id="bottom-source" type="source" position={Position.Bottom} className={cls} />
+			<Handle id="left-target" type="target" position={Position.Left} className={cls} />
+			<Handle id="left-source" type="source" position={Position.Left} className={cls} />
+			<Handle id="right-target" type="target" position={Position.Right} className={cls} />
+			<Handle id="right-source" type="source" position={Position.Right} className={cls} />
+
+			{/* Corner handles — positioned via style offset from their nearest side */}
 			<Handle
-				id="top-target"
+				id="top-left-target"
 				type="target"
 				position={Position.Top}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
+				className={cls}
+				style={{ left: "15%" }}
 			/>
 			<Handle
-				id="top-source"
+				id="top-left-source"
 				type="source"
 				position={Position.Top}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
+				className={cls}
+				style={{ left: "15%" }}
 			/>
 			<Handle
-				id="bottom-target"
+				id="top-right-target"
+				type="target"
+				position={Position.Top}
+				className={cls}
+				style={{ left: "85%" }}
+			/>
+			<Handle
+				id="top-right-source"
+				type="source"
+				position={Position.Top}
+				className={cls}
+				style={{ left: "85%" }}
+			/>
+			<Handle
+				id="bottom-left-target"
 				type="target"
 				position={Position.Bottom}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
+				className={cls}
+				style={{ left: "15%" }}
 			/>
 			<Handle
-				id="bottom-source"
+				id="bottom-left-source"
 				type="source"
 				position={Position.Bottom}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
+				className={cls}
+				style={{ left: "15%" }}
 			/>
 			<Handle
-				id="left-target"
+				id="bottom-right-target"
 				type="target"
-				position={Position.Left}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
+				position={Position.Bottom}
+				className={cls}
+				style={{ left: "85%" }}
 			/>
 			<Handle
-				id="left-source"
+				id="bottom-right-source"
 				type="source"
-				position={Position.Left}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
-			/>
-			<Handle
-				id="right-target"
-				type="target"
-				position={Position.Right}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
-			/>
-			<Handle
-				id="right-source"
-				type="source"
-				position={Position.Right}
-				className={`${HANDLE_STYLE} ${visibleClass}`}
+				position={Position.Bottom}
+				className={cls}
+				style={{ left: "85%" }}
 			/>
 		</>
 	);

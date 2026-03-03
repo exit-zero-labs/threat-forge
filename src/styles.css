@@ -175,4 +175,17 @@ html.light {
 	.react-flow__node:hover .react-flow__handle {
 		opacity: 1 !important;
 	}
+
+	/* Edge reconnect grab handles — circles at edge endpoints for drag-to-reconnect */
+	.react-flow__edgeupdater {
+		width: 14px;
+		height: 14px;
+		fill: transparent;
+		stroke: none;
+		cursor: grab;
+	}
+	.react-flow__edgeupdater:hover {
+		fill: var(--color-tf-signal);
+		fill-opacity: 0.5;
+	}
 }

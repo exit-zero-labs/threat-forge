@@ -52,6 +52,7 @@ export function DfdCanvas() {
 	const addTrustBoundary = useCanvasStore((s) => s.addTrustBoundary);
 	const duplicateElement = useCanvasStore((s) => s.duplicateElement);
 	const reverseEdge = useCanvasStore((s) => s.reverseEdge);
+	const reconnectEdge = useCanvasStore((s) => s.reconnectEdge);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
 	const {
@@ -145,6 +146,27 @@ export function DfdCanvas() {
 		connectingNodeId.current = null;
 		useCanvasStore.getState().setIsConnecting(false);
 	}, []);
+
+	const onReconnect = useCallback(
+		(oldEdge: DfdEdge, newConnection: Connection) => {
+			reconnectEdge(oldEdge, newConnection);
+		},
+		[reconnectEdge],
+	);
+
+	const onReconnectStart = useCallback(
+		(_event: React.MouseEvent, _edge: DfdEdge, _handleType: string) => {
+			useCanvasStore.getState().setIsConnecting(true);
+		},
+		[],
+	);
+
+	const onReconnectEnd = useCallback(
+		(_event: MouseEvent | TouchEvent, _edge: DfdEdge, _handleType: string) => {
+			useCanvasStore.getState().setIsConnecting(false);
+		},
+		[],
+	);
 
 	/** Validates whether a connection is allowed */
 	const isValidConnection = useCallback((connection: Connection | DfdEdge) => {
@@ -410,6 +432,10 @@ export function DfdCanvas() {
 				onConnect={onConnect}
 				onConnectStart={onConnectStart}
 				onConnectEnd={onConnectEnd}
+				edgesReconnectable={!canvasLocked}
+				onReconnect={onReconnect}
+				onReconnectStart={onReconnectStart}
+				onReconnectEnd={onReconnectEnd}
 				isValidConnection={isValidConnection}
 				onMoveEnd={(_event, viewport) => setViewport(viewport)}
 				onDragOver={onDragOver}

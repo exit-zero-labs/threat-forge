@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	angleToHandlePosition,
 	getSelfLoopHandlePair,
 	getSmartHandlePair,
 	isDuplicateEdge,
 	isSelfLoop,
 	nodeToRect,
+	oppositeHandle,
 } from "./canvas-utils";
 
 describe("getSmartHandlePair", () => {
@@ -44,14 +46,77 @@ describe("getSmartHandlePair", () => {
 		expect(result.targetHandle).toBe("bottom-target");
 	});
 
-	it("uses vertical handles when dx equals dy (vertical tie-break)", () => {
+	it("uses diagonal handle when dx equals dy (bottom-right octant)", () => {
 		const result = getSmartHandlePair(
 			{ x: 0, y: 0, width: 100, height: 100 },
 			{ x: 200, y: 200, width: 100, height: 100 },
 		);
-		// dx === dy, Math.abs(dx) > Math.abs(dy) is false → vertical: bottom/top
-		expect(result.sourceHandle).toBe("bottom-source");
-		expect(result.targetHandle).toBe("top-target");
+		// dx === dy → 45° angle → bottom-right octant
+		expect(result.sourceHandle).toBe("bottom-right-source");
+		expect(result.targetHandle).toBe("top-left-target");
+	});
+
+	it("returns bottom-left → top-right when target is below-left", () => {
+		const result = getSmartHandlePair(
+			{ x: 300, y: 0, width: 100, height: 100 },
+			{ x: 0, y: 300, width: 100, height: 100 },
+		);
+		expect(result.sourceHandle).toBe("bottom-left-source");
+		expect(result.targetHandle).toBe("top-right-target");
+	});
+
+	it("returns top-right → bottom-left when target is above-right", () => {
+		const result = getSmartHandlePair(
+			{ x: 0, y: 300, width: 100, height: 100 },
+			{ x: 300, y: 0, width: 100, height: 100 },
+		);
+		expect(result.sourceHandle).toBe("top-right-source");
+		expect(result.targetHandle).toBe("bottom-left-target");
+	});
+
+	it("returns top-left → bottom-right when target is above-left", () => {
+		const result = getSmartHandlePair(
+			{ x: 300, y: 300, width: 100, height: 100 },
+			{ x: 0, y: 0, width: 100, height: 100 },
+		);
+		expect(result.sourceHandle).toBe("top-left-source");
+		expect(result.targetHandle).toBe("bottom-right-target");
+	});
+});
+
+describe("angleToHandlePosition", () => {
+	it("maps 0 radians to right", () => {
+		expect(angleToHandlePosition(0)).toBe("right");
+	});
+
+	it("maps π/2 to bottom (y+ is down)", () => {
+		expect(angleToHandlePosition(Math.PI / 2)).toBe("bottom");
+	});
+
+	it("maps -π/2 to top", () => {
+		expect(angleToHandlePosition(-Math.PI / 2)).toBe("top");
+	});
+
+	it("maps π/4 to bottom-right", () => {
+		expect(angleToHandlePosition(Math.PI / 4)).toBe("bottom-right");
+	});
+});
+
+describe("oppositeHandle", () => {
+	it("maps top to bottom", () => {
+		expect(oppositeHandle("top")).toBe("bottom");
+	});
+
+	it("maps top-right to bottom-left", () => {
+		expect(oppositeHandle("top-right")).toBe("bottom-left");
+	});
+
+	it("maps right to left", () => {
+		expect(oppositeHandle("right")).toBe("left");
+	});
+
+	it("maps bottom-left to top-right", () => {
+		expect(oppositeHandle("bottom-left")).toBe("top-right");
 	});
 });
 

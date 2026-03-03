@@ -1,4 +1,4 @@
-import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
+import type { Connection, Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges, MarkerType } from "@xyflow/react";
 import { create } from "zustand";
 import {
@@ -129,6 +129,7 @@ interface CanvasState {
 		opts?: { offset?: { x: number; y: number }; select?: boolean; skipHistory?: boolean },
 	) => string | null;
 	reverseEdge: (edgeId: string) => void;
+	reconnectEdge: (oldEdge: Edge, newConnection: Connection) => void;
 
 	// ReactFlow instance actions (set by DfdCanvas on init)
 	rfFitView: (() => void) | null;
@@ -706,6 +707,49 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		set({ edges: updatedEdges });
 	},
 
+	reconnectEdge: (oldEdge, newConnection) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+		if (!newConnection.source || !newConnection.target) return;
+
+		const flow = model.data_flows.find((f) => f.id === oldEdge.id);
+		if (!flow) return;
+
+		useHistoryStore.getState().pushSnapshot(model);
+
+		// Update model data_flows
+		const updatedFlows = model.data_flows.map((f) =>
+			f.id === oldEdge.id
+				? {
+						...f,
+						from: newConnection.source as string,
+						to: newConnection.target as string,
+						source_handle: newConnection.sourceHandle ?? undefined,
+						target_handle: newConnection.targetHandle ?? undefined,
+					}
+				: f,
+		);
+		useModelStore.setState({
+			model: { ...model, data_flows: updatedFlows },
+			isDirty: true,
+		});
+
+		// Update canvas edges
+		const currentEdges = get().edges;
+		const updatedEdges = currentEdges.map((e) =>
+			e.id === oldEdge.id
+				? {
+						...e,
+						source: newConnection.source as string,
+						target: newConnection.target as string,
+						sourceHandle: newConnection.sourceHandle,
+						targetHandle: newConnection.targetHandle,
+					}
+				: e,
+		);
+		set({ edges: updatedEdges });
+	},
+
 	// ReactFlow instance actions
 	rfFitView: null,
 	rfZoomIn: null,
@@ -848,13 +892,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			return node;
 		});
 
-		// Convert flows to edges, preserving handle assignments from existing edges
+		// Convert flows to edges, preserving handle assignments from existing edges.
+		// Model handles are authoritative when present (from save/load, reconnect, addDataFlow);
+		// only fall back to existing canvas state when the model has no handle data.
 		const existingEdgeMap = new Map(get().edges.map((e) => [e.id, e]));
 		const edges: DfdEdge[] = model.data_flows.map((flow) => {
 			const edge = flowToEdge(flow);
 			const existing = existingEdgeMap.get(flow.id);
-			if (existing?.sourceHandle) edge.sourceHandle = existing.sourceHandle;
-			if (existing?.targetHandle) edge.targetHandle = existing.targetHandle;
+			if (existing?.sourceHandle && !flow.source_handle) edge.sourceHandle = existing.sourceHandle;
+			if (existing?.targetHandle && !flow.target_handle) edge.targetHandle = existing.targetHandle;
 			// Preserve dragged label position only if model has no label_offset for this flow.
 			// When the model has label_offset (e.g. after undo/redo or drag-end write-back),
 			// flowToEdge already applied it — don't override with stale canvas data.
