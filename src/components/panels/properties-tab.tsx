@@ -7,7 +7,7 @@ import {
 	getComponentByType,
 	getSubtypesForType,
 } from "@/lib/component-library";
-import { type DfdEdge, useCanvasStore } from "@/stores/canvas-store";
+import { type DfdEdge, type DfdEdgeData, useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
 import type { DataFlow } from "@/types/threat-model";
@@ -62,7 +62,7 @@ function EdgeProperties({ flow }: { flow: DataFlow }) {
 	const fromElement = model?.elements.find((e) => e.id === flow.from);
 	const toElement = model?.elements.find((e) => e.id === flow.to);
 
-	const syncEdgeData = (updates: Partial<DataFlow>) => {
+	const syncEdgeData = (updates: Partial<DfdEdgeData>) => {
 		const edges = useCanvasStore.getState().edges;
 		const updatedEdges: DfdEdge[] = edges.map((e) =>
 			e.id === flow.id ? { ...e, data: { ...e.data, ...updates } as DfdEdge["data"] } : e,

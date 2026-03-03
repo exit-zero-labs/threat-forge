@@ -75,8 +75,8 @@ export function DataFlowEdge({
 	const isAuthenticated = edgeData?.authenticated === true;
 	const hasTextLabel =
 		edgeData?.name || edgeData?.protocol || (edgeData?.data && edgeData.data.length > 0);
-	// Show the label chip if there's text content OR the edge is authenticated (lock icon)
-	const hasLabel = hasTextLabel || isAuthenticated;
+	// Show the label chip if there's text content, authenticated (lock icon), or flow number
+	const hasLabel = hasTextLabel || isAuthenticated || edgeData?.flowNumber != null;
 
 	// Custom label position (user-dragged offset from default)
 	const offsetX = (edgeData?.labelOffsetX as number) ?? 0;
@@ -286,17 +286,6 @@ export function DataFlowEdge({
 				</path>
 			)}
 			<EdgeLabelRenderer>
-				{/* Flow number badge near source end */}
-				{edgeData?.flowNumber != null && (
-					<div
-						className="pointer-events-none absolute flex h-4 min-w-4 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground"
-						style={{
-							transform: `translate(-50%, -50%) translate(${sourceX + (targetX - sourceX) * 0.15}px,${sourceY + (targetY - sourceY) * 0.15}px)`,
-						}}
-					>
-						{edgeData.flowNumber}
-					</div>
-				)}
 				{hasLabel && !isEditing && (
 					<button
 						ref={labelRef}
@@ -311,6 +300,11 @@ export function DataFlowEdge({
 							transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
 						}}
 					>
+						{edgeData?.flowNumber != null && (
+							<span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-muted-foreground">
+								{edgeData.flowNumber}
+							</span>
+						)}
 						{isAuthenticated && <Lock className="h-3 w-3 shrink-0 text-tf-signal" />}
 						{hasTextLabel && (
 							<div>
