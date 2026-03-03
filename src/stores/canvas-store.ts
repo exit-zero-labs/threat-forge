@@ -1,4 +1,4 @@
-import type { Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
+import type { Connection, Edge, Node, OnEdgesChange, OnNodesChange, Viewport } from "@xyflow/react";
 import { applyEdgeChanges, applyNodeChanges, MarkerType } from "@xyflow/react";
 import { create } from "zustand";
 import {
@@ -126,9 +126,10 @@ interface CanvasState {
 	deleteSelected: () => void;
 	duplicateElement: (
 		nodeId: string,
-		opts?: { offset?: { x: number; y: number }; select?: boolean },
-	) => void;
+		opts?: { offset?: { x: number; y: number }; select?: boolean; skipHistory?: boolean },
+	) => string | null;
 	reverseEdge: (edgeId: string) => void;
+	reconnectEdge: (oldEdge: Edge, newConnection: Connection) => void;
 
 	// ReactFlow instance actions (set by DfdCanvas on init)
 	rfFitView: (() => void) | null;
@@ -151,6 +152,13 @@ interface CanvasState {
 
 /** Model snapshot captured at the start of a drag (with pre-drag canvas positions baked in). */
 let preDragSnapshot: ThreatModel | null = null;
+
+/** When true, onNodesChange skips the drag-end history push — Alt+drag owns its own history entry. */
+let altDragActive = false;
+
+export function setAltDragActive(active: boolean): void {
+	altDragActive = active;
+}
 
 /** Nudge gesture state (arrow key): snapshot + debounce timer. */
 const nudgeState = {
@@ -314,9 +322,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Apply node changes (positions update here)
 		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
 
-		// Handle drag end: push pre-drag snapshot to history, write new positions to model
+		// Handle drag end: push pre-drag snapshot to history, write new positions to model.
+		// Skip when altDragActive — the onNodeDragStop handler owns history for Alt+drag.
 		const hasDragEnd = changes.some((c) => c.type === "position" && c.dragging === false);
-		if (hasDragEnd && preDragSnapshot) {
+		if (hasDragEnd && preDragSnapshot && !altDragActive) {
 			useHistoryStore.getState().pushSnapshot(preDragSnapshot);
 			preDragSnapshot = null;
 			const model = useModelStore.getState().model;
@@ -324,6 +333,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 				const updated = writePositionsToModel(model, get().nodes);
 				useModelStore.setState({ model: updated, isDirty: true });
 			}
+		}
+		if (hasDragEnd && altDragActive) {
+			// Clear preDragSnapshot but don't push — Alt+drag handler will manage history
+			preDragSnapshot = null;
 		}
 
 		// Handle selection changes — process the last selected node for model-store sync.
@@ -616,10 +629,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 	duplicateElement: (nodeId, opts) => {
 		const model = useModelStore.getState().model;
-		if (!model) return;
+		if (!model) return null;
 
 		const element = model.elements.find((e) => e.id === nodeId);
-		if (!element) return;
+		if (!element) return null;
 
 		const sourceNode = get().nodes.find((n) => n.id === nodeId);
 		const offset = opts?.offset ?? { x: 50, y: 50 };
@@ -636,7 +649,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const newNode = elementToNode(newElement, { x: offsetX, y: offsetY });
 		set({ nodes: [...get().nodes, newNode] });
 
-		useHistoryStore.getState().pushSnapshot(model);
+		if (!opts?.skipHistory) {
+			useHistoryStore.getState().pushSnapshot(model);
+		}
 		useModelStore
 			.getState()
 			.setModel(
@@ -647,6 +662,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		if (opts?.select !== false) {
 			useModelStore.getState().setSelectedElement(newId);
 		}
+		return newId;
 	},
 
 	reverseEdge: (edgeId) => {
@@ -685,6 +701,49 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 						target: e.source,
 						sourceHandle: e.targetHandle?.replace("target", "source"),
 						targetHandle: e.sourceHandle?.replace("source", "target"),
+					}
+				: e,
+		);
+		set({ edges: updatedEdges });
+	},
+
+	reconnectEdge: (oldEdge, newConnection) => {
+		const model = useModelStore.getState().model;
+		if (!model) return;
+		if (!newConnection.source || !newConnection.target) return;
+
+		const flow = model.data_flows.find((f) => f.id === oldEdge.id);
+		if (!flow) return;
+
+		useHistoryStore.getState().pushSnapshot(model);
+
+		// Update model data_flows
+		const updatedFlows = model.data_flows.map((f) =>
+			f.id === oldEdge.id
+				? {
+						...f,
+						from: newConnection.source as string,
+						to: newConnection.target as string,
+						source_handle: newConnection.sourceHandle ?? undefined,
+						target_handle: newConnection.targetHandle ?? undefined,
+					}
+				: f,
+		);
+		useModelStore.setState({
+			model: { ...model, data_flows: updatedFlows },
+			isDirty: true,
+		});
+
+		// Update canvas edges
+		const currentEdges = get().edges;
+		const updatedEdges = currentEdges.map((e) =>
+			e.id === oldEdge.id
+				? {
+						...e,
+						source: newConnection.source as string,
+						target: newConnection.target as string,
+						sourceHandle: newConnection.sourceHandle,
+						targetHandle: newConnection.targetHandle,
 					}
 				: e,
 		);
@@ -833,13 +892,15 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 			return node;
 		});
 
-		// Convert flows to edges, preserving handle assignments from existing edges
+		// Convert flows to edges, preserving handle assignments from existing edges.
+		// Model handles are authoritative when present (from save/load, reconnect, addDataFlow);
+		// only fall back to existing canvas state when the model has no handle data.
 		const existingEdgeMap = new Map(get().edges.map((e) => [e.id, e]));
 		const edges: DfdEdge[] = model.data_flows.map((flow) => {
 			const edge = flowToEdge(flow);
 			const existing = existingEdgeMap.get(flow.id);
-			if (existing?.sourceHandle) edge.sourceHandle = existing.sourceHandle;
-			if (existing?.targetHandle) edge.targetHandle = existing.targetHandle;
+			if (existing?.sourceHandle && !flow.source_handle) edge.sourceHandle = existing.sourceHandle;
+			if (existing?.targetHandle && !flow.target_handle) edge.targetHandle = existing.targetHandle;
 			// Preserve dragged label position only if model has no label_offset for this flow.
 			// When the model has label_offset (e.g. after undo/redo or drag-end write-back),
 			// flowToEdge already applied it — don't override with stale canvas data.

@@ -552,4 +552,74 @@ describe("canvas-store", () => {
 		expect(processNode?.data.subtype).toBe("cloudfront");
 		expect(processNode?.data.icon).toBe("globe");
 	});
+
+	it("reconnects an edge to a different target", () => {
+		const model = createTestModel();
+		// Add a third element to reconnect to
+		model.elements.push({
+			id: "external-1",
+			type: "external_entity",
+			name: "External API",
+			trust_zone: "external",
+			description: "",
+			technologies: [],
+		});
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		// flow-1: process-1 → data-store-1
+		const oldEdge = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
+		if (!oldEdge) throw new Error("Expected flow-1 edge to exist");
+
+		useCanvasStore.getState().reconnectEdge(oldEdge, {
+			source: "process-1",
+			target: "external-1",
+			sourceHandle: "right-source",
+			targetHandle: "left-target",
+		});
+
+		// Canvas edge should be updated
+		const updatedEdge = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
+		expect(updatedEdge?.source).toBe("process-1");
+		expect(updatedEdge?.target).toBe("external-1");
+		expect(updatedEdge?.sourceHandle).toBe("right-source");
+		expect(updatedEdge?.targetHandle).toBe("left-target");
+
+		// Model flow should be updated
+		const updatedModel = useModelStore.getState().model;
+		const flow = updatedModel?.data_flows.find((f) => f.id === "flow-1");
+		expect(flow?.from).toBe("process-1");
+		expect(flow?.to).toBe("external-1");
+		expect(flow?.source_handle).toBe("right-source");
+		expect(flow?.target_handle).toBe("left-target");
+
+		// History should have the pre-reconnect snapshot
+		expect(useHistoryStore.getState().past).toHaveLength(1);
+		const snapshot = useHistoryStore.getState().past[0];
+		const snapshotFlow = snapshot.data_flows.find((f) => f.id === "flow-1");
+		expect(snapshotFlow?.to).toBe("data-store-1");
+	});
+
+	it("syncFromModel preserves model handles over stale canvas state", () => {
+		const model = createTestModel();
+		// Give the flow explicit handles in the model
+		model.data_flows[0].source_handle = "bottom-right-source";
+		model.data_flows[0].target_handle = "top-left-target";
+
+		useModelStore.getState().setModel(model, null);
+		useCanvasStore.getState().syncFromModel();
+
+		// Edge should use the model's handles, not infer from canvas state
+		const edge = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
+		expect(edge?.sourceHandle).toBe("bottom-right-source");
+		expect(edge?.targetHandle).toBe("top-left-target");
+
+		// Re-sync (simulates property edit triggering model change)
+		useCanvasStore.getState().syncFromModel();
+
+		// Handles must still match the model, not revert to stale canvas defaults
+		const edgeAfterResync = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
+		expect(edgeAfterResync?.sourceHandle).toBe("bottom-right-source");
+		expect(edgeAfterResync?.targetHandle).toBe("top-left-target");
+	});
 });

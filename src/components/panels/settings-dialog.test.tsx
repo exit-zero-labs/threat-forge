@@ -33,13 +33,14 @@ describe("SettingsDialog", () => {
 		expect(screen.getByText("Reduce motion")).toBeInTheDocument();
 	});
 
-	it("switches to Editor tab on click", () => {
+	it("shows canvas settings in Appearance tab", () => {
 		render(<SettingsDialog />);
 
-		fireEvent.click(screen.getByRole("button", { name: /Editor/ }));
+		fireEvent.click(screen.getByRole("button", { name: /Appearance/ }));
 
 		expect(screen.getByText("Grid snap")).toBeInTheDocument();
 		expect(screen.getByText("Grid size")).toBeInTheDocument();
+		expect(screen.getByText("Show minimap")).toBeInTheDocument();
 	});
 
 	it("switches to Shortcuts tab on click", () => {
@@ -93,7 +94,7 @@ describe("SettingsDialog", () => {
 		expect(useSettingsStore.getState().settings.gridSize).toBe(DEFAULT_USER_SETTINGS.gridSize);
 	});
 
-	it("shows all 5 nav tabs", () => {
+	it("shows all nav tabs (no Editor tab)", () => {
 		render(<SettingsDialog />);
 
 		const dialog = screen.getByTestId("settings-dialog");
@@ -102,8 +103,8 @@ describe("SettingsDialog", () => {
 
 		expect(tabLabels).toContain("General");
 		expect(tabLabels).toContain("Appearance");
-		expect(tabLabels).toContain("Editor");
 		expect(tabLabels).toContain("AI");
 		expect(tabLabels).toContain("Shortcuts");
+		expect(tabLabels).not.toContain("Editor");
 	});
 });

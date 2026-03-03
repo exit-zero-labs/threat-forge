@@ -5,6 +5,9 @@
  * File settings are stored alongside the threat model.
  */
 
+/** Font size preference for the application UI */
+export type FontSize = "small" | "default" | "large";
+
 /** User-level settings that persist across sessions and files */
 export interface UserSettings {
 	/** Autosave enabled/disabled (default: off) */
@@ -27,6 +30,8 @@ export interface UserSettings {
 	authorName: string;
 	/** Author email for edit tracking */
 	authorEmail: string;
+	/** UI font size preference */
+	fontSize: FontSize;
 }
 
 /** File-level settings stored alongside the threat model (re-exported from threat-model.ts) */
@@ -57,6 +62,14 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
 	minimapVisible: true,
 	authorName: "",
 	authorEmail: "",
+	fontSize: "default",
+};
+
+/** Mapping from font size preference to CSS font-size value on <html> */
+export const FONT_SIZE_PX: Record<FontSize, number> = {
+	small: 14,
+	default: 16,
+	large: 18,
 };
 
 export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [

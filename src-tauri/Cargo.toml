@@ -5,6 +5,7 @@ description = "AI-enhanced threat modeling desktop application"
 authors = ["Exit Zero Labs <admin@exitzerolabs.com>"]
 license = "Apache-2.0"
 edition = "2021"
+default-run = "threat-forge"
 
 [lib]
 name = "threat_forge_lib"

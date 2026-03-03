@@ -13,7 +13,8 @@ import "@xyflow/react/dist/style.css";
 import { EyeOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
-import { useCanvasStore } from "@/stores/canvas-store";
+import { setAltDragActive, useCanvasStore } from "@/stores/canvas-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -51,6 +52,7 @@ export function DfdCanvas() {
 	const addTrustBoundary = useCanvasStore((s) => s.addTrustBoundary);
 	const duplicateElement = useCanvasStore((s) => s.duplicateElement);
 	const reverseEdge = useCanvasStore((s) => s.reverseEdge);
+	const reconnectEdge = useCanvasStore((s) => s.reconnectEdge);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
 	const {
@@ -145,6 +147,27 @@ export function DfdCanvas() {
 		useCanvasStore.getState().setIsConnecting(false);
 	}, []);
 
+	const onReconnect = useCallback(
+		(oldEdge: DfdEdge, newConnection: Connection) => {
+			reconnectEdge(oldEdge, newConnection);
+		},
+		[reconnectEdge],
+	);
+
+	const onReconnectStart = useCallback(
+		(_event: React.MouseEvent, _edge: DfdEdge, _handleType: string) => {
+			useCanvasStore.getState().setIsConnecting(true);
+		},
+		[],
+	);
+
+	const onReconnectEnd = useCallback(
+		(_event: MouseEvent | TouchEvent, _edge: DfdEdge, _handleType: string) => {
+			useCanvasStore.getState().setIsConnecting(false);
+		},
+		[],
+	);
+
 	/** Validates whether a connection is allowed */
 	const isValidConnection = useCallback((connection: Connection | DfdEdge) => {
 		if (!connection.source || !connection.target) return false;
@@ -215,15 +238,102 @@ export function DfdCanvas() {
 		useUiStore.getState().setRightPanelTab("properties");
 	}, []);
 
-	/** Alt+Drag to instantly duplicate: clone at original position, user drags the original away */
+	/** Track Alt+drag state for position swap on drop */
+	const altDragRef = useRef<{
+		originalId: string;
+		cloneId: string;
+		startPos: { x: number; y: number };
+		/** Model snapshot captured BEFORE the clone was created (clean undo point) */
+		preCloneSnapshot: import("@/types/threat-model").ThreatModel;
+	} | null>(null);
+
+	/** Alt+Drag to duplicate: create ghost at original position, swap positions on drop */
 	const onNodeDragStart = useCallback(
 		(event: React.MouseEvent, node: DfdNode) => {
 			if (event.altKey && !node.data.isBoundary) {
-				duplicateElement(node.id, { offset: { x: 0, y: 0 }, select: false });
+				const model = useModelStore.getState().model;
+				if (!model) return;
+
+				// Capture clean snapshot BEFORE cloning
+				const preCloneSnapshot = { ...model };
+
+				// Tell the canvas store to skip its own drag-end history push
+				setAltDragActive(true);
+
+				const cloneId = duplicateElement(node.id, {
+					offset: { x: 0, y: 0 },
+					select: false,
+					skipHistory: true,
+				});
+				if (cloneId) {
+					altDragRef.current = {
+						originalId: node.id,
+						cloneId,
+						startPos: { x: node.position.x, y: node.position.y },
+						preCloneSnapshot,
+					};
+				} else {
+					setAltDragActive(false);
+				}
 			}
 		},
 		[duplicateElement],
 	);
+
+	/** On drag stop: if Alt+drag was active, swap positions so original stays and copy moves */
+	const onNodeDragStop = useCallback((_event: React.MouseEvent, node: DfdNode) => {
+		const info = altDragRef.current;
+		if (!info) return;
+
+		// Always clear Alt+drag state
+		altDragRef.current = null;
+		setAltDragActive(false);
+
+		// If drag stopped on a different node (shouldn't happen, but safety), clean up the orphaned clone
+		if (node.id !== info.originalId) {
+			const store = useCanvasStore.getState();
+			const cleanedNodes = store.nodes.filter((n) => n.id !== info.cloneId);
+			useCanvasStore.setState({ nodes: cleanedNodes });
+			// Revert model to pre-clone state
+			useModelStore.setState({ model: info.preCloneSnapshot });
+			return;
+		}
+
+		const dropPos = { x: node.position.x, y: node.position.y };
+		const store = useCanvasStore.getState();
+
+		// Move original back to its starting position, clone to the drop position
+		const updatedNodes = store.nodes.map((n) => {
+			if (n.id === info.originalId) {
+				return { ...n, position: { ...info.startPos } };
+			}
+			if (n.id === info.cloneId) {
+				return { ...n, position: { ...dropPos } };
+			}
+			return n;
+		});
+		useCanvasStore.setState({ nodes: updatedNodes });
+
+		// Push the pre-clone snapshot as the single undo point
+		useHistoryStore.getState().pushSnapshot(info.preCloneSnapshot);
+
+		// Update model positions for both original (back to start) and clone (at drop)
+		const model = useModelStore.getState().model;
+		if (model) {
+			const updatedElements = model.elements.map((el) => {
+				if (el.id === info.originalId) return { ...el, position: { ...info.startPos } };
+				if (el.id === info.cloneId) return { ...el, position: { ...dropPos } };
+				return el;
+			});
+			useModelStore.setState({
+				model: { ...model, elements: updatedElements },
+				isDirty: true,
+			});
+		}
+
+		// Select the clone (the "copy" at the drop position)
+		useModelStore.getState().setSelectedElement(info.cloneId);
+	}, []);
 
 	const onNodeContextMenu = useCallback((event: React.MouseEvent, node: DfdNode) => {
 		event.preventDefault();
@@ -322,6 +432,10 @@ export function DfdCanvas() {
 				onConnect={onConnect}
 				onConnectStart={onConnectStart}
 				onConnectEnd={onConnectEnd}
+				edgesReconnectable={!canvasLocked}
+				onReconnect={onReconnect}
+				onReconnectStart={onReconnectStart}
+				onReconnectEnd={onReconnectEnd}
 				isValidConnection={isValidConnection}
 				onMoveEnd={(_event, viewport) => setViewport(viewport)}
 				onDragOver={onDragOver}
@@ -330,6 +444,7 @@ export function DfdCanvas() {
 				onNodeClick={onNodeClick}
 				onEdgeClick={onEdgeClick}
 				onNodeDragStart={onNodeDragStart}
+				onNodeDragStop={onNodeDragStop}
 				onNodeContextMenu={onNodeContextMenu}
 				onEdgeContextMenu={onEdgeContextMenu}
 				nodeTypes={nodeTypes}

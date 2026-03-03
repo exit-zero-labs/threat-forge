@@ -1,8 +1,12 @@
-import { FolderOpen, Github } from "lucide-react";
+import { FileText, FolderOpen, Github } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
+import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import { openExternalUrl } from "@/lib/platform";
+import { loadTemplate, TEMPLATES, type TemplateInfo } from "@/lib/templates";
 import { TIPS } from "@/lib/tips";
+import { useCanvasStore } from "@/stores/canvas-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -32,6 +36,20 @@ export function Canvas() {
 
 function EmptyCanvas() {
 	const { newModel, openModel } = useFileOperations();
+	const setModel = useModelStore((s) => s.setModel);
+
+	const openTemplate = useCallback(
+		(id: string) => {
+			const model = loadTemplate(id);
+			if (!model) return;
+			const layout = buildLayoutFromModel(model);
+			useCanvasStore.getState().setPendingLayout(layout);
+			setModel(model, null);
+			useHistoryStore.getState().clear();
+			useSettingsStore.getState().clearFileSettings();
+		},
+		[setModel],
+	);
 
 	return (
 		<div
@@ -39,7 +57,7 @@ function EmptyCanvas() {
 			className="relative flex h-full flex-col items-center bg-background"
 		>
 			{/* Main content — centered with upward bias */}
-			<div className="flex flex-1 flex-col items-center justify-center pb-24">
+			<div className="flex flex-1 flex-col items-center justify-center pb-16">
 				<img src="/logo_square.png" alt="Threat Forge" className="mb-6 h-20 w-20 drop-shadow-md" />
 				<h2 className="text-xl font-semibold tracking-tight">Threat Forge</h2>
 				<p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
@@ -66,7 +84,19 @@ function EmptyCanvas() {
 					</button>
 				</div>
 
-				<div className="mt-10 h-12 max-w-md">
+				{/* Templates */}
+				<div className="mt-8 w-full max-w-lg">
+					<p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
+						Start from a template
+					</p>
+					<div className="grid grid-cols-3 gap-2">
+						{TEMPLATES.map((t) => (
+							<TemplateCard key={t.id} template={t} onSelect={openTemplate} />
+						))}
+					</div>
+				</div>
+
+				<div className="mt-8 h-12 max-w-md">
 					<RotatingTip />
 				</div>
 			</div>
@@ -87,6 +117,27 @@ function EmptyCanvas() {
 				<span className="text-xs text-muted-foreground/40">v{__APP_VERSION__ ?? "dev"}</span>
 			</footer>
 		</div>
+	);
+}
+
+function TemplateCard({
+	template,
+	onSelect,
+}: {
+	template: TemplateInfo;
+	onSelect: (id: string) => void;
+}) {
+	return (
+		<button
+			type="button"
+			data-testid={`template-${template.id}`}
+			onClick={() => onSelect(template.id)}
+			className="flex flex-col items-start gap-1.5 rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent/50 hover:border-accent"
+		>
+			<FileText className="h-4 w-4 text-muted-foreground" />
+			<span className="text-sm font-medium text-foreground">{template.name}</span>
+			<span className="text-xs text-muted-foreground leading-snug">{template.description}</span>
+		</button>
 	);
 }
 

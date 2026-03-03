@@ -1,6 +1,14 @@
 import type { Position } from "@xyflow/react";
 
-type HandlePosition = "top" | "bottom" | "left" | "right";
+type HandlePosition =
+	| "top"
+	| "top-right"
+	| "right"
+	| "bottom-right"
+	| "bottom"
+	| "bottom-left"
+	| "left"
+	| "top-left";
 
 interface NodeRect {
 	x: number;
@@ -16,19 +24,58 @@ interface HandlePair {
 
 const POSITION_MAP: Record<HandlePosition, Position> = {
 	top: "top" as Position,
-	bottom: "bottom" as Position,
-	left: "left" as Position,
+	"top-right": "top" as Position,
 	right: "right" as Position,
+	"bottom-right": "bottom" as Position,
+	bottom: "bottom" as Position,
+	"bottom-left": "bottom" as Position,
+	left: "left" as Position,
+	"top-left": "top" as Position,
 };
 
 /** Default node dimensions when width/height are unknown */
 const DEFAULT_NODE_WIDTH = 140;
 const DEFAULT_NODE_HEIGHT = 50;
 
+/** Ordered octant handles: index 0 = right (0°), each +1 = +45° clockwise. */
+const OCTANT_HANDLES: HandlePosition[] = [
+	"right",
+	"bottom-right",
+	"bottom",
+	"bottom-left",
+	"left",
+	"top-left",
+	"top",
+	"top-right",
+];
+
+const OPPOSITE_MAP: Record<HandlePosition, HandlePosition> = {
+	top: "bottom",
+	"top-right": "bottom-left",
+	right: "left",
+	"bottom-right": "top-left",
+	bottom: "top",
+	"bottom-left": "top-right",
+	left: "right",
+	"top-left": "bottom-right",
+};
+
+/** Maps an angle (radians, from atan2) to the nearest octant handle position. */
+export function angleToHandlePosition(angleRad: number): HandlePosition {
+	const degrees = angleRad * (180 / Math.PI);
+	const normalized = ((degrees % 360) + 360) % 360;
+	const octant = Math.floor((normalized + 22.5) / 45) % 8;
+	return OCTANT_HANDLES[octant];
+}
+
+/** Returns the opposite handle position (e.g. top-right → bottom-left). */
+export function oppositeHandle(pos: HandlePosition): HandlePosition {
+	return OPPOSITE_MAP[pos];
+}
+
 /**
  * Given source and target node positions/sizes, determines the optimal
- * handle pair (top/bottom/left/right) to minimize path length and avoid
- * edges crossing through nodes.
+ * handle pair using 8-octant angle-based routing for precise connector paths.
  */
 export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePair {
 	const sourceCx = source.x + source.width / 2;
@@ -39,26 +86,9 @@ export function getSmartHandlePair(source: NodeRect, target: NodeRect): HandlePa
 	const dx = targetCx - sourceCx;
 	const dy = targetCy - sourceCy;
 
-	let sourcePos: HandlePosition;
-	let targetPos: HandlePosition;
-
-	if (Math.abs(dx) > Math.abs(dy)) {
-		if (dx > 0) {
-			sourcePos = "right";
-			targetPos = "left";
-		} else {
-			sourcePos = "left";
-			targetPos = "right";
-		}
-	} else {
-		if (dy > 0) {
-			sourcePos = "bottom";
-			targetPos = "top";
-		} else {
-			sourcePos = "top";
-			targetPos = "bottom";
-		}
-	}
+	const angle = Math.atan2(dy, dx);
+	const sourcePos = angleToHandlePosition(angle);
+	const targetPos = oppositeHandle(sourcePos);
 
 	return {
 		sourceHandle: `${sourcePos}-source`,

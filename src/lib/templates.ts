@@ -1,0 +1,519 @@
+import { getSmartHandlePair } from "@/lib/canvas-utils";
+import type { ThreatModel } from "@/types/threat-model";
+
+export interface TemplateInfo {
+	id: string;
+	name: string;
+	description: string;
+}
+
+export const TEMPLATES: TemplateInfo[] = [
+	{
+		id: "web-application",
+		name: "Web Application",
+		description: "Frontend, API backend, database, and auth provider",
+	},
+	{
+		id: "microservices",
+		name: "Microservices",
+		description: "API gateway, services, message queue, cache, and databases",
+	},
+	{
+		id: "mobile-app",
+		name: "Mobile App",
+		description: "Mobile client, API, push notifications, and analytics",
+	},
+];
+
+/** Default node dimensions used for smart handle computation */
+const NODE_W = 140;
+const NODE_H = 50;
+
+/** Load a template by ID. Returns a ThreatModel with today's date.
+ *  Post-processes flows to assign flow numbers and smart connection handles. */
+export function loadTemplate(id: string): ThreatModel | null {
+	const builder = TEMPLATE_BUILDERS[id];
+	if (!builder) return null;
+
+	const today = new Date().toISOString().split("T")[0];
+	const model = builder(today);
+
+	// Build a position lookup from elements
+	const posMap = new Map<string, { x: number; y: number }>();
+	for (const el of model.elements) {
+		if (el.position) posMap.set(el.id, el.position);
+	}
+
+	// Assign flow_number and smart handles to every flow
+	model.data_flows = model.data_flows.map((flow, i) => {
+		const updated = { ...flow, flow_number: i + 1 };
+		const srcPos = posMap.get(flow.from);
+		const tgtPos = posMap.get(flow.to);
+		if (srcPos && tgtPos) {
+			const pair = getSmartHandlePair(
+				{ x: srcPos.x, y: srcPos.y, width: NODE_W, height: NODE_H },
+				{ x: tgtPos.x, y: tgtPos.y, width: NODE_W, height: NODE_H },
+			);
+			updated.source_handle = pair.sourceHandle;
+			updated.target_handle = pair.targetHandle;
+		}
+		return updated;
+	});
+
+	return model;
+}
+
+type TemplateBuilder = (today: string) => ThreatModel;
+
+const TEMPLATE_BUILDERS: Record<string, TemplateBuilder> = {
+	"web-application": (today) => ({
+		version: "1.0",
+		metadata: {
+			title: "Web Application",
+			author: "",
+			created: today,
+			modified: today,
+			description:
+				"A standard web application with frontend, API backend,\ndatabase, and external authentication provider.",
+		},
+		elements: [
+			{
+				id: "browser",
+				type: "external_entity",
+				name: "Browser Client",
+				trust_zone: "external",
+				description: "End-user web browser",
+				technologies: [],
+				position: { x: 80, y: 240 },
+			},
+			{
+				id: "web-server",
+				type: "process",
+				name: "Web Server",
+				trust_zone: "dmz",
+				description: "Serves frontend assets and proxies API requests",
+				technologies: ["nginx", "reverse-proxy"],
+				position: { x: 350, y: 240 },
+			},
+			{
+				id: "api-server",
+				type: "process",
+				name: "API Server",
+				trust_zone: "internal",
+				description: "Handles business logic and data access",
+				technologies: ["node", "express"],
+				position: { x: 620, y: 240 },
+			},
+			{
+				id: "database",
+				type: "data_store",
+				name: "Database",
+				trust_zone: "internal",
+				description: "Primary relational database",
+				stores: ["user_data", "application_data"],
+				encryption: "AES-256-at-rest",
+				technologies: [],
+				position: { x: 890, y: 240 },
+			},
+			{
+				id: "auth-provider",
+				type: "external_entity",
+				name: "Auth Provider",
+				trust_zone: "external",
+				description: "Third-party OAuth2/OIDC identity provider",
+				technologies: [],
+				position: { x: 620, y: 480 },
+			},
+		],
+		data_flows: [
+			{
+				id: "flow-browser-web",
+				name: "",
+				from: "browser",
+				to: "web-server",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["http_requests", "cookies"],
+				authenticated: false,
+			},
+			{
+				id: "flow-web-api",
+				name: "",
+				from: "web-server",
+				to: "api-server",
+				protocol: "HTTP",
+				data: ["api_requests", "auth_tokens"],
+				authenticated: true,
+			},
+			{
+				id: "flow-api-db",
+				name: "",
+				from: "api-server",
+				to: "database",
+				protocol: "PostgreSQL/TLS",
+				data: ["queries", "user_data"],
+				authenticated: true,
+			},
+			{
+				id: "flow-api-auth",
+				name: "",
+				from: "api-server",
+				to: "auth-provider",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["oauth_tokens", "user_claims"],
+				authenticated: true,
+			},
+		],
+		trust_boundaries: [
+			{
+				id: "boundary-dmz",
+				name: "DMZ",
+				contains: ["web-server"],
+				position: { x: 300, y: 180 },
+				size: { width: 200, height: 160 },
+			},
+			{
+				id: "boundary-internal",
+				name: "Internal Network",
+				contains: ["api-server", "database"],
+				position: { x: 570, y: 180 },
+				size: { width: 400, height: 160 },
+			},
+		],
+		threats: [],
+		diagrams: [
+			{
+				id: "main-dfd",
+				name: "Level 0 DFD",
+				viewport: { x: 0, y: 0, zoom: 1 },
+			},
+		],
+	}),
+
+	microservices: (today) => ({
+		version: "1.0",
+		metadata: {
+			title: "Microservices Architecture",
+			author: "",
+			created: today,
+			modified: today,
+			description:
+				"A microservices architecture with API gateway, multiple services,\nmessage queue, cache layer, and databases.",
+		},
+		elements: [
+			{
+				id: "mobile-app",
+				type: "external_entity",
+				name: "Mobile App",
+				trust_zone: "external",
+				description: "iOS/Android mobile client",
+				technologies: [],
+				position: { x: 80, y: 300 },
+			},
+			{
+				id: "api-gateway",
+				type: "process",
+				name: "API Gateway",
+				trust_zone: "dmz",
+				description: "Routes requests, handles rate limiting and auth",
+				technologies: ["kong", "rate-limiting"],
+				position: { x: 350, y: 300 },
+			},
+			{
+				id: "user-service",
+				type: "process",
+				name: "User Service",
+				trust_zone: "internal",
+				description: "Manages user accounts and profiles",
+				technologies: [],
+				position: { x: 620, y: 160 },
+			},
+			{
+				id: "order-service",
+				type: "process",
+				name: "Order Service",
+				trust_zone: "internal",
+				description: "Handles order processing and fulfillment",
+				technologies: [],
+				position: { x: 620, y: 440 },
+			},
+			{
+				id: "user-db",
+				type: "data_store",
+				name: "User Database",
+				trust_zone: "internal",
+				description: "",
+				stores: ["user_profiles", "credentials"],
+				encryption: "AES-256-at-rest",
+				technologies: [],
+				position: { x: 920, y: 160 },
+			},
+			{
+				id: "order-db",
+				type: "data_store",
+				name: "Order Database",
+				trust_zone: "internal",
+				description: "",
+				stores: ["orders", "transactions"],
+				technologies: [],
+				position: { x: 920, y: 440 },
+			},
+			{
+				id: "message-queue",
+				type: "data_store",
+				name: "Message Queue",
+				trust_zone: "internal",
+				description: "Async communication between services",
+				technologies: ["rabbitmq"],
+				position: { x: 620, y: 300 },
+			},
+			{
+				id: "cache",
+				type: "data_store",
+				name: "Redis Cache",
+				trust_zone: "internal",
+				description: "Session and response caching",
+				technologies: ["redis"],
+				position: { x: 350, y: 160 },
+			},
+		],
+		data_flows: [
+			{
+				id: "flow-mobile-gw",
+				name: "",
+				from: "mobile-app",
+				to: "api-gateway",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["api_requests", "jwt_tokens"],
+				authenticated: true,
+			},
+			{
+				id: "flow-gw-users",
+				name: "",
+				from: "api-gateway",
+				to: "user-service",
+				protocol: "gRPC/TLS",
+				data: ["user_requests"],
+				authenticated: true,
+			},
+			{
+				id: "flow-gw-orders",
+				name: "",
+				from: "api-gateway",
+				to: "order-service",
+				protocol: "gRPC/TLS",
+				data: ["order_requests"],
+				authenticated: true,
+			},
+			{
+				id: "flow-users-db",
+				name: "",
+				from: "user-service",
+				to: "user-db",
+				protocol: "PostgreSQL/TLS",
+				data: ["user_data"],
+				authenticated: false,
+			},
+			{
+				id: "flow-orders-db",
+				name: "",
+				from: "order-service",
+				to: "order-db",
+				protocol: "PostgreSQL/TLS",
+				data: ["order_data"],
+				authenticated: false,
+			},
+			{
+				id: "flow-users-mq",
+				name: "",
+				from: "user-service",
+				to: "message-queue",
+				protocol: "AMQP/TLS",
+				data: ["user_events"],
+				authenticated: false,
+			},
+			{
+				id: "flow-mq-orders",
+				name: "",
+				from: "message-queue",
+				to: "order-service",
+				protocol: "AMQP/TLS",
+				data: ["user_events"],
+				authenticated: false,
+			},
+			{
+				id: "flow-gw-cache",
+				name: "",
+				from: "api-gateway",
+				to: "cache",
+				protocol: "Redis/TLS",
+				data: ["session_data", "cached_responses"],
+				authenticated: false,
+			},
+		],
+		trust_boundaries: [
+			{
+				id: "boundary-dmz",
+				name: "DMZ",
+				contains: ["api-gateway"],
+				position: { x: 300, y: 240 },
+				size: { width: 200, height: 160 },
+			},
+			{
+				id: "boundary-services",
+				name: "Internal Services",
+				contains: [
+					"user-service",
+					"order-service",
+					"message-queue",
+					"cache",
+					"user-db",
+					"order-db",
+				],
+				position: { x: 290, y: 90 },
+				size: { width: 720, height: 450 },
+			},
+		],
+		threats: [],
+		diagrams: [
+			{
+				id: "main-dfd",
+				name: "Level 0 DFD",
+				viewport: { x: 0, y: 0, zoom: 1 },
+			},
+		],
+	}),
+
+	"mobile-app": (today) => ({
+		version: "1.0",
+		metadata: {
+			title: "Mobile Application",
+			author: "",
+			created: today,
+			modified: today,
+			description:
+				"A mobile application with API backend, push notifications,\nlocal storage, and third-party analytics.",
+		},
+		elements: [
+			{
+				id: "mobile-client",
+				type: "external_entity",
+				name: "Mobile Client",
+				trust_zone: "external",
+				description: "iOS/Android app installed on user device",
+				technologies: [],
+				position: { x: 80, y: 280 },
+			},
+			{
+				id: "api-backend",
+				type: "process",
+				name: "API Backend",
+				trust_zone: "internal",
+				description: "REST API serving mobile client requests",
+				technologies: ["python", "fastapi"],
+				position: { x: 400, y: 280 },
+			},
+			{
+				id: "app-db",
+				type: "data_store",
+				name: "Application Database",
+				trust_zone: "internal",
+				description: "",
+				stores: ["user_data", "app_state"],
+				encryption: "AES-256-at-rest",
+				technologies: [],
+				position: { x: 720, y: 180 },
+			},
+			{
+				id: "file-storage",
+				type: "data_store",
+				name: "File Storage",
+				trust_zone: "internal",
+				description: "User-uploaded media and documents",
+				technologies: ["s3"],
+				position: { x: 720, y: 380 },
+			},
+			{
+				id: "push-service",
+				type: "external_entity",
+				name: "Push Notification Service",
+				trust_zone: "external",
+				description: "APNs / FCM push notification delivery",
+				technologies: [],
+				position: { x: 400, y: 480 },
+			},
+			{
+				id: "analytics",
+				type: "external_entity",
+				name: "Analytics Platform",
+				trust_zone: "external",
+				description: "Third-party usage analytics and crash reporting",
+				technologies: [],
+				position: { x: 80, y: 480 },
+			},
+		],
+		data_flows: [
+			{
+				id: "flow-mobile-api",
+				name: "",
+				from: "mobile-client",
+				to: "api-backend",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["api_requests", "auth_tokens", "user_input"],
+				authenticated: true,
+			},
+			{
+				id: "flow-api-db",
+				name: "",
+				from: "api-backend",
+				to: "app-db",
+				protocol: "PostgreSQL/TLS",
+				data: ["user_data", "app_state"],
+				authenticated: true,
+			},
+			{
+				id: "flow-api-storage",
+				name: "",
+				from: "api-backend",
+				to: "file-storage",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["media_files", "presigned_urls"],
+				authenticated: true,
+			},
+			{
+				id: "flow-api-push",
+				name: "",
+				from: "api-backend",
+				to: "push-service",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["push_tokens", "notification_payloads"],
+				authenticated: true,
+			},
+			{
+				id: "flow-mobile-analytics",
+				name: "",
+				from: "mobile-client",
+				to: "analytics",
+				protocol: "HTTPS/TLS-1.3",
+				data: ["usage_events", "crash_reports", "device_info"],
+				authenticated: false,
+			},
+		],
+		trust_boundaries: [
+			{
+				id: "boundary-backend",
+				name: "Backend Infrastructure",
+				contains: ["api-backend", "app-db", "file-storage"],
+				position: { x: 340, y: 120 },
+				size: { width: 470, height: 330 },
+			},
+		],
+		threats: [],
+		diagrams: [
+			{
+				id: "main-dfd",
+				name: "Level 0 DFD",
+				viewport: { x: 0, y: 0, zoom: 1 },
+			},
+		],
+	}),
+};
