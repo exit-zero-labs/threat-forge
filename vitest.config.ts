@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 
 // biome-ignore lint/style/noDefaultExport: Vitest requires default export
 export default defineConfig({
+	define: {
+		__APP_VERSION__: JSON.stringify("test"),
+	},
 	test: {
 		globals: true,
 		environment: "jsdom",
