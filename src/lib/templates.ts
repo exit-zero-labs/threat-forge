@@ -1,3 +1,4 @@
+import { getSmartHandlePair } from "@/lib/canvas-utils";
 import type { ThreatModel } from "@/types/threat-model";
 
 export interface TemplateInfo {
@@ -24,13 +25,42 @@ export const TEMPLATES: TemplateInfo[] = [
 	},
 ];
 
-/** Load a template by ID. Returns a ThreatModel with today's date. */
+/** Default node dimensions used for smart handle computation */
+const NODE_W = 140;
+const NODE_H = 50;
+
+/** Load a template by ID. Returns a ThreatModel with today's date.
+ *  Post-processes flows to assign flow numbers and smart connection handles. */
 export function loadTemplate(id: string): ThreatModel | null {
 	const builder = TEMPLATE_BUILDERS[id];
 	if (!builder) return null;
 
 	const today = new Date().toISOString().split("T")[0];
-	return builder(today);
+	const model = builder(today);
+
+	// Build a position lookup from elements
+	const posMap = new Map<string, { x: number; y: number }>();
+	for (const el of model.elements) {
+		if (el.position) posMap.set(el.id, el.position);
+	}
+
+	// Assign flow_number and smart handles to every flow
+	model.data_flows = model.data_flows.map((flow, i) => {
+		const updated = { ...flow, flow_number: i + 1 };
+		const srcPos = posMap.get(flow.from);
+		const tgtPos = posMap.get(flow.to);
+		if (srcPos && tgtPos) {
+			const pair = getSmartHandlePair(
+				{ x: srcPos.x, y: srcPos.y, width: NODE_W, height: NODE_H },
+				{ x: tgtPos.x, y: tgtPos.y, width: NODE_W, height: NODE_H },
+			);
+			updated.source_handle = pair.sourceHandle;
+			updated.target_handle = pair.targetHandle;
+		}
+		return updated;
+	});
+
+	return model;
 }
 
 type TemplateBuilder = (today: string) => ThreatModel;
