@@ -17,7 +17,6 @@ import { WhatsNewOverlay } from "../onboarding/whats-new-overlay";
 import { ComponentPalette } from "../palette/component-palette";
 import { RightPanel } from "../panels/right-panel";
 import { SettingsDialog } from "../panels/settings-dialog";
-import { ShortcutsDialog } from "../panels/shortcuts-dialog";
 import { ResizeHandle } from "../ui/resize-handle";
 import { StatusBar } from "./status-bar";
 import { TopMenuBar } from "./top-menu-bar";
@@ -31,8 +30,6 @@ export function AppLayout() {
 	const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen);
 	const closeCommandPalette = useUiStore((s) => s.closeCommandPalette);
 	const settingsDialogOpen = useSettingsStore((s) => s.settingsDialogOpen);
-	const shortcutsDialogOpen = useSettingsStore((s) => s.shortcutsDialogOpen);
-
 	useKeyboardShortcuts();
 	useNativeMenu();
 	useAutosave();
@@ -104,7 +101,6 @@ export function AppLayout() {
 
 				{/* Dialogs */}
 				{settingsDialogOpen && <SettingsDialog />}
-				{shortcutsDialogOpen && <ShortcutsDialog />}
 				<CommandPalette open={commandPaletteOpen} onClose={closeCommandPalette} />
 				<GuideProvider />
 				<WhatsNewOverlay />

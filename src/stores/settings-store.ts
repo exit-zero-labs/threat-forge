@@ -4,7 +4,7 @@ import type { UserSettings } from "@/types/settings";
 import { DEFAULT_USER_SETTINGS } from "@/types/settings";
 import type { FileSettings } from "@/types/threat-model";
 
-export type SettingsTab = "general" | "appearance" | "ai" | "shortcuts" | "updates" | "support";
+export type SettingsTab = "general" | "appearance" | "ai" | "updates" | "support";
 
 interface SettingsState {
 	/** User-level settings persisted to localStorage */
@@ -19,9 +19,6 @@ interface SettingsState {
 	/** Tab to show when opening settings dialog (null = default "general") */
 	settingsDialogInitialTab: SettingsTab | null;
 
-	/** Whether the keyboard shortcuts cheat sheet is open */
-	shortcutsDialogOpen: boolean;
-
 	// Actions
 	updateSetting: <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => void;
 	resetToDefaults: () => void;
@@ -30,8 +27,6 @@ interface SettingsState {
 	openSettingsDialog: () => void;
 	openSettingsDialogAtTab: (tab: SettingsTab) => void;
 	closeSettingsDialog: () => void;
-	openShortcutsDialog: () => void;
-	closeShortcutsDialog: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -41,7 +36,6 @@ export const useSettingsStore = create<SettingsState>()(
 			fileSettings: null,
 			settingsDialogOpen: false,
 			settingsDialogInitialTab: null,
-			shortcutsDialogOpen: false,
 
 			updateSetting: (key, value) =>
 				set((state) => ({
@@ -58,8 +52,6 @@ export const useSettingsStore = create<SettingsState>()(
 			openSettingsDialogAtTab: (tab) =>
 				set({ settingsDialogOpen: true, settingsDialogInitialTab: tab }),
 			closeSettingsDialog: () => set({ settingsDialogOpen: false, settingsDialogInitialTab: null }),
-			openShortcutsDialog: () => set({ shortcutsDialogOpen: true }),
-			closeShortcutsDialog: () => set({ shortcutsDialogOpen: false }),
 		}),
 		{
 			name: "threatforge-settings",

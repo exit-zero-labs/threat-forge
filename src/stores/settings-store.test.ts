@@ -9,7 +9,6 @@ describe("useSettingsStore", () => {
 			settings: { ...DEFAULT_USER_SETTINGS },
 			fileSettings: null,
 			settingsDialogOpen: false,
-			shortcutsDialogOpen: false,
 		});
 	});
 
@@ -56,14 +55,6 @@ describe("useSettingsStore", () => {
 		expect(useSettingsStore.getState().settingsDialogOpen).toBe(true);
 		useSettingsStore.getState().closeSettingsDialog();
 		expect(useSettingsStore.getState().settingsDialogOpen).toBe(false);
-	});
-
-	it("opens and closes shortcuts dialog", () => {
-		expect(useSettingsStore.getState().shortcutsDialogOpen).toBe(false);
-		useSettingsStore.getState().openShortcutsDialog();
-		expect(useSettingsStore.getState().shortcutsDialogOpen).toBe(true);
-		useSettingsStore.getState().closeShortcutsDialog();
-		expect(useSettingsStore.getState().shortcutsDialogOpen).toBe(false);
 	});
 
 	it("preserves other settings when updating one", () => {

@@ -123,13 +123,6 @@ export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
 		category: "view",
 	},
 	{
-		id: "shortcuts",
-		label: "Keyboard Shortcuts",
-		macKeys: "⌘/",
-		winKeys: "Ctrl+/",
-		category: "view",
-	},
-	{
 		id: "tab-properties",
 		label: "Properties Tab",
 		macKeys: "1",

@@ -4,6 +4,58 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-03 — Remove Keyboard Shortcuts Dialog + Fix Broken E2E Tests
+
+### Context
+3 E2E tests were failing: `Cmd+/` (opens removed dialog), `Escape` (depends on Cmd+/), and `Cmd+,` (focus issue in headless Chrome). Removed the standalone shortcuts dialog entirely since keyboard shortcuts are already listed in the Settings dialog's Shortcuts tab — which was also removed since it duplicated the standalone dialog.
+
+### Plan
+- [x] Settings store: remove `shortcutsDialogOpen`, `openShortcutsDialog`, `closeShortcutsDialog`, `"shortcuts"` tab
+- [x] App layout: remove `ShortcutsDialog` import, state selector, and render
+- [x] Keyboard shortcuts hook: remove `case "/"` (Cmd+/) and shortcuts Escape branch
+- [x] Native menu hook: remove `case "help-shortcuts"` handler
+- [x] Command registry: remove `settings:shortcuts` command
+- [x] Settings dialog: remove "Shortcuts" from SECTIONS, ShortcutsSection function, Keyboard icon import
+- [x] Delete `src/components/panels/shortcuts-dialog.tsx`
+- [x] Fix E2E tests: delete Cmd+/ and Escape tests; fix Cmd+, test with canvas focus pattern
+- [x] Update unit tests: remove shortcuts dialog references from settings-store.test.ts and settings-dialog.test.tsx
+- [x] Validate: `npx biome check --write .` — clean (only pre-existing !important warning)
+- [x] Validate: `npx tsc --noEmit` — zero type errors
+- [x] Validate: `npx vitest --run` — 408/408 tests pass
+- [x] Validate: `npm run build:web` — builds successfully
+- [x] Validate: `npx playwright test e2e/keyboard-shortcuts.spec.ts` — 3/3 pass
+- [x] Validate: `npx playwright test` — 39/39 E2E tests pass (all green)
+
+### Deep Documentation Scan (round 2)
+- [x] Remove `shortcuts` entry (Cmd+/) from `KEYBOARD_SHORTCUTS` array in `src/types/settings.ts`
+- [x] Remove `help_shortcuts` menu item from native Help menu in `src-tauri/src/menu.rs`
+- [x] Update `docs/knowledge/product-design.md` — Settings tab list corrected to "General, Appearance, AI, Updates, Support"
+- [x] Re-validate: cargo clippy clean, cargo test 55/55, cargo fmt clean, biome clean, tsc clean, vitest 408/408, build:web success, E2E 39/39
+
+### Files Deleted
+| File | Why |
+|------|-----|
+| `src/components/panels/shortcuts-dialog.tsx` | Standalone dialog removed; shortcuts info lived in Settings |
+
+### Files Modified
+| File | Change |
+|------|--------|
+| `src/stores/settings-store.ts` | Removed `"shortcuts"` tab, `shortcutsDialogOpen` state, open/close actions |
+| `src/stores/settings-store.test.ts` | Removed shortcuts dialog test + state reset field |
+| `src/components/layout/app-layout.tsx` | Removed ShortcutsDialog import, state selector, render |
+| `src/hooks/use-keyboard-shortcuts.ts` | Removed Cmd+/ handler and Escape→shortcuts branch |
+| `src/hooks/use-native-menu.ts` | Removed `help-shortcuts` case |
+| `src/lib/command-registry.ts` | Removed `settings:shortcuts` command |
+| `src/components/panels/settings-dialog.tsx` | Removed Shortcuts tab, ShortcutsSection, Keyboard import, KEYBOARD_SHORTCUTS import |
+| `src/components/panels/settings-dialog.test.tsx` | Removed shortcuts tab test, updated tab labels assertion |
+| `e2e/keyboard-shortcuts.spec.ts` | Deleted Cmd+/ and Escape tests; fixed Cmd+, test (canvas focus) |
+| `src/types/settings.ts` | Removed `shortcuts` (Cmd+/) entry from `KEYBOARD_SHORTCUTS` array |
+| `src-tauri/src/menu.rs` | Removed `help_shortcuts` menu item from native Help menu |
+| `docs/knowledge/product-design.md` | Updated Settings tab list (removed Editor + Shortcuts, added Updates) |
+| `docs/plans/todo.md` | This plan |
+
+---
+
 ## 2026-03-03 — Product Website (Landing, Downloads, Legal, About, Support)
 
 ### Plan
