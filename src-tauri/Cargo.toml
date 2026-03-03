@@ -12,6 +12,10 @@ name = "threat_forge_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
+name = "threat-forge"
+path = "src/main.rs"
+
+[[bin]]
 name = "threatforge-mcp"
 path = "src/bin/threatforge-mcp.rs"
 
