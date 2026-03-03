@@ -4,9 +4,11 @@ import { useAutosave } from "@/hooks/use-autosave";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useNativeMenu } from "@/hooks/use-native-menu";
 import { useOnboardingTriggers } from "@/hooks/use-onboarding-triggers";
+import { useWindowTitle } from "@/hooks/use-window-title";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { checkOnLaunch } from "@/stores/update-store";
+import { FONT_SIZE_PX } from "@/types/settings";
 import { Canvas } from "../canvas/canvas";
 import { CommandPalette } from "../command-palette";
 import { GuideProvider } from "../onboarding/guide-provider";
@@ -35,7 +37,20 @@ export function AppLayout() {
 	useNativeMenu();
 	useAutosave();
 	useOnboardingTriggers();
+	useWindowTitle();
 	useEffect(() => checkOnLaunch(), []);
+
+	// Apply font size preference to <html> so rem-based sizes cascade
+	const fontSize = useSettingsStore((s) => s.settings.fontSize);
+	useEffect(() => {
+		const px = FONT_SIZE_PX[fontSize];
+		if (px != null) {
+			document.documentElement.style.fontSize = `${px}px`;
+		}
+		return () => {
+			document.documentElement.style.fontSize = "";
+		};
+	}, [fontSize]);
 
 	const handleLeftResize = useCallback((delta: number) => {
 		const current = useUiStore.getState().leftPanelWidth;

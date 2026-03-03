@@ -4,14 +4,7 @@ import type { UserSettings } from "@/types/settings";
 import { DEFAULT_USER_SETTINGS } from "@/types/settings";
 import type { FileSettings } from "@/types/threat-model";
 
-export type SettingsTab =
-	| "general"
-	| "appearance"
-	| "editor"
-	| "ai"
-	| "shortcuts"
-	| "updates"
-	| "support";
+export type SettingsTab = "general" | "appearance" | "ai" | "shortcuts" | "updates" | "support";
 
 interface SettingsState {
 	/** User-level settings persisted to localStorage */

@@ -125,7 +125,7 @@ function loadPersistedTheme(): ThemeState {
 
 function defaultThemeState(): ThemeState {
 	return {
-		themeMode: "dark",
+		themeMode: "system",
 		lightPresetId: DEFAULT_LIGHT_PRESET,
 		darkPresetId: DEFAULT_DARK_PRESET,
 	};

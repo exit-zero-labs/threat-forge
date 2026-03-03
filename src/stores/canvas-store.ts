@@ -126,8 +126,8 @@ interface CanvasState {
 	deleteSelected: () => void;
 	duplicateElement: (
 		nodeId: string,
-		opts?: { offset?: { x: number; y: number }; select?: boolean },
-	) => void;
+		opts?: { offset?: { x: number; y: number }; select?: boolean; skipHistory?: boolean },
+	) => string | null;
 	reverseEdge: (edgeId: string) => void;
 
 	// ReactFlow instance actions (set by DfdCanvas on init)
@@ -151,6 +151,13 @@ interface CanvasState {
 
 /** Model snapshot captured at the start of a drag (with pre-drag canvas positions baked in). */
 let preDragSnapshot: ThreatModel | null = null;
+
+/** When true, onNodesChange skips the drag-end history push — Alt+drag owns its own history entry. */
+let altDragActive = false;
+
+export function setAltDragActive(active: boolean): void {
+	altDragActive = active;
+}
 
 /** Nudge gesture state (arrow key): snapshot + debounce timer. */
 const nudgeState = {
@@ -314,9 +321,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		// Apply node changes (positions update here)
 		set({ nodes: applyNodeChanges(changes, get().nodes) as DfdNode[] });
 
-		// Handle drag end: push pre-drag snapshot to history, write new positions to model
+		// Handle drag end: push pre-drag snapshot to history, write new positions to model.
+		// Skip when altDragActive — the onNodeDragStop handler owns history for Alt+drag.
 		const hasDragEnd = changes.some((c) => c.type === "position" && c.dragging === false);
-		if (hasDragEnd && preDragSnapshot) {
+		if (hasDragEnd && preDragSnapshot && !altDragActive) {
 			useHistoryStore.getState().pushSnapshot(preDragSnapshot);
 			preDragSnapshot = null;
 			const model = useModelStore.getState().model;
@@ -324,6 +332,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 				const updated = writePositionsToModel(model, get().nodes);
 				useModelStore.setState({ model: updated, isDirty: true });
 			}
+		}
+		if (hasDragEnd && altDragActive) {
+			// Clear preDragSnapshot but don't push — Alt+drag handler will manage history
+			preDragSnapshot = null;
 		}
 
 		// Handle selection changes — process the last selected node for model-store sync.
@@ -616,10 +628,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
 	duplicateElement: (nodeId, opts) => {
 		const model = useModelStore.getState().model;
-		if (!model) return;
+		if (!model) return null;
 
 		const element = model.elements.find((e) => e.id === nodeId);
-		if (!element) return;
+		if (!element) return null;
 
 		const sourceNode = get().nodes.find((n) => n.id === nodeId);
 		const offset = opts?.offset ?? { x: 50, y: 50 };
@@ -636,7 +648,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		const newNode = elementToNode(newElement, { x: offsetX, y: offsetY });
 		set({ nodes: [...get().nodes, newNode] });
 
-		useHistoryStore.getState().pushSnapshot(model);
+		if (!opts?.skipHistory) {
+			useHistoryStore.getState().pushSnapshot(model);
+		}
 		useModelStore
 			.getState()
 			.setModel(
@@ -647,6 +661,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 		if (opts?.select !== false) {
 			useModelStore.getState().setSelectedElement(newId);
 		}
+		return newId;
 	},
 
 	reverseEdge: (edgeId) => {

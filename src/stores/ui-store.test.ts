@@ -14,7 +14,7 @@ describe("useUiStore", () => {
 			rightPanelOpen: true,
 			rightPanelWidth: 320,
 			rightPanelTab: "properties",
-			themeMode: "dark",
+			themeMode: "system",
 			lightPresetId: "daylight",
 			darkPresetId: "midnight",
 		});
@@ -55,9 +55,9 @@ describe("useUiStore", () => {
 	});
 
 	describe("theme management", () => {
-		it("has default dark theme", () => {
+		it("has default system theme", () => {
 			const state = useUiStore.getState();
-			expect(state.themeMode).toBe("dark");
+			expect(state.themeMode).toBe("system");
 			expect(state.darkPresetId).toBe("midnight");
 			expect(state.lightPresetId).toBe("daylight");
 		});

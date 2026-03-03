@@ -22,6 +22,7 @@ describe("useSettingsStore", () => {
 		expect(settings.gridSnap).toBe(true);
 		expect(settings.gridSize).toBe(16);
 		expect(settings.reduceMotion).toBe(false);
+		expect(settings.fontSize).toBe("default");
 	});
 
 	it("updates a single setting", () => {
