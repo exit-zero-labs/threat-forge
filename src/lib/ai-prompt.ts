@@ -67,6 +67,16 @@ export function buildSystemPrompt(model: ThreatModel): string {
 			"The user will review and approve actions before they are applied.\n\n",
 	);
 
+	// Response format instructions
+	parts.push(
+		"RESPONSE FORMAT:\n" +
+			"When your response includes actions or threats blocks, structure your output as follows:\n" +
+			"- Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n" +
+			"- Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n" +
+			"- Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n" +
+			"- Focus your <response> text on high-level analysis, security insights, and recommendations.\n\n",
+	);
+
 	parts.push("--- CURRENT THREAT MODEL ---\n\n");
 
 	parts.push(`Title: ${model.metadata.title}\n`);

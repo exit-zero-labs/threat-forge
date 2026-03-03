@@ -62,6 +62,13 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("Main entry point");
 	});
 
+	it("includes response format instructions", () => {
+		const prompt = buildSystemPrompt(emptyModel());
+
+		expect(prompt).toContain("<response>");
+		expect(prompt).toContain("Do NOT narrate");
+	});
+
 	it("includes data flows when present", () => {
 		const model = emptyModel();
 		model.data_flows.push({

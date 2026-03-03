@@ -9,9 +9,10 @@ import {
 	Sparkles,
 	Trash2,
 	User,
+	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { executeActions } from "@/lib/ai-action-executor";
+import { executeActions, executeSingleAction } from "@/lib/ai-action-executor";
 import { type AiAction, describeAction, extractActions } from "@/lib/ai-actions";
 import { extractThreats, suggestionToThreat } from "@/lib/ai-utils";
 import { cn } from "@/lib/utils";
@@ -202,6 +203,36 @@ function MessageBubble({
 	);
 }
 
+/** Extract user-facing text from AI response. Uses <response> tags if present, falls back to block stripping. */
+export function extractDisplayContent(content: string): string {
+	const responseRegex = /<response>([\s\S]*?)<\/response>/g;
+	const parts: string[] = [];
+	let match = responseRegex.exec(content);
+	while (match) {
+		const trimmed = match[1].trim();
+		if (trimmed) parts.push(trimmed);
+		match = responseRegex.exec(content);
+	}
+	if (parts.length > 0) return parts.join("\n\n");
+
+	// Fallback: strip fenced blocks and any response tags (backward compat with older/non-compliant responses)
+	return content
+		.replace(/```threats\n[\s\S]*?```/g, "")
+		.replace(/```actions\n[\s\S]*?```/g, "")
+		.replace(/<\/?response>/g, "")
+		.trim();
+}
+
+/** Strip fenced code blocks during streaming (response tags may be incomplete). */
+export function stripBlocksForStreaming(content: string): string {
+	return content
+		.replace(/```threats\n[\s\S]*?```/g, "")
+		.replace(/```actions\n[\s\S]*?```/g, "")
+		.replace(/<\/?response>/g, "")
+		.replace(/<\/?resp(on(se?)?)?$/, "")
+		.trim();
+}
+
 function AssistantContent({
 	content,
 	isStreaming,
@@ -225,11 +256,9 @@ function AssistantContent({
 		[addThreat],
 	);
 
-	// Render content with threats and actions blocks removed
-	const displayContent = content
-		.replace(/```threats\n[\s\S]*?```/g, "")
-		.replace(/```actions\n[\s\S]*?```/g, "")
-		.trim();
+	const displayContent = isStreaming
+		? stripBlocksForStreaming(content)
+		: extractDisplayContent(content);
 
 	return (
 		<div className="flex flex-col gap-2">
@@ -260,18 +289,51 @@ function AssistantContent({
 	);
 }
 
+type ActionStatus = "pending" | "applied" | "failed";
+
 /** Preview and apply AI-suggested model actions. */
 function ActionPreview({ actions }: { actions: AiAction[] }) {
-	const [applied, setApplied] = useState(false);
-	const [result, setResult] = useState<{ applied: number; failed: number } | null>(null);
+	const [actionStatus, setActionStatus] = useState<Map<number, ActionStatus>>(new Map());
 
-	const handleApplyAll = useCallback(() => {
-		const res = executeActions(actions);
-		setResult(res);
-		setApplied(true);
-		// Re-sync canvas after model changes
+	let appliedCount = 0;
+	let failedCount = 0;
+	for (const s of actionStatus.values()) {
+		if (s === "applied") appliedCount++;
+		else if (s === "failed") failedCount++;
+	}
+	const remainingCount = actions.length - appliedCount - failedCount;
+	const allDone = appliedCount + failedCount === actions.length;
+
+	const handleApplyOne = useCallback(
+		(index: number) => {
+			const success = executeSingleAction(actions[index]);
+			setActionStatus((prev) => {
+				const next = new Map(prev);
+				next.set(index, success ? "applied" : "failed");
+				return next;
+			});
+			useCanvasStore.getState().syncFromModel();
+		},
+		[actions],
+	);
+
+	const handleApplyRemaining = useCallback(() => {
+		const remaining = actions
+			.map((action, i) => ({ action, i }))
+			.filter(({ i }) => !actionStatus.has(i));
+		const res = executeActions(remaining.map((r) => r.action));
+		setActionStatus((prev) => {
+			const next = new Map(prev);
+			// Mark all as applied only if zero failures; otherwise mark all as failed
+			// (batch doesn't track per-action results, so be conservative)
+			const status: ActionStatus = res.failed === 0 ? "applied" : "failed";
+			for (const { i } of remaining) {
+				next.set(i, status);
+			}
+			return next;
+		});
 		useCanvasStore.getState().syncFromModel();
-	}, [actions]);
+	}, [actions, actionStatus]);
 
 	return (
 		<div className="flex flex-col gap-1.5 border-t border-border/30 pt-1.5">
@@ -279,34 +341,73 @@ function ActionPreview({ actions }: { actions: AiAction[] }) {
 				<span className="text-[10px] font-medium text-muted-foreground">
 					Suggested changes ({actions.length}):
 				</span>
-				{!applied && (
+				{!allDone && (
 					<button
 						type="button"
-						onClick={handleApplyAll}
+						onClick={handleApplyRemaining}
 						className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20 transition-colors"
 					>
 						<Play className="h-2.5 w-2.5" />
-						Apply All
+						{appliedCount === 0 ? "Apply All" : `Apply Remaining (${remainingCount})`}
 					</button>
 				)}
-				{result && (
+				{allDone && (
 					<span className="text-[10px] text-muted-foreground">
-						{result.applied} applied{result.failed > 0 ? `, ${result.failed} failed` : ""}
+						{appliedCount} applied{failedCount > 0 ? `, ${failedCount} failed` : ""}
 					</span>
 				)}
 			</div>
 			{actions.map((action, i) => (
-				<div
+				<ActionRow
 					// biome-ignore lint/suspicious/noArrayIndexKey: action index is stable after streaming
 					key={i}
-					className={cn(
-						"rounded border border-border/50 bg-background/50 px-2 py-1 text-[10px]",
-						applied && "opacity-60",
-					)}
-				>
-					{describeAction(action)}
-				</div>
+					action={action}
+					status={actionStatus.get(i) ?? "pending"}
+					onApply={() => handleApplyOne(i)}
+				/>
 			))}
+		</div>
+	);
+}
+
+/** Single action row with per-action apply button. */
+function ActionRow({
+	action,
+	status,
+	onApply,
+}: {
+	action: AiAction;
+	status: ActionStatus;
+	onApply: () => void;
+}) {
+	return (
+		<div
+			className={cn(
+				"flex items-center gap-1.5 rounded border p-1.5 text-[10px]",
+				status === "applied" && "border-border/50 bg-background/50 opacity-60",
+				status === "failed" && "border-destructive/30 bg-background/50",
+				status === "pending" && "border-border/50 bg-background/50",
+			)}
+		>
+			<span className="flex-1">{describeAction(action)}</span>
+			<button
+				type="button"
+				onClick={onApply}
+				disabled={status !== "pending"}
+				className={cn(
+					"shrink-0 rounded p-1 transition-colors",
+					status === "pending" && "text-primary hover:bg-primary/10",
+					status === "applied" && "cursor-default text-green-500",
+					status === "failed" && "cursor-default text-destructive",
+				)}
+				title={
+					status === "applied" ? "Applied" : status === "failed" ? "Failed" : "Apply this change"
+				}
+			>
+				{status === "applied" && <Check className="h-3.5 w-3.5" />}
+				{status === "failed" && <X className="h-3.5 w-3.5" />}
+				{status === "pending" && <Play className="h-3.5 w-3.5" />}
+			</button>
 		</div>
 	);
 }

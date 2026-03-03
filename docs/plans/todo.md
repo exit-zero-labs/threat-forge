@@ -108,7 +108,7 @@ Six items from backlog, ordered by priority and dependency.
 - Alt+drag: position-swap approach — clone created on drag start for visual ghost, positions swapped on drag stop so original returns to start and clone moves to drop point; single history entry via `altDragActive` flag
 - Templates: inline TypeScript builders (no yaml dependency needed); 3 templates covering common architectures
 
-### Files Changed
+### Files Changed (Items 1-6)
 | File | Change |
 |------|--------|
 | `src-tauri/capabilities/default.json` | Added `core:window:allow-set-title` permission |
@@ -125,4 +125,98 @@ Six items from backlog, ordered by priority and dependency.
 | `src/components/canvas/dfd-canvas.tsx` | Alt+drag position-swap with single history entry + cancellation cleanup |
 | `src/lib/templates.ts` | **New** — 3 template builders for empty state |
 | `src/components/canvas/canvas.tsx` | Template cards in empty state + robust layout handling |
+| `docs/plans/todo.md` | This plan |
+
+---
+
+## 2026-03-02 — 8 Attachment Points + Connector Grab Handles
+
+### Plan
+- [x] Step 1: Expand `HandlePosition` to 8 values, rewrite `getSmartHandlePair` with octant-based angle routing (`canvas-utils.ts`)
+- [x] Step 2: Add 8 corner `Handle` components (4 corners × source/target) to `NodeHandles` (`shared-handles.tsx`)
+- [x] Step 3: Add `reconnectEdge` store action with history support (`canvas-store.ts`)
+- [x] Step 4: Wire `edgesReconnectable`, `onReconnect`, `onReconnectStart`, `onReconnectEnd` in DfdCanvas (`dfd-canvas.tsx`)
+- [x] Step 5: Style `.react-flow__edgeupdater` grab handles (`styles.css`)
+- [x] Step 6: Update tests — tie-break, diagonal routing, `reconnectEdge` (`canvas-utils.test.ts`, `canvas-store.test.ts`)
+- [x] Validate: `npx tsc --noEmit` — zero type errors
+- [x] Validate: `npx biome check --write .` — clean (only pre-existing !important warning)
+- [x] Validate: `npx vitest --run` — all 288 tests pass (12 new tests added)
+
+### Notes
+- HandlePosition expanded from 4 to 8 values (4 cardinal + 4 corners)
+- Smart routing uses `atan2` angle → 8 octants (each 45°) for precise connector paths
+- Corner handles positioned via CSS `left` offsets (15%/85%) on top/bottom sides
+- Edge reconnection uses ReactFlow v12's `onReconnect` API with automatic snap-back on miss
+- `reconnectEdge` store action pushes history snapshot for undo support
+- Backward-compatible: existing 4-handle IDs still exist in the new 8-handle set
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `src/lib/canvas-utils.ts` | Expanded `HandlePosition` to 8 positions, rewrote `getSmartHandlePair` with octant routing, added `angleToHandlePosition` + `oppositeHandle` |
+| `src/components/canvas/nodes/shared-handles.tsx` | Added 8 corner Handle components (4 corners × source/target) |
+| `src/stores/canvas-store.ts` | Added `reconnectEdge` action with history support |
+| `src/components/canvas/dfd-canvas.tsx` | Wired `edgesReconnectable`, `onReconnect`, `onReconnectStart`, `onReconnectEnd` |
+| `src/styles.css` | Styled `.react-flow__edgeupdater` grab handles |
+| `src/lib/canvas-utils.test.ts` | Updated tie-break test, added 4 diagonal + 4 angleToHandlePosition + 4 oppositeHandle tests |
+| `src/stores/canvas-store.test.ts` | Added `reconnectEdge` test |
+| `docs/plans/todo.md` | This plan |
+
+---
+
+## 2026-03-02 — AI Chat Output Quality + Per-Action Apply
+
+### Plan
+- [x] Step 1: Add `sortActionsByDependency` + `executeSingleAction` to `ai-action-executor.ts`
+- [x] Step 2: Rewrite `ActionPreview` + add `ActionRow` in `ai-chat-tab.tsx`
+- [x] Step 3: Add `<response>` tag instructions to `ai-prompt.ts` and `prompt.rs`
+- [x] Step 4: Update `AssistantContent` display logic with `extractDisplayContent`
+- [x] Step 5: Update `ai-prompt.test.ts` and `prompt.rs` test assertions
+- [x] Validate: `npx tsc --noEmit` — zero type errors
+- [x] Validate: `npx biome check --write .` — clean (only pre-existing !important warning)
+- [x] Validate: `npx vitest --run` — 290/290 tests pass
+- [x] Validate: `cargo test` — 55/55 Rust tests pass
+
+### Code Review Fixes (round 1)
+- [x] **Undo on failure (single)** — `executeSingleAction` was pushing undo snapshot before checking if action succeeds; moved `pushSnapshot` after `applyAction` success check
+- [x] **Batch status mapping** — `handleApplyRemaining` was marking partial failures as "applied"; now marks all as "failed" if any fail (conservative)
+- [x] **Empty response tags** — empty `<response></response>` suppressed fallback; now filters empty parts before checking length
+- [x] **Fallback strips response tags** — fallback path now also strips `<response>` tags (test exposed this bug)
+- [x] **Redundant export** — removed `export { sortActionsByDependency }` at bottom, added `export` on declaration
+- [x] **Partial streaming tags** — `stripBlocksForStreaming` now handles partial tags at end of stream
+- [x] **Single-pass count** — replaced triple Map iteration with single loop for `appliedCount`/`failedCount`
+- [x] **Test coverage** — added 24 tests for new functions
+
+### Code Review Fixes (round 2)
+- [x] **Undo on failure (batch)** — `executeActions` was pushing orphaned undo snapshot when all actions fail; moved `pushSnapshot` inside `applied > 0` guard
+- [x] **Broader partial tag regex** — `/<\/?resp(on(se?)?)?$/` now catches `<resp`, `</resp` in addition to longer partials
+- [x] **Double-sort removed** — `handleApplyRemaining` was pre-sorting before calling `executeActions` which sorts internally; removed redundant pre-sort and unused `sortActionsByDependency` import
+- [x] **Test: batch all-fail undo** — added test verifying no undo snapshot when entire batch fails
+- [x] **Test: batch partial success undo** — added test verifying undo snapshot when at least one action succeeds
+- [x] **Test: `<resp` partial tag** — added tests for shorter partial tag fragments
+- [x] Validate: `npx tsc --noEmit` — zero type errors
+- [x] Validate: `npx biome check .` — clean (only pre-existing !important warning)
+- [x] Validate: `npx vitest --run` — 318/318 tests pass (28 new total)
+- [x] Validate: `cargo test` — 55/55 Rust tests pass
+- [x] Validate: `cargo clippy -D warnings` — clean
+- [x] Validate: `cargo fmt --check` — clean
+
+### Notes
+- `sortActionsByDependency` sorts by priority: adds (elements/boundaries) → adds (flows/threats) → updates → deletes (dependents) → deletes (containers)
+- Both `executeSingleAction` and `executeActions` push undo snapshot only on success for clean undo history
+- `executeActions` sorts actions internally; callers don't need to pre-sort
+- `ActionRow` mirrors `ThreatSuggestionCard` layout: text on left, icon button on right
+- `extractDisplayContent` tries `<response>` tag extraction first, falls back to block stripping for backward compat
+- Streaming mode uses simple block stripping since `<response>` tags may be incomplete mid-stream
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `src/lib/ai-action-executor.ts` | Added `sortActionsByDependency`, `executeSingleAction`; sorting + conditional undo in `executeActions` |
+| `src/components/panels/ai-chat-tab.tsx` | Rewrote `ActionPreview` with per-action tracking, added `ActionRow`, added `extractDisplayContent`/`stripBlocksForStreaming` |
+| `src/lib/ai-prompt.ts` | Added `<response>` tag format instructions |
+| `src-tauri/src/ai/prompt.rs` | Mirrored `<response>` tag instructions + updated test |
+| `src/lib/ai-prompt.test.ts` | Added response format assertion |
+| `src/lib/ai-action-executor.test.ts` | **New** — 12 tests for sortActionsByDependency, executeSingleAction, executeActions |
+| `src/lib/ai-display-content.test.ts` | **New** — 16 tests for extractDisplayContent + stripBlocksForStreaming |
 | `docs/plans/todo.md` | This plan |

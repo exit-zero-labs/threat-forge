@@ -57,6 +57,16 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
          The user will review and approve actions before they are applied.\n\n",
     );
 
+    // Response format instructions
+    prompt.push_str(
+        "RESPONSE FORMAT:\n\
+         When your response includes actions or threats blocks, structure your output as follows:\n\
+         - Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n\
+         - Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n\
+         - Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n\
+         - Focus your <response> text on high-level analysis, security insights, and recommendations.\n\n",
+    );
+
     // Serialize the current model context
     prompt.push_str("--- CURRENT THREAT MODEL ---\n\n");
 
@@ -159,6 +169,8 @@ mod tests {
         assert!(prompt.contains("```threats"));
         assert!(prompt.contains("--- CURRENT THREAT MODEL ---"));
         assert!(prompt.contains("--- END THREAT MODEL ---"));
+        assert!(prompt.contains("<response>"));
+        assert!(prompt.contains("Do NOT narrate"));
         // Empty model should not have elements/flows sections
         assert!(!prompt.contains("Elements:"));
         assert!(!prompt.contains("Data Flows:"));

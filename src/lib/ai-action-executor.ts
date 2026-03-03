@@ -13,6 +13,32 @@ function generateThreatId(): string {
 	return `threat-${hex}`;
 }
 
+/** Sort actions so dependencies resolve first: adds before updates/deletes, elements before flows. */
+export function sortActionsByDependency(actions: AiAction[]): AiAction[] {
+	const priority = (a: AiAction): number => {
+		switch (a.action) {
+			case "add_element":
+			case "add_trust_boundary":
+				return 0;
+			case "add_data_flow":
+			case "add_threat":
+				return 1;
+			case "update_element":
+			case "update_data_flow":
+			case "update_trust_boundary":
+			case "update_threat":
+				return 2;
+			case "delete_threat":
+			case "delete_data_flow":
+				return 3;
+			case "delete_trust_boundary":
+			case "delete_element":
+				return 4;
+		}
+	};
+	return [...actions].sort((a, b) => priority(a) - priority(b));
+}
+
 /** Apply a single AI action to the model. Returns updated model or null on failure. */
 function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 	switch (action.action) {
@@ -157,18 +183,17 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 	}
 }
 
-/** Execute a batch of AI actions against the current model. Pushes undo snapshot. */
+/** Execute a batch of AI actions against the current model. Pushes undo snapshot only if at least one action succeeds. */
 export function executeActions(actions: AiAction[]): { applied: number; failed: number } {
 	const model = useModelStore.getState().model;
 	if (!model) return { applied: 0, failed: actions.length };
 
-	useHistoryStore.getState().pushSnapshot(model);
-
+	const sorted = sortActionsByDependency(actions);
 	let current = model;
 	let applied = 0;
 	let failed = 0;
 
-	for (const action of actions) {
+	for (const action of sorted) {
 		const result = applyAction(current, action);
 		if (result) {
 			current = result;
@@ -179,9 +204,26 @@ export function executeActions(actions: AiAction[]): { applied: number; failed: 
 	}
 
 	if (applied > 0) {
+		useHistoryStore.getState().pushSnapshot(model);
 		useModelStore.getState().setModel(current, useModelStore.getState().filePath);
 		useModelStore.getState().markDirty();
 	}
 
 	return { applied, failed };
+}
+
+/**
+ * Execute a single AI action with a dedicated undo snapshot.
+ * Each call produces one independent undo step so users can undo
+ * individual actions without reverting the entire batch.
+ */
+export function executeSingleAction(action: AiAction): boolean {
+	const model = useModelStore.getState().model;
+	if (!model) return false;
+	const result = applyAction(model, action);
+	if (!result) return false;
+	useHistoryStore.getState().pushSnapshot(model);
+	useModelStore.getState().setModel(result, useModelStore.getState().filePath);
+	useModelStore.getState().markDirty();
+	return true;
 }
