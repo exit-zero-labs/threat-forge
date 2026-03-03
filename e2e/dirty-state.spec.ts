@@ -2,7 +2,7 @@ import { addPaletteItem, createModel, expect, modKey, test } from "./fixtures";
 
 test.describe("Dirty State — Unsaved Changes Prompt", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 		// Add an element to make the model dirty
 		await addPaletteItem(page, "palette-item-generic");
@@ -83,7 +83,7 @@ test.describe("Dirty State — Unsaved Changes Prompt", () => {
 
 	test("no dialog appears when model has no unsaved changes", async ({ page }) => {
 		// Start fresh — navigate to a clean state
-		await page.goto("/");
+		await page.goto("/app");
 		await createModel(page);
 		// Do NOT add any elements — model is clean
 

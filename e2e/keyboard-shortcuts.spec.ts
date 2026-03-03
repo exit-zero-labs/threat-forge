@@ -2,7 +2,7 @@ import { addPaletteItem, createModel, expect, modKey, test } from "./fixtures";
 
 test.describe("Keyboard Shortcuts", () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto("/");
+		await page.goto("/app");
 	});
 
 	test("Cmd+Z undoes last action", async ({ page }) => {
