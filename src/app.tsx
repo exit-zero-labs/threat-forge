@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { isTauri } from "./lib/platform";
@@ -23,6 +24,7 @@ const SupportPage = lazy(() =>
 export function App() {
 	return (
 		<BrowserRouter>
+			{!isTauri() && <Analytics />}
 			<Suspense fallback={<LoadingFallback />}>
 				<Routes>
 					<Route path="/" element={isTauri() ? <Navigate to="/app" replace /> : <LandingPage />} />
