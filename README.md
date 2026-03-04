@@ -1,95 +1,84 @@
-# ThreatForge
-
 <p align="center">
-  <img src="media/logo_long_v1.png" alt="ThreatForge" width="400" />
+  <img src="media/logo_long_v1.png" alt="ThreatForge" width="420" />
 </p>
 
-Open-source, AI-enhanced threat modeling for modern development teams.
+<p align="center">
+  <strong>Open-source threat modeling for teams that ship.</strong>
+</p>
 
-ThreatForge is a cross-platform desktop application that makes threat modeling fast, collaborative, and developer-friendly. It produces human-readable, git-diffable YAML files instead of opaque binaries, and uses AI to accelerate the most tedious parts of threat analysis.
+<p align="center">
+  <a href="#getting-started">Getting Started</a> &nbsp;&bull;&nbsp;
+  <a href="#features">Features</a> &nbsp;&bull;&nbsp;
+  <a href="#file-format">File Format</a> &nbsp;&bull;&nbsp;
+  <a href="#contributing">Contributing</a> &nbsp;&bull;&nbsp;
+  <a href="https://threatforge.dev">Website</a>
+</p>
 
-Built with [Tauri v2](https://v2.tauri.app/) + React. Runs on macOS, Windows, and Linux in a ~10MB binary.
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform" />
+  <img src="https://img.shields.io/badge/binary%20size-~10MB-informational" alt="Binary size" />
+</p>
 
-## Why ThreatForge?
+<br />
 
-The threat modeling tools landscape has a gap. On one side: Microsoft's free but Windows-only Threat Modeling Tool with its 2016-era UI and opaque `.tm7` binary files. On the other: enterprise platforms that cost $20K+/year. In between, there's nothing that combines a modern interface, a clean file format, and AI assistance.
+<p align="center">
+  <img src="media/app-hero-dark.png" alt="ThreatForge — Cloud Microservices threat model" width="900" />
+</p>
+
+<br />
+
+ThreatForge is a cross-platform desktop app for threat modeling. It produces human-readable, git-diffable YAML files and uses AI to accelerate threat analysis. Built with [Tauri v2](https://v2.tauri.app/) and React. Runs on macOS, Windows, and Linux.
+
+## The Problem
+
+Threat modeling tools fall into two camps. On one side: Microsoft's Threat Modeling Tool — free, but Windows-only, with a 2016-era UI and opaque `.tm7` binary files that can't be diffed, reviewed, or versioned. On the other: enterprise platforms like IriusRisk and ThreatModeler at $20K+/year.
+
+There's nothing in between for developers who want a modern interface, a clean file format, and AI assistance — without a procurement cycle.
 
 ThreatForge fills that gap.
 
-- **Human-readable YAML files** that you can open in any text editor, diff in git, and review in pull requests
-- **Modern diagramming canvas** for data flow diagrams with drag-and-drop, custom SVG icons, and trust boundaries
-- **STRIDE threat engine** that auto-generates threats based on your architecture
-- **AI chat pane** (bring your own API key) for conversational threat analysis and refinement
-- **Cross-platform** via Tauri v2 -- native performance, small binary, no Electron bloat
-- **Fully offline** -- AI features are optional, everything else works without a network
+## Features
 
-## Status
+### Visual Data Flow Diagrams
 
-ThreatForge is production-ready. The core application is fully functional with a modern diagramming canvas (44 typed components + text annotations), STRIDE threat engine, AI chat pane (BYOK), 13+ themes, keyboard shortcuts, and more. See the [roadmap](docs/plans/roadmap.md) for remaining launch tasks and future plans.
+Drag-and-drop canvas for building data flow diagrams. 44 typed components across 10 categories (services, databases, messaging, infrastructure, security, clients, networking, cloud/platform, and more), plus resizable trust boundaries and text annotations. Connection handles auto-route between elements.
 
-## Development
+### STRIDE Threat Engine
 
-### Prerequisites
+Built-in rule engine that applies Microsoft's STRIDE-per-element methodology to your architecture. Generates threats automatically based on element types and data flow patterns. Cross-boundary flows get elevated severity. No AI required — works fully offline.
 
-- [Node.js](https://nodejs.org/) 20+
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable)
-- [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
+### AI-Assisted Analysis
 
-### Setup
+Chat with Claude or GPT about your threat model. The AI sees your full architecture — elements, data flows, trust boundaries, and existing threats — and can suggest new threats, propose mitigations, or answer security questions. One-click to accept AI-suggested threats into your model.
 
-```bash
-git clone https://github.com/exit-zero-labs/threat-forge.git
-cd threat-forge
-npm install
-```
+Bring your own API key. Supports Anthropic (Claude Opus 4, Sonnet 4, Haiku 3.5) and OpenAI (GPT-4o, GPT-4o Mini). Keys are AES-256-GCM encrypted at rest.
 
-### Run
+### Pre-built Templates
 
-```bash
-npm run tauri dev
-```
+Start from six production-quality templates: **Cloud Microservices**, **E-Commerce Platform**, **Mobile Banking**, **SaaS Platform**, **IoT Smart Building**, and **Healthcare System**. Each includes a complete data flow diagram with elements, trust boundaries, data flows, and STRIDE threats.
 
-This starts the Tauri dev server with hot reload on port 1420.
+### 15 Themes
 
-### Build
+8 dark themes (Midnight, Slate, Nord, Dracula, Monokai, GitHub Dark, One Dark, Catppuccin Mocha) and 7 light themes (Daylight, Warm Sand, High Contrast, GitHub Light, Solarized Light, One Light, Catppuccin Latte). Auto-detects system preference.
 
-```bash
-npm run tauri build
-```
+### Keyboard-First Workflow
 
-Produces a signed desktop binary for your platform.
-
-### Test
-
-```bash
-npx vitest --run              # Frontend tests
-cargo test -p threat-forge    # Rust tests
-```
-
-### Lint
-
-```bash
-npx biome check .                                      # TypeScript
-cargo clippy --manifest-path src-tauri/Cargo.toml       # Rust
-```
-
-## Tech Stack
-
-| Layer             | Technology                                            |
-| ----------------- | ----------------------------------------------------- |
-| Desktop framework | Tauri v2 (Rust)                                       |
-| Frontend          | React 19, TypeScript, Tailwind CSS 4, shadcn/ui       |
-| Diagramming       | ReactFlow / xyflow                                    |
-| State management  | Zustand                                               |
-| File format       | Custom YAML schema (serde_yaml)                       |
-| Testing           | Vitest, React Testing Library, Playwright, cargo test |
-| CI/CD             | GitHub Actions                                        |
+- **Command palette** (`Cmd/Ctrl+K`) with fuzzy search across all actions and components
+- **27+ keyboard shortcuts** for file operations, canvas navigation, panel switching, and more
+- **Undo/redo** with full state history
+- **Resizable panels** — palette on the left, properties/threats/AI on the right
+- **Canvas minimap**, grid snapping, and arrow-key nudging
+- **Copy/paste** elements between models
+- **Interactive onboarding** guides for new users
+- **Auto-updater** with signature verification
 
 ## File Format
 
-The `.thf` format is designed to be the most developer-friendly way to store threat models:
+The `.thf` format is a single YAML file — human-readable, git-diffable, and portable. No binary blobs, no sidecar files, no vendor lock-in.
 
 ```yaml
+# ThreatForge Threat Model
 version: "1.0"
 metadata:
   title: "Payment Processing Service"
@@ -101,11 +90,15 @@ elements:
     type: process
     name: "API Gateway"
     trust_zone: dmz
+    technologies: [nginx, rate-limiting]
+    position: { x: 400, y: 200 }
 
   - id: payment-db
     type: data_store
     name: "Payment Database"
     trust_zone: internal
+    encryption: AES-256-at-rest
+    position: { x: 700, y: 200 }
 
 data_flows:
   - id: flow-1
@@ -113,6 +106,11 @@ data_flows:
     to: payment-db
     protocol: PostgreSQL/TLS
     data: [transaction_records]
+
+trust_boundaries:
+  - id: boundary-1
+    name: "Corporate Network"
+    contains: [api-gateway, payment-db]
 
 threats:
   - id: threat-1
@@ -125,35 +123,130 @@ threats:
       description: "Parameterized queries via ORM"
 ```
 
-Layout positions are stored inline on each element, keeping everything in a single portable file. See the full [file format spec](docs/knowledge/file-format.md).
+Every element, flow, boundary, and threat is a discrete YAML block. Adding a component or resolving a threat produces a clean, reviewable diff. See the full [file format spec](docs/knowledge/file-format.md).
 
-## Contributing
+## Getting Started
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+### Prerequisites
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+- [Node.js](https://nodejs.org/) 20+
+- [Rust](https://www.rust-lang.org/tools/install) (stable)
+- [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
 
-## Support the Project
+### Install and Run
 
-ThreatForge is free and open source. If it's useful to you, consider supporting development:
+```bash
+git clone https://github.com/exit-zero-labs/threat-forge.git
+cd threat-forge
+npm install
+npm run tauri dev
+```
 
-- [**Sponsor on GitHub**](https://github.com/sponsors/exit-zero-labs) -- recurring or one-time contributions
-- **Star the repo** -- helps others discover the project
-- **Contribute** -- bug fixes, features, docs, threat rules ([CONTRIBUTING.md](CONTRIBUTING.md))
-- **Spread the word** -- share with your team or on social media
+The dev server starts with hot reload on port 1420.
+
+### Build
+
+```bash
+npm run tauri build
+```
+
+Produces a native desktop binary for your platform (~10MB).
+
+### Test
+
+```bash
+npx vitest --run                                       # 416+ frontend tests
+cargo test --manifest-path src-tauri/Cargo.toml        # 59+ Rust tests
+```
+
+### Lint
+
+```bash
+npx biome check .                                      # TypeScript
+cargo clippy --manifest-path src-tauri/Cargo.toml      # Rust
+```
+
+### Local CI
+
+```bash
+npm run ci:local          # Native lint + test (~30s)
+npm run ci:docker         # Docker lint + test (clean environment)
+npm run ci:docker:build   # Docker lint + test + Tauri build
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Desktop framework | [Tauri v2](https://v2.tauri.app/) (Rust backend, native webview) |
+| Frontend | React 19, TypeScript 5 (strict), Tailwind CSS 4, shadcn/ui |
+| Diagramming | [ReactFlow / xyflow](https://reactflow.dev/) |
+| State management | Zustand |
+| File format | Custom YAML schema (serde_yaml) |
+| Testing | Vitest + React Testing Library, cargo test, Playwright |
+| Linting | Biome (TypeScript), Clippy (Rust) |
+| CI/CD | GitHub Actions (matrix: macOS, Windows, Linux) |
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│                 Tauri v2 Shell                    │
+├────────────────────┬─────────────────────────────┤
+│   React Frontend   │        Rust Backend         │
+│                    │                             │
+│  ReactFlow Canvas ◄──IPC──► File I/O (YAML)     │
+│  Zustand Stores   ◄──IPC──► STRIDE Engine       │
+│  AI Chat Pane     ◄──IPC──► AI Providers (SSE)  │
+│  Settings / UI    ◄──IPC──► Key Storage (AES)   │
+└────────────────────┴─────────────────────────────┘
+         │                        │
+         ▼                        ▼
+    Local .thf files       LLM APIs (optional)
+                        (Anthropic / OpenAI)
+```
+
+All AI calls go directly from the user's machine with the user's API key. No proxy, no telemetry on model content. See the full [architecture doc](docs/knowledge/architecture.md).
 
 ## Security
 
-If you discover a security vulnerability, please report it responsibly. See [SECURITY.md](SECURITY.md) for details. Do not open a public issue for security vulnerabilities.
+ThreatForge is a security tool — the bar for security in our own code is high.
+
+- **API keys** encrypted at rest with AES-256-GCM
+- **AI calls** go directly to the provider — no intermediary server
+- **LLM output** treated as untrusted input and sanitized before rendering
+- **File paths** scoped via Tauri's capability system
+- **Strict CSP** — no inline scripts, no remote code loading
+- **Auto-updates** are signature-verified
+- **Minimal dependencies** — audited with `cargo audit` and `npm audit`
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Do not open a public issue.
+
+## Contributing
+
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code style, and PR guidelines.
+
+Areas where help is especially valuable:
+- STRIDE threat rule expansion
+- Import/export (Microsoft TMT `.tm7`, OWASP Threat Dragon `.json`)
+- Accessibility (WCAG compliance)
+- Documentation and example threat models
+
+## Support the Project
+
+ThreatForge is free and open source. If it's useful to you:
+
+- [**Sponsor on GitHub**](https://github.com/sponsors/exit-zero-labs) — recurring or one-time
+- **Star the repo** — helps others find the project
+- **Contribute** — code, docs, threat rules ([CONTRIBUTING.md](CONTRIBUTING.md))
+- **Share** — tell your team or post about it
 
 ## License
 
-Copyright 2026 Exit Zero Labs LLC.
+Copyright 2026 Exit Zero Labs LLC. Licensed under the [Apache License 2.0](LICENSE).
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for the full text.
+---
 
-## Mission
-
-ThreatForge exists to make threat modeling accessible to every developer, not just security specialists. Security shouldn't be gated behind expensive enterprise tools or painful UX. If more teams can threat-model quickly and painlessly, the software we all depend on gets safer.
-
-Built by [Exit Zero Labs](https://exitzerolabs.com). Ship clean. Build forward.
+<p align="center">
+  Built by <a href="https://exitzerolabs.com">Exit Zero Labs</a>. Ship clean. Build forward.
+</p>
