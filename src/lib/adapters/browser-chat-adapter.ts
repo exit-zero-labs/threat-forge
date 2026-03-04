@@ -16,6 +16,8 @@ export class BrowserChatAdapter implements ChatAdapter {
 		messages: ChatMessage[],
 		model: ThreatModel,
 		callbacks: ChatStreamCallbacks,
+		modelId: string,
+		signal?: AbortSignal,
 	): Promise<void> {
 		const keychainAdapter = await getKeychainAdapter();
 		const apiKey = await keychainAdapter.getKey(provider);
@@ -26,9 +28,9 @@ export class BrowserChatAdapter implements ChatAdapter {
 		const systemPrompt = buildSystemPrompt(model);
 
 		if (provider === "anthropic") {
-			await streamAnthropic(apiKey, systemPrompt, messages, callbacks);
+			await streamAnthropic(apiKey, systemPrompt, messages, callbacks, modelId, signal);
 		} else {
-			await streamOpenAI(apiKey, systemPrompt, messages, callbacks);
+			await streamOpenAI(apiKey, systemPrompt, messages, callbacks, modelId, signal);
 		}
 	}
 }
@@ -38,6 +40,8 @@ async function streamAnthropic(
 	systemPrompt: string,
 	messages: ChatMessage[],
 	callbacks: ChatStreamCallbacks,
+	modelId: string,
+	signal?: AbortSignal,
 ): Promise<void> {
 	const response = await fetch("https://api.anthropic.com/v1/messages", {
 		method: "POST",
@@ -48,12 +52,13 @@ async function streamAnthropic(
 			"anthropic-dangerous-direct-browser-access": "true",
 		},
 		body: JSON.stringify({
-			model: "claude-sonnet-4-20250514",
+			model: modelId,
 			max_tokens: 4096,
 			system: systemPrompt,
 			messages: messages.map((m) => ({ role: m.role, content: m.content })),
 			stream: true,
 		}),
+		signal,
 	});
 
 	if (!response.ok) {
@@ -61,7 +66,7 @@ async function streamAnthropic(
 		throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
 	}
 
-	await parseSSEStream(response, (event, data) => {
+	await parseSSEStream(response, signal, (event, data) => {
 		if (event === "content_block_delta") {
 			const parsed = JSON.parse(data) as { delta?: { text?: string } };
 			if (parsed.delta?.text) {
@@ -81,6 +86,8 @@ async function streamOpenAI(
 	systemPrompt: string,
 	messages: ChatMessage[],
 	callbacks: ChatStreamCallbacks,
+	modelId: string,
+	signal?: AbortSignal,
 ): Promise<void> {
 	const response = await fetch("https://api.openai.com/v1/chat/completions", {
 		method: "POST",
@@ -89,13 +96,14 @@ async function streamOpenAI(
 			Authorization: `Bearer ${apiKey}`,
 		},
 		body: JSON.stringify({
-			model: "gpt-4o",
+			model: modelId,
 			messages: [
 				{ role: "system", content: systemPrompt },
 				...messages.map((m) => ({ role: m.role, content: m.content })),
 			],
 			stream: true,
 		}),
+		signal,
 	});
 
 	if (!response.ok) {
@@ -103,7 +111,7 @@ async function streamOpenAI(
 		throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
 	}
 
-	await parseSSEStream(response, (_event, data) => {
+	await parseSSEStream(response, signal, (_event, data) => {
 		if (data === "[DONE]") {
 			callbacks.onDone();
 			return;
@@ -125,6 +133,7 @@ async function streamOpenAI(
 
 async function parseSSEStream(
 	response: Response,
+	signal: AbortSignal | undefined,
 	onEvent: (event: string, data: string) => void,
 ): Promise<void> {
 	const reader = response.body?.getReader();
@@ -134,24 +143,33 @@ async function parseSSEStream(
 	let buffer = "";
 	let currentEvent = "message";
 
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-
-		buffer += decoder.decode(value, { stream: true });
-		const lines = buffer.split("\n");
-		// Keep the last potentially incomplete line in the buffer
-		buffer = lines.pop() ?? "";
-
-		for (const line of lines) {
-			if (line.startsWith("event: ")) {
-				currentEvent = line.slice(7).trim();
-			} else if (line.startsWith("data: ")) {
-				const data = line.slice(6);
-				onEvent(currentEvent, data);
-				currentEvent = "message";
+	try {
+		for (;;) {
+			if (signal?.aborted) {
+				await reader.cancel();
+				return;
 			}
-			// Skip empty lines and comments
+
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+			const lines = buffer.split("\n");
+			// Keep the last potentially incomplete line in the buffer
+			buffer = lines.pop() ?? "";
+
+			for (const line of lines) {
+				if (line.startsWith("event: ")) {
+					currentEvent = line.slice(7).trim();
+				} else if (line.startsWith("data: ")) {
+					const data = line.slice(6);
+					onEvent(currentEvent, data);
+					currentEvent = "message";
+				}
+				// Skip empty lines and comments
+			}
 		}
+	} finally {
+		reader.releaseLock();
 	}
 }

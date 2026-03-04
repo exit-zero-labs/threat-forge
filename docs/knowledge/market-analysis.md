@@ -33,7 +33,7 @@
 | **Pricing** | Free (OSS) | Free | Free (OSS) | Enterprise ($$$) | Free | Free (OSS) |
 | **Platform** | Win/Mac/Linux | Windows only | Web + Desktop (Electron) | SaaS | Web | Web |
 | **Modern UI** | Yes | No (2016 WinForms) | Functional, dated | Yes (SaaS) | Generic | Basic |
-| **AI Features** | Integrated chat pane | None | None | Jeff AI | None | Core feature |
+| **AI Features** | Integrated chat pane with model selector, sessions, markdown, stop generating | None | None | Jeff AI | None | Core feature |
 | **Git-friendly files** | YAML, human-readable | Binary .tm7 | JSON (verbose) | Proprietary SaaS | N/A | Markdown only |
 | **STRIDE support** | Yes | Yes | Yes | Yes | No (manual) | Yes |
 | **GitHub Stars** | New | N/A (closed) | ~1,300 | N/A (commercial) | N/A | ~600 |

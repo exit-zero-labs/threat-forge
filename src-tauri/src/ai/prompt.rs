@@ -5,20 +5,34 @@ use crate::models::ThreatModel;
 /// The prompt instructs the AI to act as a threat modeling expert and provides
 /// the full model state so the AI can make contextual suggestions.
 pub fn build_system_prompt(model: &ThreatModel) -> String {
-    let mut prompt = String::with_capacity(4096);
+    let mut prompt = String::with_capacity(8192);
 
+    // Identity and STRIDE expertise
     prompt.push_str(
-        "You are a senior security architect and threat modeling expert. \
-         You are helping a user analyze and improve their threat model using the STRIDE methodology.\n\n\
-         STRIDE categories:\n\
-         - Spoofing: Can an attacker pretend to be someone/something else?\n\
-         - Tampering: Can an attacker modify data in transit or at rest?\n\
-         - Repudiation: Can an attacker deny performing an action?\n\
-         - Information Disclosure: Can an attacker access data they shouldn't?\n\
-         - Denial of Service: Can an attacker prevent legitimate access?\n\
-         - Elevation of Privilege: Can an attacker gain unauthorized access levels?\n\n",
+        "You are a senior security architect and threat modeling expert embedded in ThreatForge, \
+         a desktop threat modeling application. You help users build, analyze, and improve threat models \
+         using the STRIDE methodology and data flow diagrams (DFDs).\n\n\
+         STRIDE categories — apply each systematically:\n\
+         - **Spoofing**: Identity forgery. Examine authentication mechanisms, token validation, certificate verification, \
+         API key management, and session handling. Look for missing mutual authentication, weak credential storage, \
+         and impersonation vectors across trust boundaries.\n\
+         - **Tampering**: Data integrity violations. Analyze data in transit (protocol downgrades, MITM), data at rest \
+         (unauthorized writes, SQL injection, file manipulation), and configuration tampering. Check for missing integrity \
+         checks, unsigned updates, and input validation gaps.\n\
+         - **Repudiation**: Deniability of actions. Review audit logging completeness, log integrity protection, \
+         timestamp reliability, and non-repudiation controls. Consider whether critical actions (financial transactions, \
+         admin operations, data deletions) can be attributed to specific actors.\n\
+         - **Information Disclosure**: Unauthorized data access. Examine encryption coverage (at rest and in transit), \
+         error message verbosity, metadata leakage, side-channel attacks, excessive permissions, and data exposure \
+         through logs, backups, or debugging endpoints.\n\
+         - **Denial of Service**: Availability attacks. Assess rate limiting, resource exhaustion vectors (CPU, memory, \
+         disk, network), single points of failure, cascading failures, and amplification attacks. Consider both \
+         intentional attacks and accidental resource starvation.\n\
+         - **Elevation of Privilege**: Authorization bypass. Analyze role-based access controls, privilege boundaries, \
+         default permissions, privilege escalation chains, confused deputy problems, and insecure direct object references.\n\n",
     );
 
+    // Threat suggestion format
     prompt.push_str("When suggesting new threats, format them in a fenced code block with the language tag `threats` using YAML syntax:\n\n");
     prompt.push_str("```threats\n");
     prompt.push_str("- title: \"Threat title here\"\n");
@@ -31,7 +45,10 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
     prompt.push_str(
         "Only use element IDs that exist in the current model. \
          Be specific and actionable in your threat descriptions. \
-         Consider the trust zones and data flows when assessing severity.\n\n",
+         Consider the trust zones and data flows when assessing severity. \
+         Group threats by STRIDE category and prioritize by severity. \
+         Proactively identify gaps in the model — missing trust boundaries, \
+         unprotected data flows, or elements without threats.\n\n",
     );
 
     // AI action protocol
@@ -40,11 +57,11 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
          output the changes in a fenced code block with the language tag `actions` as a JSON array:\n\n\
          ```actions\n\
          [\n\
-           { \"action\": \"add_element\", \"element\": { \"type\": \"process\", \"name\": \"Auth Service\", \"trust_zone\": \"internal\", \"description\": \"Handles authentication\", \"technologies\": [\"OAuth2\"] } },\n\
+           { \"action\": \"add_element\", \"element\": { \"type\": \"process\", \"name\": \"Auth Service\", \"trust_zone\": \"internal\", \"description\": \"Handles authentication\", \"technologies\": [\"OAuth2\"], \"position\": { \"x\": 400, \"y\": 200 } } },\n\
            { \"action\": \"add_data_flow\", \"data_flow\": { \"from\": \"web-app\", \"to\": \"auth-service\", \"name\": \"Auth Request\", \"protocol\": \"HTTPS\", \"data\": [\"credentials\"], \"authenticated\": false } },\n\
            { \"action\": \"update_element\", \"id\": \"api-gw\", \"updates\": { \"description\": \"Updated description\" } },\n\
            { \"action\": \"delete_element\", \"id\": \"old-service\" },\n\
-           { \"action\": \"add_trust_boundary\", \"trust_boundary\": { \"name\": \"DMZ\", \"contains\": [\"api-gw\"] } },\n\
+           { \"action\": \"add_trust_boundary\", \"trust_boundary\": { \"name\": \"DMZ\", \"contains\": [\"api-gw\"], \"position\": { \"x\": 50, \"y\": 100 } } },\n\
            { \"action\": \"add_threat\", \"threat\": { \"title\": \"SQL Injection\", \"category\": \"Tampering\", \"element\": \"api-gw\", \"severity\": \"high\", \"description\": \"Risk of SQL injection.\" } }\n\
          ]\n\
          ```\n\n\
@@ -57,13 +74,26 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
          The user will review and approve actions before they are applied.\n\n",
     );
 
+    // Canvas positioning guidance
+    prompt.push_str(
+        "CANVAS POSITIONING:\n\
+         When adding elements, include a `position: { x, y }` field. The canvas uses pixel coordinates \
+         with x increasing rightward and y increasing downward. Guidelines:\n\
+         - Space elements ~200px apart horizontally and ~150px apart vertically.\n\
+         - Arrange data flows left-to-right: external entities on the left, processes in the middle, data stores on the right.\n\
+         - Place related elements in a grid pattern near each other.\n\
+         - Trust boundaries should be positioned to enclose their elements with ~50px padding.\n\
+         - Use the existing element positions below to place new elements relative to them.\n\n",
+    );
+
     // Response format instructions
     prompt.push_str(
         "RESPONSE FORMAT:\n\
-         When your response includes actions or threats blocks, structure your output as follows:\n\
-         - Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n\
-         - Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n\
-         - Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n\
+         - Use Markdown formatting in your responses (headers, lists, bold, code).\n\
+         - When your response includes actions or threats blocks, structure your output as follows:\n\
+           - Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n\
+           - Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n\
+           - Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n\
          - Focus your <response> text on high-level analysis, security insights, and recommendations.\n\n",
     );
 
@@ -77,7 +107,7 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
     }
     prompt.push('\n');
 
-    // Elements
+    // Elements (with positions)
     if !model.elements.is_empty() {
         prompt.push_str("Elements:\n");
         for el in &model.elements {
@@ -93,6 +123,9 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
             }
             if !el.description.is_empty() {
                 prompt.push_str(&format!(", description: \"{}\"", el.description));
+            }
+            if let Some(ref pos) = el.position {
+                prompt.push_str(&format!(", position: {{x: {}, y: {}}}", pos.x, pos.y));
             }
             prompt.push_str(")\n");
         }
@@ -116,16 +149,26 @@ pub fn build_system_prompt(model: &ThreatModel) -> String {
         prompt.push('\n');
     }
 
-    // Trust boundaries
+    // Trust boundaries (with positions)
     if !model.trust_boundaries.is_empty() {
         prompt.push_str("Trust Boundaries:\n");
         for boundary in &model.trust_boundaries {
             prompt.push_str(&format!(
-                "  - {} (id: {}, contains: [{}])\n",
+                "  - {} (id: {}, contains: [{}]",
                 boundary.name,
                 boundary.id,
                 boundary.contains.join(", ")
             ));
+            if let Some(ref pos) = boundary.position {
+                prompt.push_str(&format!(", position: {{x: {}, y: {}}}", pos.x, pos.y));
+            }
+            if let Some(ref size) = boundary.size {
+                prompt.push_str(&format!(
+                    ", size: {{w: {}, h: {}}}",
+                    size.width, size.height
+                ));
+            }
+            prompt.push_str(")\n");
         }
         prompt.push('\n');
     }
@@ -171,6 +214,8 @@ mod tests {
         assert!(prompt.contains("--- END THREAT MODEL ---"));
         assert!(prompt.contains("<response>"));
         assert!(prompt.contains("Do NOT narrate"));
+        assert!(prompt.contains("CANVAS POSITIONING"));
+        assert!(prompt.contains("Markdown"));
         // Empty model should not have elements/flows sections
         assert!(!prompt.contains("Elements:"));
         assert!(!prompt.contains("Data Flows:"));
@@ -192,7 +237,7 @@ mod tests {
             technologies: vec!["nginx".to_string()],
             stores: None,
             encryption: None,
-            position: None,
+            position: Some(crate::models::Position { x: 100.0, y: 200.0 }),
             fill_color: None,
             stroke_color: None,
             fill_opacity: None,
@@ -209,6 +254,7 @@ mod tests {
         assert!(prompt.contains("dmz"));
         assert!(prompt.contains("nginx"));
         assert!(prompt.contains("Main entry point"));
+        assert!(prompt.contains("position: {x: 100, y: 200}"));
     }
 
     #[test]

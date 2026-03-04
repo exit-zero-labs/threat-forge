@@ -38,11 +38,11 @@ ThreatForge is production-ready. The core application is fully functional:
 
 - Modern diagramming canvas with 44 typed components, drag-and-drop, trust boundaries, text annotations
 - STRIDE threat engine with auto-generated threats per element
-- AI chat pane (BYOK) with OpenAI, Anthropic, and Ollama support
+- AI chat pane (BYOK) with OpenAI + Anthropic support, model selector, persistent chat sessions, markdown rendering, stop generating
 - `.thf` YAML file format with clean git diffs
 - 13+ themes (light and dark), resizable panes, keyboard shortcuts, command palette
 - Onboarding system with interactive guides
-- 240+ frontend tests, 40+ Rust tests, 40+ E2E tests
+- 416+ frontend tests, 59+ Rust tests, 40+ E2E tests
 - Cross-platform via Tauri v2 (macOS, Windows, Linux)
 
 **Remaining for public launch:** Cross-platform CI builds + code signing, auto-updater, landing page/website, launch marketing.

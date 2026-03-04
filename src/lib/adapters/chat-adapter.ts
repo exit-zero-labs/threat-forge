@@ -23,5 +23,7 @@ export interface ChatAdapter {
 		messages: ChatMessage[],
 		model: ThreatModel,
 		callbacks: ChatStreamCallbacks,
+		modelId: string,
+		signal?: AbortSignal,
 	): Promise<void>;
 }

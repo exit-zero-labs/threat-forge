@@ -15,18 +15,32 @@ import type { ThreatModel } from "@/types/threat-model";
 export function buildSystemPrompt(model: ThreatModel): string {
 	const parts: string[] = [];
 
+	// Identity and STRIDE expertise
 	parts.push(
-		"You are a senior security architect and threat modeling expert. " +
-			"You are helping a user analyze and improve their threat model using the STRIDE methodology.\n\n" +
-			"STRIDE categories:\n" +
-			"- Spoofing: Can an attacker pretend to be someone/something else?\n" +
-			"- Tampering: Can an attacker modify data in transit or at rest?\n" +
-			"- Repudiation: Can an attacker deny performing an action?\n" +
-			"- Information Disclosure: Can an attacker access data they shouldn't?\n" +
-			"- Denial of Service: Can an attacker prevent legitimate access?\n" +
-			"- Elevation of Privilege: Can an attacker gain unauthorized access levels?\n\n",
+		"You are a senior security architect and threat modeling expert embedded in ThreatForge, " +
+			"a desktop threat modeling application. You help users build, analyze, and improve threat models " +
+			"using the STRIDE methodology and data flow diagrams (DFDs).\n\n" +
+			"STRIDE categories — apply each systematically:\n" +
+			"- **Spoofing**: Identity forgery. Examine authentication mechanisms, token validation, certificate verification, " +
+			"API key management, and session handling. Look for missing mutual authentication, weak credential storage, " +
+			"and impersonation vectors across trust boundaries.\n" +
+			"- **Tampering**: Data integrity violations. Analyze data in transit (protocol downgrades, MITM), data at rest " +
+			"(unauthorized writes, SQL injection, file manipulation), and configuration tampering. Check for missing integrity " +
+			"checks, unsigned updates, and input validation gaps.\n" +
+			"- **Repudiation**: Deniability of actions. Review audit logging completeness, log integrity protection, " +
+			"timestamp reliability, and non-repudiation controls. Consider whether critical actions (financial transactions, " +
+			"admin operations, data deletions) can be attributed to specific actors.\n" +
+			"- **Information Disclosure**: Unauthorized data access. Examine encryption coverage (at rest and in transit), " +
+			"error message verbosity, metadata leakage, side-channel attacks, excessive permissions, and data exposure " +
+			"through logs, backups, or debugging endpoints.\n" +
+			"- **Denial of Service**: Availability attacks. Assess rate limiting, resource exhaustion vectors (CPU, memory, " +
+			"disk, network), single points of failure, cascading failures, and amplification attacks. Consider both " +
+			"intentional attacks and accidental resource starvation.\n" +
+			"- **Elevation of Privilege**: Authorization bypass. Analyze role-based access controls, privilege boundaries, " +
+			"default permissions, privilege escalation chains, confused deputy problems, and insecure direct object references.\n\n",
 	);
 
+	// Threat suggestion format
 	parts.push(
 		"When suggesting new threats, format them in a fenced code block with the language tag `threats` using YAML syntax:\n\n" +
 			"```threats\n" +
@@ -41,7 +55,10 @@ export function buildSystemPrompt(model: ThreatModel): string {
 	parts.push(
 		"Only use element IDs that exist in the current model. " +
 			"Be specific and actionable in your threat descriptions. " +
-			"Consider the trust zones and data flows when assessing severity.\n\n",
+			"Consider the trust zones and data flows when assessing severity. " +
+			"Group threats by STRIDE category and prioritize by severity. " +
+			"Proactively identify gaps in the model — missing trust boundaries, " +
+			"unprotected data flows, or elements without threats.\n\n",
 	);
 
 	// AI action protocol
@@ -50,11 +67,11 @@ export function buildSystemPrompt(model: ThreatModel): string {
 			"output the changes in a fenced code block with the language tag `actions` as a JSON array:\n\n" +
 			"```actions\n" +
 			"[\n" +
-			'  { "action": "add_element", "element": { "type": "process", "name": "Auth Service", "trust_zone": "internal", "description": "Handles authentication", "technologies": ["OAuth2"] } },\n' +
+			'  { "action": "add_element", "element": { "type": "process", "name": "Auth Service", "trust_zone": "internal", "description": "Handles authentication", "technologies": ["OAuth2"], "position": { "x": 400, "y": 200 } } },\n' +
 			'  { "action": "add_data_flow", "data_flow": { "from": "web-app", "to": "auth-service", "name": "Auth Request", "protocol": "HTTPS", "data": ["credentials"], "authenticated": false } },\n' +
 			'  { "action": "update_element", "id": "api-gw", "updates": { "description": "Updated description" } },\n' +
 			'  { "action": "delete_element", "id": "old-service" },\n' +
-			'  { "action": "add_trust_boundary", "trust_boundary": { "name": "DMZ", "contains": ["api-gw"] } },\n' +
+			'  { "action": "add_trust_boundary", "trust_boundary": { "name": "DMZ", "contains": ["api-gw"], "position": { "x": 50, "y": 100 } } },\n' +
 			'  { "action": "add_threat", "threat": { "title": "SQL Injection", "category": "Tampering", "element": "api-gw", "severity": "high", "description": "Risk of SQL injection." } }\n' +
 			"]\n" +
 			"```\n\n" +
@@ -67,13 +84,26 @@ export function buildSystemPrompt(model: ThreatModel): string {
 			"The user will review and approve actions before they are applied.\n\n",
 	);
 
+	// Canvas positioning guidance
+	parts.push(
+		"CANVAS POSITIONING:\n" +
+			"When adding elements, include a `position: { x, y }` field. The canvas uses pixel coordinates " +
+			"with x increasing rightward and y increasing downward. Guidelines:\n" +
+			"- Space elements ~200px apart horizontally and ~150px apart vertically.\n" +
+			"- Arrange data flows left-to-right: external entities on the left, processes in the middle, data stores on the right.\n" +
+			"- Place related elements in a grid pattern near each other.\n" +
+			"- Trust boundaries should be positioned to enclose their elements with ~50px padding.\n" +
+			"- Use the existing element positions below to place new elements relative to them.\n\n",
+	);
+
 	// Response format instructions
 	parts.push(
 		"RESPONSE FORMAT:\n" +
-			"When your response includes actions or threats blocks, structure your output as follows:\n" +
-			"- Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n" +
-			"- Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n" +
-			"- Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n" +
+			"- Use Markdown formatting in your responses (headers, lists, bold, code).\n" +
+			"- When your response includes actions or threats blocks, structure your output as follows:\n" +
+			"  - Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n" +
+			"  - Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n" +
+			"  - Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n" +
 			"- Focus your <response> text on high-level analysis, security insights, and recommendations.\n\n",
 	);
 
@@ -86,7 +116,7 @@ export function buildSystemPrompt(model: ThreatModel): string {
 	}
 	parts.push("\n");
 
-	// Elements
+	// Elements (with positions)
 	if (model.elements.length > 0) {
 		parts.push("Elements:\n");
 		for (const el of model.elements) {
@@ -99,6 +129,9 @@ export function buildSystemPrompt(model: ThreatModel): string {
 			}
 			if (el.description) {
 				line += `, description: "${el.description}"`;
+			}
+			if (el.position) {
+				line += `, position: {x: ${el.position.x}, y: ${el.position.y}}`;
 			}
 			line += ")\n";
 			parts.push(line);
@@ -121,9 +154,15 @@ export function buildSystemPrompt(model: ThreatModel): string {
 	if (model.trust_boundaries.length > 0) {
 		parts.push("Trust Boundaries:\n");
 		for (const boundary of model.trust_boundaries) {
-			parts.push(
-				`  - ${boundary.name} (id: ${boundary.id}, contains: [${boundary.contains.join(", ")}])\n`,
-			);
+			let line = `  - ${boundary.name} (id: ${boundary.id}, contains: [${boundary.contains.join(", ")}]`;
+			if (boundary.position) {
+				line += `, position: {x: ${boundary.position.x}, y: ${boundary.position.y}}`;
+			}
+			if (boundary.size) {
+				line += `, size: {w: ${boundary.size.width}, h: ${boundary.size.height}}`;
+			}
+			line += ")\n";
+			parts.push(line);
 		}
 		parts.push("\n");
 	}
