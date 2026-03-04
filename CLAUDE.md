@@ -82,7 +82,7 @@ threat-forge/
 │   │   ├── commands/           # Tauri IPC command handlers
 │   │   ├── models/             # Rust types (serde YAML schema)
 │   │   ├── stride/             # STRIDE threat engine
-│   │   ├── ai/                 # AI key storage (AES-256-GCM)
+│   │   ├── ai/                 # AI: key storage, streaming providers, system prompts
 │   │   └── file_io/            # File read/write operations
 │   ├── Cargo.toml
 │   └── tauri.conf.json

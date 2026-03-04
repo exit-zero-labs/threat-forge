@@ -32,6 +32,10 @@ export interface UserSettings {
 	authorEmail: string;
 	/** UI font size preference */
 	fontSize: FontSize;
+	/** Selected Anthropic model ID */
+	aiModelAnthropic: string;
+	/** Selected OpenAI model ID */
+	aiModelOpenai: string;
 }
 
 /** File-level settings stored alongside the threat model (re-exported from threat-model.ts) */
@@ -63,6 +67,8 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
 	authorName: "",
 	authorEmail: "",
 	fontSize: "default",
+	aiModelAnthropic: "claude-sonnet-4-20250514",
+	aiModelOpenai: "gpt-4o",
 };
 
 /** Mapping from font size preference to CSS font-size value on <html> */

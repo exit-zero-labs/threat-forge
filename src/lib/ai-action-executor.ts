@@ -51,6 +51,7 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 				trust_zone: action.element.trust_zone ?? "",
 				description: action.element.description ?? "",
 				technologies: action.element.technologies ?? [],
+				position: action.element.position,
 			};
 			return { ...model, elements: [...model.elements, newEl] };
 		}
@@ -126,6 +127,7 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 				id,
 				name: action.trust_boundary.name,
 				contains: validContains,
+				position: action.trust_boundary.position,
 			};
 			return { ...model, trust_boundaries: [...model.trust_boundaries, newBoundary] };
 		}

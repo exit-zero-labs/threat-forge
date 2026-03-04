@@ -2,12 +2,11 @@ use crate::ai::types::{AiProvider, ChatMessage, ChatRole};
 use crate::errors::ThreatForgeError;
 use futures::StreamExt;
 use reqwest::Client;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
-const ANTHROPIC_MODEL: &str = "claude-sonnet-4-20250514";
-const OPENAI_MODEL: &str = "gpt-4o";
 
 /// Stream a chat response from the configured provider, emitting Tauri events
 /// for each text chunk.
@@ -22,14 +21,36 @@ pub async fn stream_chat(
     api_key: &str,
     system_prompt: &str,
     messages: &[ChatMessage],
+    model_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<(), ThreatForgeError> {
     let client = Client::new();
 
     let result = match provider {
         AiProvider::Anthropic => {
-            stream_anthropic(&client, app, api_key, system_prompt, messages).await
+            stream_anthropic(
+                &client,
+                app,
+                api_key,
+                system_prompt,
+                messages,
+                model_id,
+                cancel_flag,
+            )
+            .await
         }
-        AiProvider::OpenAi => stream_openai(&client, app, api_key, system_prompt, messages).await,
+        AiProvider::OpenAi => {
+            stream_openai(
+                &client,
+                app,
+                api_key,
+                system_prompt,
+                messages,
+                model_id,
+                cancel_flag,
+            )
+            .await
+        }
     };
 
     match result {
@@ -54,6 +75,8 @@ async fn stream_anthropic(
     api_key: &str,
     system_prompt: &str,
     messages: &[ChatMessage],
+    model_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<(), ThreatForgeError> {
     let api_messages: Vec<serde_json::Value> = messages
         .iter()
@@ -71,7 +94,7 @@ async fn stream_anthropic(
         .collect();
 
     let body = serde_json::json!({
-        "model": ANTHROPIC_MODEL,
+        "model": model_id,
         "max_tokens": 4096,
         "system": system_prompt,
         "messages": api_messages,
@@ -102,6 +125,10 @@ async fn stream_anthropic(
     let mut buffer = String::new();
 
     while let Some(chunk) = stream.next().await {
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+
         let chunk = chunk.map_err(|e| ThreatForgeError::AiRequest {
             message: format!("Stream read error: {e}"),
         })?;
@@ -144,6 +171,8 @@ async fn stream_openai(
     api_key: &str,
     system_prompt: &str,
     messages: &[ChatMessage],
+    model_id: &str,
+    cancel_flag: &AtomicBool,
 ) -> Result<(), ThreatForgeError> {
     let mut api_messages: Vec<serde_json::Value> = vec![serde_json::json!({
         "role": "system",
@@ -165,7 +194,7 @@ async fn stream_openai(
     }
 
     let body = serde_json::json!({
-        "model": OPENAI_MODEL,
+        "model": model_id,
         "max_tokens": 4096,
         "messages": api_messages,
         "stream": true,
@@ -194,6 +223,10 @@ async fn stream_openai(
     let mut buffer = String::new();
 
     while let Some(chunk) = stream.next().await {
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+
         let chunk = chunk.map_err(|e| ThreatForgeError::AiRequest {
             message: format!("Stream read error: {e}"),
         })?;

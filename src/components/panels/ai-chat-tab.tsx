@@ -2,11 +2,14 @@ import {
 	AlertCircle,
 	Bot,
 	Check,
+	ChevronDown,
 	Loader2,
 	Play,
+	Plus,
 	Send,
 	Settings,
 	Sparkles,
+	Square,
 	Trash2,
 	User,
 	X,
@@ -21,17 +24,33 @@ import { type ChatMessage, useChatStore } from "@/stores/chat-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
+import { MarkdownContent } from "./markdown-content";
 
 export function AiChatTab() {
 	const model = useModelStore((s) => s.model);
+	const filePath = useModelStore((s) => s.filePath);
 	const hasApiKey = useChatStore((s) => s.hasApiKey);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
+	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
+	const migrateSessionKey = useChatStore((s) => s.migrateSessionKey);
 	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
+	const prevFilePathRef = useRef<string | null | undefined>(undefined);
 
 	// Check API key on mount
 	useEffect(() => {
 		void checkApiKey();
 	}, [checkApiKey]);
+
+	// Load sessions when file path changes; migrate on Save As
+	useEffect(() => {
+		const prev = prevFilePathRef.current;
+		// Migrate sessions when transitioning from unsaved/old path to a new path
+		if (prev !== undefined && filePath && prev !== filePath) {
+			migrateSessionKey(filePath);
+		}
+		loadSessionsForFile(filePath);
+		prevFilePathRef.current = filePath;
+	}, [filePath, loadSessionsForFile, migrateSessionKey]);
 
 	if (!model) {
 		return (
@@ -90,10 +109,12 @@ function ChatView() {
 	const isStreaming = useChatStore((s) => s.isStreaming);
 	const error = useChatStore((s) => s.error);
 	const clearError = useChatStore((s) => s.clearError);
-	const clearMessages = useChatStore((s) => s.clearMessages);
 
 	return (
 		<div className="flex flex-1 flex-col gap-2 overflow-hidden">
+			{/* Session bar */}
+			<SessionBar />
+
 			{/* Messages area */}
 			<MessageList messages={messages} isStreaming={isStreaming} />
 
@@ -108,20 +129,91 @@ function ChatView() {
 				</div>
 			)}
 
-			{/* Clear chat button */}
-			{messages.length > 0 && !isStreaming && (
-				<button
-					type="button"
-					onClick={clearMessages}
-					className="flex items-center gap-1 self-start text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-				>
-					<Trash2 className="h-2.5 w-2.5" />
-					Clear chat
-				</button>
-			)}
-
 			{/* Input */}
 			<ChatInput />
+		</div>
+	);
+}
+
+function SessionBar() {
+	const sessions = useChatStore((s) => s.sessions);
+	const activeSessionId = useChatStore((s) => s.activeSessionId);
+	const newSession = useChatStore((s) => s.newSession);
+	const switchSession = useChatStore((s) => s.switchSession);
+	const deleteSession = useChatStore((s) => s.deleteSession);
+	const isStreaming = useChatStore((s) => s.isStreaming);
+	const [dropdownOpen, setDropdownOpen] = useState(false);
+
+	const activeSession = sessions.find((s) => s.id === activeSessionId);
+	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	// Close dropdown on click outside
+	useEffect(() => {
+		if (!dropdownOpen) return;
+		function handleClick(e: MouseEvent) {
+			if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+				setDropdownOpen(false);
+			}
+		}
+		document.addEventListener("mousedown", handleClick);
+		return () => document.removeEventListener("mousedown", handleClick);
+	}, [dropdownOpen]);
+
+	return (
+		<div className="flex items-center gap-1" ref={dropdownRef}>
+			<button
+				type="button"
+				onClick={newSession}
+				disabled={isStreaming}
+				className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
+				title="New chat session"
+			>
+				<Plus className="h-3 w-3" />
+			</button>
+
+			<div className="relative flex-1">
+				<button
+					type="button"
+					onClick={() => setDropdownOpen(!dropdownOpen)}
+					className="flex w-full items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-border transition-colors"
+				>
+					<span className="flex-1 truncate text-left">{activeSession?.title ?? "New Chat"}</span>
+					<ChevronDown className="h-2.5 w-2.5 shrink-0" />
+				</button>
+
+				{dropdownOpen && sessions.length > 1 && (
+					<div className="absolute left-0 top-full z-50 mt-0.5 max-h-48 w-full overflow-y-auto rounded border border-border bg-popover shadow-md">
+						{sessions.map((session) => (
+							<button
+								key={session.id}
+								type="button"
+								onClick={() => {
+									switchSession(session.id);
+									setDropdownOpen(false);
+								}}
+								className={cn(
+									"flex w-full items-center px-1.5 py-1 text-[10px] transition-colors hover:bg-accent",
+									session.id === activeSessionId && "bg-accent/50 font-medium",
+								)}
+							>
+								<span className="flex-1 truncate text-left">{session.title}</span>
+							</button>
+						))}
+					</div>
+				)}
+			</div>
+
+			{activeSession && sessions.length > 0 && (
+				<button
+					type="button"
+					onClick={() => deleteSession(activeSession.id)}
+					disabled={isStreaming}
+					className="shrink-0 rounded p-1 text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50"
+					title="Delete this session"
+				>
+					<Trash2 className="h-2.5 w-2.5" />
+				</button>
+			)}
 		</div>
 	);
 }
@@ -262,7 +354,7 @@ function AssistantContent({
 
 	return (
 		<div className="flex flex-col gap-2">
-			{displayContent && <p className="whitespace-pre-wrap">{displayContent}</p>}
+			{displayContent && <MarkdownContent content={displayContent} />}
 			{isStreaming && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
 
 			{actions.length > 0 && <ActionPreview actions={actions} />}
@@ -455,22 +547,26 @@ function ThreatSuggestionCard({
 function ChatInput() {
 	const sendMessage = useChatStore((s) => s.sendMessage);
 	const isStreaming = useChatStore((s) => s.isStreaming);
+	const stopGenerating = useChatStore((s) => s.stopGenerating);
 	const model = useModelStore((s) => s.model);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 
-	// Expose ref for keyboard shortcut focus
+	// Keyboard shortcuts: Cmd+L to focus, Escape to stop generating
 	useEffect(() => {
-		function handleFocusChat(e: KeyboardEvent) {
+		function handleKeyDown(e: KeyboardEvent) {
 			const mod = e.metaKey || e.ctrlKey;
 			if (mod && e.key.toLowerCase() === "l") {
 				e.preventDefault();
 				inputRef.current?.focus();
 			}
+			if (e.key === "Escape" && useChatStore.getState().isStreaming) {
+				stopGenerating();
+			}
 		}
-		window.addEventListener("keydown", handleFocusChat);
-		return () => window.removeEventListener("keydown", handleFocusChat);
-	}, []);
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [stopGenerating]);
 
 	function handleSubmit() {
 		const trimmed = input.trim();
@@ -499,24 +595,31 @@ function ChatInput() {
 				disabled={isStreaming}
 				className="flex-1 resize-none rounded border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none disabled:opacity-50"
 			/>
-			<button
-				type="button"
-				onClick={handleSubmit}
-				disabled={!input.trim() || isStreaming}
-				className={cn(
-					"self-end rounded p-1.5 transition-colors",
-					input.trim() && !isStreaming
-						? "bg-primary text-primary-foreground hover:bg-primary/90"
-						: "cursor-not-allowed bg-muted text-muted-foreground",
-				)}
-				title="Send (Enter)"
-			>
-				{isStreaming ? (
-					<Loader2 className="h-3.5 w-3.5 animate-spin" />
-				) : (
+			{isStreaming ? (
+				<button
+					type="button"
+					onClick={stopGenerating}
+					className="self-end rounded bg-destructive p-1.5 text-destructive-foreground transition-colors hover:bg-destructive/90"
+					title="Stop generating (Esc)"
+				>
+					<Square className="h-3.5 w-3.5" />
+				</button>
+			) : (
+				<button
+					type="button"
+					onClick={handleSubmit}
+					disabled={!input.trim()}
+					className={cn(
+						"self-end rounded p-1.5 transition-colors",
+						input.trim()
+							? "bg-primary text-primary-foreground hover:bg-primary/90"
+							: "cursor-not-allowed bg-muted text-muted-foreground",
+					)}
+					title="Send (Enter)"
+				>
 					<Send className="h-3.5 w-3.5" />
-				)}
-			</button>
+				</button>
+			)}
 		</div>
 	);
 }

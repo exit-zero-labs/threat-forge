@@ -8,10 +8,12 @@ pub mod models;
 mod stride;
 
 use commands::{
-    analyze_stride, check_for_update, create_new_model, delete_api_key, get_api_key_status,
-    install_update, open_layout, open_threat_model, save_layout, save_threat_model,
-    send_chat_message, set_api_key, write_text_file,
+    analyze_stride, cancel_chat_stream, check_for_update, create_new_model, delete_api_key,
+    get_api_key_status, install_update, open_layout, open_threat_model, save_layout,
+    save_threat_model, send_chat_message, set_api_key, write_text_file,
 };
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -41,6 +43,9 @@ pub fn run() {
                 )))
             })?;
             app.manage(key_storage);
+
+            // Initialize cancel flag for AI streaming
+            app.manage(Arc::new(AtomicBool::new(false)));
 
             // Check if the app was launched with a .thf file argument (file association)
             let args: Vec<String> = std::env::args().collect();
@@ -72,6 +77,7 @@ pub fn run() {
             get_api_key_status,
             delete_api_key,
             send_chat_message,
+            cancel_chat_stream,
             write_text_file,
             check_for_update,
             install_update,

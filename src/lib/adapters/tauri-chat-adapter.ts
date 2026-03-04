@@ -10,8 +10,18 @@ export class TauriChatAdapter implements ChatAdapter {
 		messages: ChatMessage[],
 		model: ThreatModel,
 		callbacks: ChatStreamCallbacks,
+		modelId: string,
+		signal?: AbortSignal,
 	): Promise<void> {
 		const unlisteners: (() => void)[] = [];
+
+		// Listen for abort signal to cancel the stream on the Rust side
+		const onAbort = () => {
+			void invoke("cancel_chat_stream").catch(() => {});
+		};
+		if (signal) {
+			signal.addEventListener("abort", onAbort, { once: true });
+		}
 
 		try {
 			const unlisten1 = await listen<{ text: string }>("ai:stream-chunk", (event) => {
@@ -38,15 +48,24 @@ export class TauriChatAdapter implements ChatAdapter {
 				provider,
 				messages: ipcMessages,
 				model,
+				modelId,
 			});
 
 			await donePromise;
-			callbacks.onDone();
+
+			if (!signal?.aborted) {
+				callbacks.onDone();
+			}
 		} catch (err) {
+			// Don't treat abort as an error
+			if (signal?.aborted) return;
 			const errorMessage = err instanceof Error ? err.message : String(err);
 			callbacks.onError(errorMessage);
 			throw err;
 		} finally {
+			if (signal) {
+				signal.removeEventListener("abort", onAbort);
+			}
 			for (const unlisten of unlisteners) {
 				unlisten();
 			}

@@ -31,6 +31,7 @@ export interface AddElementPayload {
 		trust_zone?: string;
 		description?: string;
 		technologies?: string[];
+		position?: { x: number; y: number };
 	};
 }
 
@@ -92,6 +93,7 @@ export interface AddTrustBoundaryPayload {
 	trust_boundary: {
 		name: string;
 		contains?: string[];
+		position?: { x: number; y: number };
 	};
 }
 

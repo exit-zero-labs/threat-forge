@@ -1,9 +1,11 @@
 import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
+import { getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
+import { useSettingsStore } from "@/stores/settings-store";
 
 const PROVIDERS: { value: AiProvider; label: string }[] = [
 	{ value: "anthropic", label: "Anthropic (Claude)" },
@@ -15,6 +17,8 @@ export function AiSettingsContent() {
 	const provider = useChatStore((s) => s.provider);
 	const setProvider = useChatStore((s) => s.setProvider);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
+	const settings = useSettingsStore((s) => s.settings);
+	const updateSetting = useSettingsStore((s) => s.updateSetting);
 
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
@@ -28,6 +32,10 @@ export function AiSettingsContent() {
 		type: "success" | "error";
 		text: string;
 	} | null>(null);
+
+	const models = getModelsForProvider(provider);
+	const selectedModelId =
+		provider === "anthropic" ? settings.aiModelAnthropic : settings.aiModelOpenai;
 
 	useEffect(() => {
 		async function checkStatus() {
@@ -85,6 +93,14 @@ export function AiSettingsContent() {
 		}
 	}
 
+	function handleModelChange(modelId: string) {
+		if (provider === "anthropic") {
+			updateSetting("aiModelAnthropic", modelId);
+		} else {
+			updateSetting("aiModelOpenai", modelId);
+		}
+	}
+
 	return (
 		<div className="space-y-4">
 			{/* Provider selector */}
@@ -101,6 +117,27 @@ export function AiSettingsContent() {
 						</option>
 					))}
 				</select>
+			</div>
+
+			{/* Model selector */}
+			<div>
+				<span className="mb-1 block text-[10px] font-medium text-muted-foreground">Model</span>
+				<select
+					value={selectedModelId}
+					onChange={(e) => handleModelChange(e.target.value)}
+					className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
+				>
+					{models.map((m) => (
+						<option key={m.id} value={m.id}>
+							{m.label}
+						</option>
+					))}
+				</select>
+				{models.find((m) => m.id === selectedModelId)?.description && (
+					<p className="mt-0.5 text-[10px] text-muted-foreground/70">
+						{models.find((m) => m.id === selectedModelId)?.description}
+					</p>
+				)}
 			</div>
 
 			{/* Key status */}

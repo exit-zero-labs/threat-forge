@@ -80,7 +80,7 @@ Monitor the workflow at: `Actions > Release > v0.2.0`
 2. Download binaries for each platform and smoke test:
    - App launches without errors
    - Can create, save, and reopen a `.thf` file
-   - AI chat works (with valid API key)
+   - AI chat works (with valid API key): model selector, chat sessions, stop generating, markdown rendering
    - STRIDE analysis runs
 3. Publish the draft release (click "Publish release" on GitHub)
 
