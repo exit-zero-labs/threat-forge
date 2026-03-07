@@ -44,6 +44,7 @@ function getViewportCenter(): { x: number; y: number } {
 export function buildCommands(deps: {
 	newModel: () => void;
 	openModel: () => void;
+	importModel: () => void;
 	saveModel: () => void;
 	saveModelAs: () => void;
 	hasModel: boolean;
@@ -63,6 +64,12 @@ export function buildCommands(deps: {
 			category: "file",
 			shortcut: fmt("\u2318O", "Ctrl+O"),
 			action: deps.openModel,
+		},
+		{
+			id: "file:import",
+			label: "Import\u2026",
+			category: "file",
+			action: deps.importModel,
 		},
 		{
 			id: "file:save",

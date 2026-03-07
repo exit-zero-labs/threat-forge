@@ -60,6 +60,11 @@ export class BrowserFileAdapter implements FileAdapter {
 		return { model: parsed, path: file.name };
 	}
 
+	async importThreatModel(): Promise<{ model: ThreatModel } | null> {
+		window.alert("Import is only available in the desktop app.");
+		return null;
+	}
+
 	async saveThreatModel(model: ThreatModel, _path: string | null): Promise<string | null> {
 		const yamlString = yaml.dump(model, {
 			lineWidth: -1,

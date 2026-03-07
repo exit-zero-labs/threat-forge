@@ -33,12 +33,13 @@
 | Author tracking | Name/email settings, auto-populated created_by/modified_by |
 | Self-loop connectors | Data flows from a node to itself |
 | Canvas panning | Arrow key nudge for elements, arrow key pan when nothing selected |
+| Import from MS TMT (.tm7) | XML parser converts elements, flows, boundaries, threats to `.thf` with positions preserved |
 
 ### Should-Have (future)
 
 | Feature | Priority |
 |---------|----------|
-| Import from MS TMT (.tm7) and Threat Dragon (.json) | P0 |
+| Import from Threat Dragon (.json) | P0 |
 | PDF/HTML export for stakeholders | P1 |
 | LINDDUN privacy methodology support | P2 |
 | Multiple diagrams per model | P2 |

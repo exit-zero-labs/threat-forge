@@ -8,6 +8,11 @@ const YAML_FILTER = {
 	extensions: ["thf"],
 };
 
+const IMPORT_FILTER = {
+	name: "Microsoft Threat Model",
+	extensions: ["tm7"],
+};
+
 export class TauriFileAdapter implements FileAdapter {
 	async createNewModel(title: string, author: string): Promise<ThreatModel> {
 		return invoke<ThreatModel>("create_new_model", { title, author });
@@ -20,9 +25,22 @@ export class TauriFileAdapter implements FileAdapter {
 		});
 		if (!selected) return null;
 
-		const path = typeof selected === "string" ? selected : selected;
-		const model = await invoke<ThreatModel>("open_threat_model", { path });
-		return { model, path };
+		const model = await invoke<ThreatModel>("open_threat_model", { path: selected });
+		return { model, path: selected };
+	}
+
+	async importThreatModel(): Promise<{ model: ThreatModel } | null> {
+		const selected = await open({
+			multiple: false,
+			filters: [IMPORT_FILTER],
+		});
+		if (!selected) return null;
+
+		const ext = selected.split(".").pop()?.toLowerCase() ?? "";
+		const format = ext === "tm7" ? "tm7" : ext;
+
+		const model = await invoke<ThreatModel>("import_threat_model", { path: selected, format });
+		return { model };
 	}
 
 	async saveThreatModel(model: ThreatModel, path: string | null): Promise<string | null> {

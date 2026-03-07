@@ -2,6 +2,7 @@ mod ai;
 mod commands;
 mod errors;
 mod file_io;
+mod importers;
 pub mod mcp;
 mod menu;
 pub mod models;
@@ -9,8 +10,8 @@ mod stride;
 
 use commands::{
     analyze_stride, cancel_chat_stream, check_for_update, create_new_model, delete_api_key,
-    get_api_key_status, install_update, open_layout, open_threat_model, save_layout,
-    save_threat_model, send_chat_message, set_api_key, write_text_file,
+    get_api_key_status, import_threat_model, install_update, open_layout, open_threat_model,
+    save_layout, save_threat_model, send_chat_message, set_api_key, write_text_file,
 };
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -79,6 +80,7 @@ pub fn run() {
             send_chat_message,
             cancel_chat_stream,
             write_text_file,
+            import_threat_model,
             check_for_update,
             install_update,
         ])

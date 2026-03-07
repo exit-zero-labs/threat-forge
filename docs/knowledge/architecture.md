@@ -15,6 +15,7 @@ ThreatForge Desktop App (Tauri v2)
 │   ├── File I/O (Read/Write YAML — serde + serde_yaml)
 │   ├── Schema Validation (strict serde deserialization)
 │   ├── STRIDE Engine (threat rule engine)
+│   ├── Importers (TM7 XML → ThreatModel conversion)
 │   ├── Secure Key Storage (AES-256-GCM encrypted file)
 │   ├── Auto-Updater (Tauri plugin)
 │   └── Opt-in Telemetry
@@ -85,7 +86,8 @@ threat-forge/
 │   │   ├── models/             # Rust types (serde YAML schema)
 │   │   ├── stride/             # STRIDE threat engine
 │   │   ├── ai/                 # AI: key storage, streaming providers, system prompts
-│   │   └── file_io/            # File read/write operations
+│   │   ├── file_io/            # File read/write operations
+│   │   └── importers/          # Import from external formats (TM7, etc.)
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── e2e/                        # Playwright E2E tests
