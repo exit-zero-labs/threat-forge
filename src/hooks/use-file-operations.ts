@@ -200,6 +200,41 @@ export function useFileOperations() {
 		useCanvasStore.getState().syncFromModel();
 	}, [isDirty, clearModel]);
 
+	const importModel = useCallback(async () => {
+		if (isDirty) {
+			const adapter = await getFileAdapter();
+			const discard = await adapter.confirmDiscard();
+			if (!discard) return;
+		}
+
+		const adapter = await getFileAdapter();
+		let result: { model: ThreatModel } | null;
+		try {
+			result = await adapter.importThreatModel();
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			window.alert(`Import failed: ${msg}`);
+			return;
+		}
+		if (!result) return;
+
+		const { model: imported } = result;
+
+		// Build layout from inline positions
+		const inlineLayout = buildLayoutFromModel(imported);
+		if (inlineLayout) {
+			useCanvasStore.getState().setPendingLayout(inlineLayout);
+		} else {
+			useCanvasStore.getState().setPendingLayout(null);
+		}
+
+		// Imported models have no file path — user must Save As to create a .thf file
+		setModel(imported, null);
+		useHistoryStore.getState().clear();
+		// TM7 imports have no ThreatForge file settings — clear to defaults
+		useSettingsStore.getState().clearFileSettings();
+	}, [isDirty, setModel]);
+
 	const exportAsHtml = useCallback(async () => {
 		if (!model) return;
 
@@ -211,5 +246,5 @@ export function useFileOperations() {
 		await adapter.exportAsHtml(html, defaultName);
 	}, [model]);
 
-	return { newModel, openModel, saveModel, saveModelAs, closeModel, exportAsHtml };
+	return { newModel, openModel, importModel, saveModel, saveModelAs, closeModel, exportAsHtml };
 }

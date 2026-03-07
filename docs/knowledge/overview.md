@@ -14,7 +14,7 @@ ThreatForge's differentiation is the combination of three things no other tool b
 
 1. **UX gap filled** — A modern, keyboard-shortcut-driven interface with drag-and-drop canvas, 44 typed components + text annotations, custom themes, and resizable panes. The kind of experience developers expect from tools like Linear, Figma, or VS Code.
 
-2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is binary. Threat Dragon's JSON is verbose. Neither can be opened in a text editor and understood.
+2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is binary. Threat Dragon's JSON is verbose. Neither can be opened in a text editor and understood. ThreatForge can import `.tm7` files directly, converting them to `.thf` with all elements, flows, boundaries, and threats preserved.
 
 3. **AI integration gap filled** — An integrated AI chat pane (BYOK) for conversational threat analysis and iterative model refinement. No other desktop tool combines interactive modeling with native AI assistance.
 
@@ -40,9 +40,10 @@ ThreatForge is production-ready. The core application is fully functional:
 - STRIDE threat engine with auto-generated threats per element
 - AI chat pane (BYOK) with OpenAI + Anthropic support, model selector, persistent chat sessions, markdown rendering, stop generating
 - `.thf` YAML file format with clean git diffs
+- Import from Microsoft TMT `.tm7` files with full element, flow, boundary, and threat conversion
 - 13+ themes (light and dark), resizable panes, keyboard shortcuts, command palette
 - Onboarding system with interactive guides
-- 416+ frontend tests, 59+ Rust tests, 40+ E2E tests
+- 417+ frontend tests, 73+ Rust tests, 40+ E2E tests
 - Cross-platform via Tauri v2 (macOS, Windows, Linux)
 
 **Remaining for public launch:** Cross-platform CI builds + code signing, auto-updater, landing page/website, launch marketing.

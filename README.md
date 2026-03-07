@@ -54,6 +54,10 @@ Chat with Claude or GPT about your threat model. The AI sees your full architect
 
 Bring your own API key. Supports Anthropic (Claude Opus 4, Sonnet 4, Haiku 3.5) and OpenAI (GPT-4o, GPT-4o Mini). Keys are AES-256-GCM encrypted at rest.
 
+### Import from Microsoft TMT
+
+Import existing `.tm7` files from Microsoft's Threat Modeling Tool. ThreatForge converts elements, data flows, trust boundaries, and threats to the native `.thf` format — preserving positions and STRIDE categories. No more Windows lock-in.
+
 ### Pre-built Templates
 
 Start from six production-quality templates: **Cloud Microservices**, **E-Commerce Platform**, **Mobile Banking**, **SaaS Platform**, **IoT Smart Building**, and **Healthcare System**. Each includes a complete data flow diagram with elements, trust boundaries, data flows, and STRIDE threats.
@@ -155,8 +159,8 @@ Produces a native desktop binary for your platform (~10MB).
 ### Test
 
 ```bash
-npx vitest --run                                       # 416+ frontend tests
-cargo test --manifest-path src-tauri/Cargo.toml        # 59+ Rust tests
+npx vitest --run                                       # 417+ frontend tests
+cargo test --manifest-path src-tauri/Cargo.toml        # 73+ Rust tests
 ```
 
 ### Lint
@@ -228,7 +232,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instruct
 
 Areas where help is especially valuable:
 - STRIDE threat rule expansion
-- Import/export (Microsoft TMT `.tm7`, OWASP Threat Dragon `.json`)
+- Import/export (OWASP Threat Dragon `.json`, PDF export)
 - Accessibility (WCAG compliance)
 - Documentation and example threat models
 

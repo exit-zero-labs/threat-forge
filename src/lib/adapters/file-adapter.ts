@@ -11,6 +11,8 @@ export interface FileAdapter {
 	createNewModel(title: string, author: string): Promise<ThreatModel>;
 	/** Show an open dialog and load a threat model from YAML. */
 	openThreatModel(): Promise<{ model: ThreatModel; path: string | null } | null>;
+	/** Show an open dialog for importing from external formats (TM7, etc.) and convert to ThreatModel. */
+	importThreatModel(): Promise<{ model: ThreatModel } | null>;
 	/** Save a threat model to YAML. If no path provided, show save dialog. */
 	saveThreatModel(model: ThreatModel, path: string | null): Promise<string | null>;
 	/** @deprecated Layout data is now inline in the YAML. Kept for old-format fallback. */

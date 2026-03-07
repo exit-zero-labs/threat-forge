@@ -81,7 +81,7 @@ Look for issues labeled [`good first issue`](https://github.com/exit-zero-labs/t
 ### Areas Where Help Is Needed
 
 - **STRIDE threat rules** -- expanding the rule set for better threat coverage
-- **Import/export** -- converters for Microsoft TMT `.tm7` and OWASP Threat Dragon `.json`
+- **Import/export** -- OWASP Threat Dragon `.json` import, PDF export
 - **Accessibility** -- keyboard navigation, screen reader support, WCAG compliance
 - **Internationalization** -- translations (once i18n architecture is in place)
 - **Documentation** -- tutorials, guides, example threat models

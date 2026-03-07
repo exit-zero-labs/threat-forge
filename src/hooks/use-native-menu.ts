@@ -32,7 +32,7 @@ async function openFileByPath(filePath: string) {
  * No-op in web builds where Tauri APIs are unavailable.
  */
 export function useNativeMenu() {
-	const { newModel, openModel, saveModel, saveModelAs, closeModel, exportAsHtml } =
+	const { newModel, openModel, importModel, saveModel, saveModelAs, closeModel, exportAsHtml } =
 		useFileOperations();
 
 	useEffect(() => {
@@ -59,6 +59,9 @@ export function useNativeMenu() {
 						break;
 					case "file-open":
 						void openModel();
+						break;
+					case "file-import":
+						void importModel();
 						break;
 					case "file-save":
 						void saveModel();
@@ -182,5 +185,5 @@ export function useNativeMenu() {
 			unlistenMenu?.();
 			unlistenFile?.();
 		};
-	}, [newModel, openModel, saveModel, saveModelAs, closeModel, exportAsHtml]);
+	}, [newModel, openModel, importModel, saveModel, saveModelAs, closeModel, exportAsHtml]);
 }

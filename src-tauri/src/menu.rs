@@ -27,6 +27,8 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
         true,
         Some("CmdOrCtrl+Shift+E"),
     )?;
+    let file_import =
+        MenuItem::with_id(handle, "file-import", "Import\u{2026}", true, None::<&str>)?;
     let file_close = MenuItem::with_id(
         handle,
         "file-close",
@@ -42,6 +44,7 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
         &[
             &file_new,
             &file_open,
+            &file_import,
             &PredefinedMenuItem::separator(handle)?,
             &file_save,
             &file_save_as,

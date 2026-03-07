@@ -32,6 +32,7 @@ describe("command-registry", () => {
 		const mockDeps = {
 			newModel: vi.fn(),
 			openModel: vi.fn(),
+			importModel: vi.fn(),
 			saveModel: vi.fn(),
 			saveModelAs: vi.fn(),
 			hasModel: false,
@@ -76,6 +77,14 @@ describe("command-registry", () => {
 			expect(mockDeps.newModel).toHaveBeenCalled();
 		});
 
+		it("file:import action calls importModel", () => {
+			const commands = buildCommands(mockDeps);
+			const importCmd = commands.find((c) => c.id === "file:import");
+			expect(importCmd).toBeDefined();
+			importCmd?.action();
+			expect(mockDeps.importModel).toHaveBeenCalled();
+		});
+
 		it("excludes component commands when hasModel is false", () => {
 			const commands = buildCommands({ ...mockDeps, hasModel: false });
 			const componentCmds = commands.filter((c) => c.category === "component");
@@ -101,6 +110,7 @@ describe("command-registry", () => {
 		const mockDeps = {
 			newModel: vi.fn(),
 			openModel: vi.fn(),
+			importModel: vi.fn(),
 			saveModel: vi.fn(),
 			saveModelAs: vi.fn(),
 			hasModel: false,

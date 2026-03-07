@@ -4,6 +4,54 @@ Shared execution plan for humans and LLM agents. Update this file before, during
 
 ---
 
+## 2026-03-07 — Import TM7 and Other File Formats
+
+### Plan
+- [x] 1. Rust: TM7 XML parser module (`src-tauri/src/importers/`)
+  - [x] Add `quick-xml` crate to `Cargo.toml`
+  - [x] Create `src-tauri/src/importers/mod.rs`
+  - [x] Create `src-tauri/src/importers/tm7.rs` — parse TM7 XML → `ThreatModel`
+  - [x] Unit tests for TM7 parsing (6 tests: minimal TM7, empty TM7, unique IDs, STRIDE categories, severity, mitigation status)
+- [x] 2. Rust: Tauri command for import
+  - [x] Create `src-tauri/src/commands/import_commands.rs` with `import_threat_model` command
+  - [x] Register command in `lib.rs`
+- [x] 3. Frontend: Import flow
+  - [x] Add `importModel` to `useFileOperations` hook
+  - [x] Add "Import…" menu item to native menu (`menu.rs`)
+  - [x] Handle `file-import` menu event in `useNativeMenu`
+  - [x] Add import command to command palette (`command-registry.ts`)
+  - [x] Update `FileAdapter` with `importThreatModel` method
+  - [x] Implement in `TauriFileAdapter` with open dialog for `.tm7` files
+  - [x] Browser adapter stub (shows "desktop only" alert)
+- [x] 4. Validation (initial)
+  - [x] `cargo clippy` — clean
+  - [x] `npx biome check --write .` — clean
+  - [x] `cargo test` — 69 tests pass (10 new)
+  - [x] `npx vitest --run` — 417 tests pass (1 new)
+  - [x] `cargo fmt` — clean
+- [x] 5. Deep audit & fixes
+  - [x] Fix `parse_stencil_properties` stale `current_display_name` bug — clear after consuming Value
+  - [x] Fix `NeedsInvestigation` mapped to `InProgress` → should be `NotStarted`
+  - [x] Fix dead code in `TauriFileAdapter.openThreatModel` — redundant ternary
+  - [x] Add test: malformed XML returns error
+  - [x] Add test: `NeedsInvestigation` maps to `NotStarted`
+  - [x] Add test: unknown STRIDE TypeId prefix falls back to Tampering
+  - [x] Add test: self-loop flow (from == to) imported correctly
+  - [x] Update README.md — add "Import from Microsoft TMT" to Features, fix Contributing
+  - [x] Update CONTRIBUTING.md — TM7 import done, only Threat Dragon remains
+  - [x] Update overview.md — add import to status list, update test counts
+  - [x] Update product-design.md — move TM7 import to Must-Have table
+  - [x] Final validation: clippy clean, biome clean, 73 Rust tests, 417 frontend tests
+  - [ ] Manual test with a real TM7 file
+
+### Notes
+- TM7 is Microsoft's XML-based format with .NET serialization artifacts
+- Architecture is extensible — `importers/` module can support future formats (Threat Dragon JSON, OTMF, etc.)
+- Import produces a ThreatModel that the user must "Save As" to create a .thf file
+- Deep audit found and fixed: stale state bug in property parser, incorrect mitigation mapping, dead code, missing tests, outdated docs
+
+---
+
 ## 2026-03-03 — AI Chat Pane Improvements
 
 ### Plan

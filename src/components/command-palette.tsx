@@ -23,7 +23,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 
-	const { newModel, openModel, saveModel, saveModelAs } = useFileOperations();
+	const { newModel, openModel, importModel, saveModel, saveModelAs } = useFileOperations();
 	const hasModel = useModelStore((s) => s.model !== null);
 
 	const allCommands = useMemo(
@@ -31,11 +31,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 			buildCommands({
 				newModel: () => void newModel(),
 				openModel: () => void openModel(),
+				importModel: () => void importModel(),
 				saveModel: () => void saveModel(),
 				saveModelAs: () => void saveModelAs(),
 				hasModel,
 			}),
-		[newModel, openModel, saveModel, saveModelAs, hasModel],
+		[newModel, openModel, importModel, saveModel, saveModelAs, hasModel],
 	);
 
 	const filtered = useMemo(() => searchCommands(allCommands, query), [allCommands, query]);
