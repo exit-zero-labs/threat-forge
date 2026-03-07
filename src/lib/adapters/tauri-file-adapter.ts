@@ -26,7 +26,7 @@ export class TauriFileAdapter implements FileAdapter {
 		if (!selected) return null;
 
 		const model = await invoke<ThreatModel>("open_threat_model", { path: selected });
-		return { model, path };
+		return { model, path: selected };
 	}
 
 	async importThreatModel(): Promise<{ model: ThreatModel } | null> {
