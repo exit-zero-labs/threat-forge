@@ -123,9 +123,22 @@ jobs:
             libdbus-1-dev \
             libssl-dev
 
+      - name: Install Azure Trusted Signing dlib
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          dotnet tool install --global AzureSignTool
+          nuget install Microsoft.Trusted.Signing.Client -Version 1.0.60 -OutputDirectory "${{ runner.temp }}\TrustedSigning"
+          $dlib = (Get-ChildItem -Path "${{ runner.temp }}\TrustedSigning" -Recurse -Filter "Azure.CodeSigning.Dlib.dll" | Where-Object { $_.DirectoryName -like "*x64*" }).FullName
+          echo "DLIB_PATH=$dlib" >> $env:GITHUB_ENV
+
       - uses: tauri-apps/tauri-action@f650639e43adf15f35dd1023d248b3ecc3568b64 # action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Azure Trusted Signing (Windows)
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           # macOS code signing — tauri-action skips signing when these are empty.
           # To enable: add Apple Developer secrets in GitHub repo settings.
           # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -140,4 +153,4 @@ jobs:
           releaseBody: "See the assets to download this version and install ThreatForge."
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.settings.args }}
+          args: ${{ matrix.settings.args }} ${{ runner.os == 'Windows' && '--config src-tauri/tauri.signing.conf.json' || '' }}
