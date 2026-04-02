@@ -1,5 +1,10 @@
 # ThreatForge
 
+<!-- E0L company-wide context (agent personas, architecture decisions, git workflow).
+     Available inside dev container via the .e0l symlink → /workspace-config.
+     Silently skipped if not present (e.g., opening the repo natively without devcontainer). -->
+@./.e0l/.ai/AI.md
+
 Open-source, AI-enhanced, cross-platform desktop threat modeling application.
 
 Fills the gap between Microsoft's legacy TMT (free but Windows-only, binary `.tm7` files) and enterprise platforms like ThreatModeler/IriusRisk ($20K+/year). Produces human-readable, git-diffable YAML files with integrated AI assistance.

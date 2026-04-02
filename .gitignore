@@ -1,6 +1,9 @@
 # Misc
 temp/
 
+# E0L workspace config symlink (created by .devcontainer/on-create.sh)
+.e0l
+
 # Logs
 logs
 *.log
