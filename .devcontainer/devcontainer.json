@@ -1,0 +1,63 @@
+{
+	"name": "ThreatForge",
+	"image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
+
+	"mounts": [
+		{
+			"source": "${localWorkspaceFolder}/../../.ai",
+			"target": "/workspace-config/.ai",
+			"type": "bind"
+		},
+		{
+			"source": "${localWorkspaceFolder}/../../.claude",
+			"target": "/workspace-config/.claude",
+			"type": "bind"
+		},
+		{
+			"source": "${localWorkspaceFolder}/../../.github",
+			"target": "/workspace-config/.github",
+			"type": "bind"
+		}
+	],
+
+	"postCreateCommand": "bash .devcontainer/on-create.sh",
+
+	"remoteEnv": {
+		"E0L_WORKSPACE_CONFIG": "/workspace-config"
+	},
+
+	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "22"
+		}
+	},
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"biomejs.biome",
+				"bradlc.vscode-tailwindcss",
+				"rust-lang.rust-analyzer",
+				"tauri-apps.tauri-vscode",
+				"ms-playwright.playwright",
+				"vitest.explorer",
+				"github.copilot",
+				"github.copilot-chat"
+			],
+			"settings": {
+				"editor.formatOnSave": true,
+				"editor.defaultFormatter": "biomejs.biome",
+				"[rust]": {
+					"editor.defaultFormatter": "rust-lang.rust-analyzer"
+				},
+				"editor.codeActionsOnSave": {
+					"quickfix.biome": "explicit",
+					"source.organizeImports.biome": "explicit"
+				},
+				"typescript.preferences.importModuleSpecifier": "non-relative",
+				"terminal.integrated.defaultProfile.linux": "bash"
+			}
+		}
+	}
+}
