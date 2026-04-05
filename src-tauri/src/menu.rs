@@ -137,6 +137,13 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
     )?;
 
     // Help menu
+    let help_keyboard_shortcuts = MenuItem::with_id(
+        handle,
+        "help-keyboard-shortcuts",
+        "Keyboard Shortcuts",
+        true,
+        None::<&str>,
+    )?;
     let help_guides = MenuItem::with_id(handle, "help-guides", "Guided Tours", true, None::<&str>)?;
     let help_about = MenuItem::with_id(
         handle,
@@ -151,6 +158,8 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
         "Help",
         true,
         &[
+			&help_keyboard_shortcuts,
+			&PredefinedMenuItem::separator(handle)?,
             &help_guides,
             &PredefinedMenuItem::separator(handle)?,
             &help_about,

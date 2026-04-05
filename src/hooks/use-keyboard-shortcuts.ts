@@ -27,6 +27,10 @@ export function useKeyboardShortcuts() {
 
 			if (!isInputFocused && !mod) {
 				switch (e.key) {
+					case "?":
+						e.preventDefault();
+						useUiStore.getState().openKeyboardShortcutsDialog();
+						return;
 					case "Delete":
 					case "Backspace":
 						e.preventDefault();
@@ -49,7 +53,9 @@ export function useKeyboardShortcuts() {
 						return;
 					case "Escape":
 						// Close dialogs first, then deselect
-						if (useSettingsStore.getState().settingsDialogOpen) {
+						if (useUiStore.getState().keyboardShortcutsDialogOpen) {
+							useUiStore.getState().closeKeyboardShortcutsDialog();
+						} else if (useSettingsStore.getState().settingsDialogOpen) {
 							useSettingsStore.getState().closeSettingsDialog();
 						} else {
 							useModelStore.getState().setSelectedElement(null);

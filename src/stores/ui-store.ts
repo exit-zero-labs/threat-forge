@@ -63,6 +63,8 @@ interface UiState extends ThemeState {
 	canvasLocked: boolean;
 	/** Whether the command palette (Cmd+K) is open */
 	commandPaletteOpen: boolean;
+	/** Whether the keyboard shortcuts dialog is open */
+	keyboardShortcutsDialogOpen: boolean;
 
 	// Actions
 	toggleLeftPanel: () => void;
@@ -76,6 +78,8 @@ interface UiState extends ThemeState {
 	toggleCanvasLock: () => void;
 	openCommandPalette: () => void;
 	closeCommandPalette: () => void;
+	openKeyboardShortcutsDialog: () => void;
+	closeKeyboardShortcutsDialog: () => void;
 }
 
 function loadPersistedTheme(): ThemeState {
@@ -167,6 +171,7 @@ export const useUiStore = create<UiState>((set, get) => ({
 	rightPanelTab: "properties",
 	canvasLocked: false,
 	commandPaletteOpen: false,
+	keyboardShortcutsDialogOpen: false,
 	themeMode: initialTheme.themeMode,
 	lightPresetId: initialTheme.lightPresetId,
 	darkPresetId: initialTheme.darkPresetId,
@@ -187,6 +192,8 @@ export const useUiStore = create<UiState>((set, get) => ({
 	toggleCanvasLock: () => set((state) => ({ canvasLocked: !state.canvasLocked })),
 	openCommandPalette: () => set({ commandPaletteOpen: true }),
 	closeCommandPalette: () => set({ commandPaletteOpen: false }),
+	openKeyboardShortcutsDialog: () => set({ keyboardShortcutsDialogOpen: true }),
+	closeKeyboardShortcutsDialog: () => set({ keyboardShortcutsDialogOpen: false }),
 
 	setTheme: (mode, presetId) => {
 		const current = get();
