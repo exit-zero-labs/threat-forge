@@ -33,10 +33,12 @@ export function PrivacyPage() {
 
 					<Section title="Web Application">
 						<p>
-							The web version at threatforge.dev is hosted on Vercel. Standard Vercel hosting logs
-							(IP addresses, request timestamps) may be collected as part of infrastructure
-							operation. No cookies are used beyond <code>sessionStorage</code> for caching GitHub
-							API responses on the downloads page.
+							The web version at threatforge.dev is hosted on Cloudflare Pages. Standard hosting
+							logs (IP addresses, request timestamps) may be collected as part of infrastructure
+							operation. We use Cloudflare Web Analytics, which is privacy-first and cookieless — it
+							does not use cookies, fingerprinting, or cross-site tracking, and does not profile
+							individual users. No cookies are used beyond <code>sessionStorage</code> for caching
+							GitHub API responses on the downloads page.
 						</p>
 					</Section>
 
@@ -54,7 +56,8 @@ export function PrivacyPage() {
 								<strong>GitHub</strong> — source code hosting, releases, issue tracking
 							</li>
 							<li>
-								<strong>Vercel</strong> — web application hosting
+								<strong>Cloudflare</strong> — web application hosting and privacy-first, cookieless
+								web analytics
 							</li>
 						</ul>
 						<p>

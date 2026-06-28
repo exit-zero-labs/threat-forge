@@ -104,7 +104,7 @@ threat-forge/
 | Local | Developer workstation | `npm run tauri dev` (hot reload) | $0 |
 | CI | Automated builds + tests | GitHub Actions matrix (ubuntu, macos, windows) | $0 (public repo) |
 | Release | Signed binaries | GitHub Releases | $0 |
-| Website | Docs + landing page | GitHub Pages or Cloudflare Pages | $0 |
+| Website | Docs + landing page (threatforge.dev) | Cloudflare Pages (Git integration, auto-deploy on push to `main`) | $0 |
 
 ### CI Pipeline
 
