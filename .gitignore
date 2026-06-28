@@ -34,3 +34,11 @@ screenshots/
 *.njsproj
 *.sln
 *.sw?
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Cloudflare Wrangler
+.wrangler/

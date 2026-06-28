@@ -1,0 +1,4 @@
+# Cloudflare Pages config
+# Build command is set in the Pages dashboard: `npm run build:web`
+name = "threat-forge"
+pages_build_output_dir = "dist"

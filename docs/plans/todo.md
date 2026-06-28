@@ -109,3 +109,37 @@ Shared execution plan for humans and LLM agents. Update this file before, during
   - [x] Update `docs/runbooks/releasing-a-version.md` — AI smoke test checklist
   - [x] Update `CLAUDE.md` — AI module description in project structure
   - [x] Final validation pass: Biome clean, Clippy clean, 416 TS tests, 59 Rust tests
+
+## 2026-06-28 — Migrate web hosting from Vercel to Cloudflare Pages
+
+Goal: eliminate the Vercel Pro bill. Move the web/SPA build (threatforge.dev) to
+Cloudflare Pages (Git integration) and replace Vercel Analytics with Cloudflare Web Analytics.
+Desktop app (Tauri/GitHub Releases) is unaffected.
+
+### Plan
+- [x] Remove Vercel hosting config
+  - [x] Delete `vercel.json`
+  - [x] Add `wrangler.toml` (Pages: `pages_build_output_dir = "dist"`)
+  - [x] Add `public/_redirects` (`/* /index.html 200`) for SPA routing
+- [x] Replace analytics
+  - [x] Remove `@vercel/analytics` from `package.json` + lockfile
+  - [x] Add `src/components/cloudflare-analytics.tsx` (env-gated beacon, web-only)
+  - [x] Swap `<Analytics />` → `<CloudflareAnalytics />` in `src/app.tsx`
+  - [x] Add `.env.example` documenting `VITE_CF_BEACON_TOKEN`
+  - [x] Add `.env` / `.wrangler/` to `.gitignore`
+- [x] Update user-facing + project docs
+  - [x] `src/pages/privacy-page.tsx` — Vercel → Cloudflare (hosting + analytics)
+  - [x] `docs/runbooks/` — add web deploy runbook (CF Pages)
+  - [x] `docs/knowledge/architecture.md` — confirm host = Cloudflare Pages
+  - [x] `CLAUDE.md` — note web deploy target if referenced
+- [x] Validate
+  - [x] `npm install` (lockfile updated, no @vercel/analytics)
+  - [x] `npm run build:web` — builds clean to `dist`, `_redirects` present in `dist`
+  - [x] `npx biome check --write .`
+  - [x] `npx tsc --noEmit`
+  - [x] `npx vitest --run`
+- [x] Hand off Cloudflare dashboard steps to user (account-side, can't be done from repo)
+
+### Notes
+- Deploy method chosen: CF Pages Git integration (mirrors current Vercel auto-deploy, zero Actions minutes).
+- Analytics chosen: Cloudflare Web Analytics (free, cookieless). Beacon gated by `!isTauri()` + token, so it never ships in the desktop build.
