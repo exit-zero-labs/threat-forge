@@ -1,0 +1,8 @@
+# Code owners for ThreatForge.
+#
+# Every change requires an approving review from one of these accounts before it
+# can be merged into `main` (enforced by the repository ruleset's
+# "require code owner review"). The public can still open PRs from forks — only
+# these owners can approve and merge them.
+
+* @Shreyasdbz @exitzerolabs-admin
