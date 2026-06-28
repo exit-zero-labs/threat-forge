@@ -158,8 +158,8 @@ pub fn build_menu(app: &App) -> Result<Menu<Wry>, Box<dyn std::error::Error>> {
         "Help",
         true,
         &[
-			&help_keyboard_shortcuts,
-			&PredefinedMenuItem::separator(handle)?,
+            &help_keyboard_shortcuts,
+            &PredefinedMenuItem::separator(handle)?,
             &help_guides,
             &PredefinedMenuItem::separator(handle)?,
             &help_about,
