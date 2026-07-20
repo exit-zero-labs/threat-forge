@@ -15,8 +15,22 @@ permissions:
   contents: read
 
 jobs:
+  lockfile:
+    name: Lockfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: ".node-version"
+
+      - name: Verify package registry and integrity
+        run: node scripts/check-lockfile-registry.mjs
+
   lint:
     name: Lint
+    needs: [lockfile]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -68,6 +82,7 @@ jobs:
 
   test:
     name: Test
+    needs: [lockfile]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -186,6 +201,14 @@ jobs:
 
       - name: Build Tauri app
         run: npx tauri build
+
+      - name: Build web app
+        if: runner.os == 'Linux'
+        run: npm run build:web
+
+      - name: Validate Cloudflare Worker bundle
+        if: runner.os == 'Linux'
+        run: npm run check:worker
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

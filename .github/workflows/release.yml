@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -23,6 +23,9 @@ jobs:
         with:
           node-version-file: ".node-version"
           cache: "npm"
+
+      - name: Verify package registry and integrity
+        run: node scripts/check-lockfile-registry.mjs
 
       - run: npm ci
 
@@ -73,6 +76,11 @@ jobs:
   release:
     name: Release (${{ matrix.settings.platform }})
     needs: [validate]
+    permissions:
+      contents: write
+    environment:
+      name: Production
+      url: https://github.com/exit-zero-labs/threat-forge/releases/tag/${{ github.ref_name }}
     strategy:
       fail-fast: false
       matrix:

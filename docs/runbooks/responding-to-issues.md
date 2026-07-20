@@ -9,7 +9,8 @@ Guide for triaging and resolving GitHub issues for ThreatForge.
 When a new issue arrives:
 
 - **Bug report**: Can you reproduce it? Check the `.thf` file if attached.
-- **Feature request**: Does it align with the project backlog (`docs/plans/backlog.md`)?
+- **Feature request**: Does it align with `docs/plans/roadmap.md` and an existing
+  initiative in the Threat Forge GitHub Project?
 - **Question**: Can it be answered from docs? Point to relevant documentation.
 
 ### 2. Apply Labels
@@ -24,8 +25,39 @@ When a new issue arrives:
 | `duplicate` | Already tracked — link to existing issue |
 | `wontfix` | Out of scope or conflicts with design principles |
 | `security` | Security vulnerability (handle with urgency) |
+| `roadmap` | Maintainer-approved strategic initiative |
+| `compliance` | Signing, distribution, privacy, or platform requirements |
+| `architecture` | System architecture modeling or core architecture changes |
+| `ai` | BYOK assistant runtime, providers, or native tool calling |
+| `browser` | Browser workspace, persistence, or web-only behavior |
+| `e2e` | End-to-end, visual, or agent-driven quality coverage |
 
-### 3. Respond Promptly
+After labeling, add the issue to Project 2 and set `Status`, `Priority`, and `Size`.
+
+Apply exactly one autonomy label:
+
+| Label | Meaning |
+|-------|---------|
+| `agent-ready` | An agent can reach a verification-complete PR without earlier human action |
+| `human-blocked` | A secret, account, provisioning step, or unresolved decision is required |
+
+Final owner validation does not make an issue `human-blocked`.
+
+### 3. Shape the Work
+
+- Keep a new, incomplete report in `To triage`.
+- Use `Backlog` for triaged work that is not executable or selected.
+- Move to `Ready` only when acceptance criteria, dependencies, ownership, and autonomy are
+  settled.
+- XS/S issues carry their executable specification in the issue.
+- M/L issues require a committed plan before implementation.
+- XL issues are parents and must be decomposed.
+- Persist a concise triage rationale for material field decisions.
+
+Use the `issue-triage` skill for one issue and `issues-clarify` for an explicit whole-board
+drift repair pass. Both discover live Project field IDs rather than relying on saved IDs.
+
+### 4. Respond Promptly
 
 - Acknowledge within 48 hours, even if just "Thanks, we'll look into this"
 - Ask for reproduction steps if not provided
@@ -38,9 +70,11 @@ When a new issue arrives:
 3. **Write a failing test** that captures the bug
 4. **Fix the bug** — minimal change, don't refactor surrounding code
 5. **Verify the test passes**
-6. **Run full validation**: `npm run ci:local`
-7. **Open a PR** referencing the issue: `Fixes #42`
-8. **Close the issue** when PR is merged (GitHub auto-closes with `Fixes #N`)
+6. **Run anti-slop review and preflight**
+7. **Run full verification**: `npm run ci:local`
+8. **Open a PR** referencing the issue: `Fixes #42`
+9. **Move to In review** for owner validation
+10. **Close the issue** when PR is merged (GitHub auto-closes with `Fixes #N`)
 
 ## Security Issues
 

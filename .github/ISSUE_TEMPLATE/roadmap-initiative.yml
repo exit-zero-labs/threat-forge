@@ -1,0 +1,73 @@
+name: Roadmap Initiative
+description: Propose a substantial use case or multi-phase product initiative
+title: "[Initiative]: "
+labels: ["roadmap", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for substantial product directions. Smaller changes belong in the feature request form.
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Who has this problem, and what are they trying to accomplish?
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired Outcome
+      description: Describe the user-visible result without prescribing implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: End-to-End Workflow
+      description: Walk through the ideal workflow from entry point to completed result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and Non-Goals
+      description: What belongs in this initiative, and what explicitly does not?
+    validations:
+      required: true
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success Measures
+      description: What observable outcomes prove the initiative is successful?
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and Dependencies
+      description: Include file-format, platform, privacy, security, licensing, prerequisite, account, secret, and other human-blocker concerns. Never paste API keys, tokens, passwords, or credential values.
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Supporting Evidence
+      description: Link research, examples, mockups, screenshots, or comparable tools.
+
+  - type: textarea
+    id: decomposition
+    attributes:
+      label: Proposed Decomposition
+      description: List independently verifiable sub-outcomes. Initiatives are XL parents and are not implemented directly.
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification and Owner Validation
+      description: Describe deterministic evidence for sub-outcomes and the end-to-end workflow or plausible-but-wrong result an owner must inspect.

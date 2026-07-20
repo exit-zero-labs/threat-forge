@@ -5,6 +5,7 @@ import {
 	Controls,
 	MiniMap,
 	type OnConnectStart,
+	type OnNodeDrag,
 	ReactFlow,
 	SelectionMode,
 	useReactFlow,
@@ -258,8 +259,8 @@ export function DfdCanvas() {
 	} | null>(null);
 
 	/** Alt+Drag to duplicate: create ghost at original position, swap positions on drop */
-	const onNodeDragStart = useCallback(
-		(event: React.MouseEvent, node: DfdNode) => {
+	const onNodeDragStart = useCallback<OnNodeDrag<DfdNode>>(
+		(event, node) => {
 			if (event.altKey && !node.data.isBoundary) {
 				const model = useModelStore.getState().model;
 				if (!model) return;
@@ -291,7 +292,7 @@ export function DfdCanvas() {
 	);
 
 	/** On drag stop: if Alt+drag was active, swap positions so original stays and copy moves */
-	const onNodeDragStop = useCallback((_event: React.MouseEvent, node: DfdNode) => {
+	const onNodeDragStop = useCallback<OnNodeDrag<DfdNode>>((_event, node) => {
 		const info = altDragRef.current;
 		if (!info) return;
 

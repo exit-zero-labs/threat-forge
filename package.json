@@ -9,7 +9,11 @@
 		"build": "tsc && vite build",
 		"build:web": "tsc && vite build",
 		"preview": "vite preview",
+		"preview:web": "npm run build:web && wrangler dev",
+		"deploy:web": "npm run build:web && wrangler deploy",
+		"check:worker": "wrangler deploy --dry-run",
 		"tauri": "tauri",
+		"check:lockfile": "node scripts/check-lockfile-registry.mjs",
 		"check": "biome check .",
 		"format": "biome check --write .",
 		"test": "vitest --run",
@@ -53,6 +57,7 @@
 		"tailwindcss": "^4.2.1",
 		"typescript": "~5.6.2",
 		"vite": "^6.0.3",
-		"vitest": "^4.0.18"
+		"vitest": "^4.0.18",
+		"wrangler": "4.107.1"
 	}
 }

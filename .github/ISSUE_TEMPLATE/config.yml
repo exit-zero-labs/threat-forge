@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/exit-zero-labs/threat-forge/security/advisories/new
+    about: Report security vulnerabilities privately.
+  - name: Design discussion
+    url: https://github.com/exit-zero-labs/threat-forge/discussions
+    about: Discuss early ideas and questions before opening a scoped feature request.

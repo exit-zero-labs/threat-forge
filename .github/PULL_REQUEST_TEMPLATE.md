@@ -1,34 +1,51 @@
 ## Summary
 
-<!-- What does this PR do? Keep it to 1-3 sentences. -->
+<!-- What outcome does this PR deliver? Keep it to 1-3 sentences. -->
+
+## Issue and Plan
+
+- Closes #
+- Parent initiative:
+- Plan: <!-- docs/plans/<issue>-<slug>.md or N/A — XS/S -->
+
+## Acceptance Criteria
+
+- [ ]
 
 ## Changes
 
-<!-- Bulleted list of what changed and why. -->
-
 -
 
-## Type
+## Verification
 
-<!-- Check one. -->
+<!-- Commands and deterministic evidence. Verification is not owner validation. -->
 
-- [ ] Feature (`feat`)
-- [ ] Bug fix (`fix`)
-- [ ] Refactor (`refactor`)
-- [ ] Chore (build, CI, deps)
-- [ ] Documentation (`docs`)
+- [ ] Smallest targeted checks passed
+- [ ] `npm run ci:local`
+- [ ] E2E/build/Docker/release checks added when required
+- [ ] UI changes include before/after screenshots or traces
+- [ ] `.thf` changes include migration, round-trip, and backward-compatibility evidence
+- [ ] AI mutations validate untrusted input and remain reviewable and undoable
+- [ ] No secrets, keys, credentials, or non-canonical lockfile sources
 
-## Checklist
+## Agent Preflight
 
-- [ ] Code follows project conventions (named exports, strict TS, etc.)
-- [ ] TypeScript linted: `npx biome check .`
-- [ ] Rust linted: `cargo clippy -- -D warnings`
-- [ ] Tests added/updated for changes
-- [ ] Tests pass: `npx vitest --run` and `cargo test`
-- [ ] App builds: `npm run tauri build`
-- [ ] YAML schema changes are backward-compatible (if applicable)
-- [ ] No secrets, API keys, or credentials in the diff
+- [ ] Author anti-slop review complete
+- [ ] PR reviewer converged
+- [ ] Independent slop auditor converged
+- [ ] Security auditor complete or not applicable
+- [ ] Threat-model expert complete or not applicable
 
-## Related Issues
+## Owner Validation
 
-<!-- Link issues: "Closes #123" or "Relates to #456" -->
+<!-- Plausible-but-wrong outcomes and workflows an owner must inspect. -->
+
+- [ ]
+
+## Screenshots and Artifacts
+
+<!-- Required for user-visible changes. Add N/A with a reason otherwise. -->
+
+## Replan and Follow-up Work
+
+<!-- Link deviations, appended replan entries, and out-of-scope issues. -->

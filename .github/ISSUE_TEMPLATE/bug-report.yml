@@ -72,3 +72,21 @@ body:
     attributes:
       label: Additional Context
       description: Screenshots, screen recordings, or anything else that helps.
+
+  - type: textarea
+    id: regression
+    attributes:
+      label: Regression and Impact
+      description: Did this work in an earlier version, and what workflow is blocked or degraded?
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies, Parent, and Human Actions
+      description: Link a parent or related issue and note required accounts, secrets, external services, decisions, or other human blockers needed to reproduce or verify. Never paste API keys, tokens, passwords, or credential values.
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Acceptance, Verification, and Owner Validation
+      description: State the behavior that proves the regression is fixed, deterministic verification evidence, and the workflow or plausible-but-wrong result an owner must inspect.

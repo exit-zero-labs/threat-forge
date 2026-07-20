@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# ThreatForge Local CI — runs the same checks as GitHub Actions.
+# ThreatForge local CI — runs the deterministic checks feasible on one development host.
 #
 # Usage:
-#   bash scripts/ci-local.sh           # lint + test (default)
-#   bash scripts/ci-local.sh --e2e     # lint + test + E2E tests
-#   bash scripts/ci-local.sh --build   # lint + test + tauri build
+#   bash scripts/ci-local.sh           # lint + test + web build (default)
+#   bash scripts/ci-local.sh --e2e     # default gate + E2E tests
+#   bash scripts/ci-local.sh --build   # default gate + Tauri build
 #
 # Exit codes: 0 = all checks pass, non-zero = failure.
 
@@ -45,6 +45,10 @@ fail() {
 
 # ── Lint ──────────────────────────────────────────────
 
+step "Package lockfile registry check"
+npm run check:lockfile || fail "Package lockfile registry check failed"
+pass "package-lock.json"
+
 step "Biome lint + format check"
 npx biome check . || fail "Biome check failed"
 pass "Biome"
@@ -70,6 +74,16 @@ pass "Vitest"
 step "Rust tests"
 cargo test --manifest-path src-tauri/Cargo.toml || fail "cargo test failed"
 pass "cargo test"
+
+# ── Web Build ──────────────────────────────────────────
+
+step "Web build"
+npm run build:web || fail "Web build failed"
+pass "Web build"
+
+step "Cloudflare Worker dry run"
+npm run check:worker || fail "Cloudflare Worker dry run failed"
+pass "Cloudflare Worker"
 
 # ── E2E Tests (optional) ─────────────────────────────
 

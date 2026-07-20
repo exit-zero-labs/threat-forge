@@ -4,9 +4,25 @@ Step-by-step guide for creating a new release of ThreatForge.
 
 ## Prerequisites
 
-- Admin or maintainer access to the GitHub repository
+- One of the repository owners (`Shreyasdbz` or `exitzerolabs-admin`) creates the release
 - All CI checks passing on `main`
-- Code signing configured (see `.github/workflows/release.yml`)
+- A second repository owner is available to approve the protected `Production` deployment
+- Code signing and updater signing are configured and verified (see
+  [Release Readiness](#release-readiness))
+
+## Release Readiness
+
+Do not publish a production release until every row is complete.
+
+| Control | Current state | Tracking |
+|---------|---------------|----------|
+| Protected production deployment | Configured; one owner approval required, self-approval disabled, `v*` tags only | [#52](https://github.com/exit-zero-labs/threat-forge/issues/52) |
+| Windows Azure Artifact Signing | Workflow and credentials configured; release-path verification remains | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
+| macOS Developer ID and notarization | Apple credentials and end-to-end verification remain | [#51](https://github.com/exit-zero-labs/threat-forge/issues/51) |
+| Tauri updater signing | Public key, private signing key, manifest, and update verification remain | [#49](https://github.com/exit-zero-labs/threat-forge/issues/49) |
+
+The `Production` environment gates all platform build jobs after validation. Repository secrets
+are unavailable to those jobs until an eligible owner approves the deployment.
 
 ## Version Numbering
 
@@ -23,7 +39,7 @@ ThreatForge uses [Semantic Versioning](https://semver.org/):
 ```bash
 git checkout main
 git pull origin main
-npm run ci:local          # Quick lint + test
+npm run ci:local          # Local lint, test, and web-build gate
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
@@ -59,6 +75,9 @@ git commit -m "chore: bump version to 0.2.0"
 
 ### 5. Create and Push the Tag
 
+Only the two repository owners can update `main`. The owner who pushes the tag cannot approve
+their own `Production` deployment, so coordinate with the other owner before tagging.
+
 ```bash
 git tag -a v0.2.0 -m "Release v0.2.0"
 git push origin main
@@ -72,18 +91,24 @@ The `release.yml` workflow triggers on `v*` tags and builds binaries for:
 - macOS (x86_64 + aarch64)
 - Windows (x86_64)
 
-Monitor the workflow at: `Actions > Release > v0.2.0`
+The workflow validates the release first, then pauses at the protected `Production`
+environment. The owner who did not initiate the release reviews and approves the deployment.
+Monitor the workflow at: `Actions > Release > v0.2.0`.
 
 ### 7. Verify the Release
 
 1. Check GitHub Releases page for the draft release
 2. Download binaries for each platform and smoke test:
+   - Verify the Windows installer signature and publisher identity
+   - Verify the macOS app is signed, notarized, and accepted by Gatekeeper
    - App launches without errors
    - Can create, save, and reopen a `.thf` file
    - Import a `.tm7` file (File > Import) — elements, flows, boundaries, and threats appear on canvas
    - AI chat works (with valid API key): model selector, chat sessions, stop generating, markdown rendering
    - STRIDE analysis runs
-3. Publish the draft release (click "Publish release" on GitHub)
+3. Verify release checksums, signing evidence, workflow logs, and updater artifacts are retained
+   with the draft release
+4. Publish the draft release (click "Publish release" on GitHub)
 
 ### 8. Post-Release
 
@@ -111,7 +136,9 @@ git push origin main v0.2.1
 
 | Problem | Solution |
 |---------|----------|
-| macOS build fails signing | Check Apple Developer secrets in GitHub Settings > Secrets |
-| Windows build fails | Verify MSVC toolchain is available in the runner |
+| Production deployment is waiting | The owner who did not push the tag must approve the protected environment |
+| macOS build fails signing | Check the Apple Developer secrets and certificate validity tracked in issue #51 |
+| Windows build fails signing | Check Azure credentials, Trusted Signing metadata, and issue #50 |
+| Updater artifacts are absent | Do not publish; complete the updater signing controls tracked in issue #49 |
 | Release workflow doesn't trigger | Ensure tag matches `v*` pattern |
 | Binary too large | Check that `profile.release` settings are applied (LTO, strip, opt-level) |

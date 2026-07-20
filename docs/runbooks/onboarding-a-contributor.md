@@ -6,7 +6,7 @@ Guide for getting new contributors productive on ThreatForge.
 
 New contributors need:
 
-- **Node.js 20** (see `.node-version`)
+- **Node.js 22** (see `.node-version`)
 - **Rust stable** with `clippy` and `rustfmt` components
 - **Git** with a GitHub account
 - A code editor (VS Code recommended for TypeScript + Rust via rust-analyzer)

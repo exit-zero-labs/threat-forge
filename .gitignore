@@ -43,6 +43,5 @@ screenshots/
 # Cloudflare Wrangler
 .wrangler/
 
-# Local-only todo / scratch (per-developer, never committed)
-docs/plans/todo.local.md
+# Local-only scratch (per-developer, never committed)
 *.local.md

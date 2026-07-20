@@ -1,9 +1,9 @@
-# ThreatForge Local CI — Ubuntu 22.04 + Node 20 + Rust stable + Tauri system deps
+# ThreatForge Local CI — Ubuntu 22.04 + Node 22 + Rust stable + Tauri system deps
 # Matches GitHub Actions ubuntu-latest environment for parity.
 #
 # Layer order optimized for Docker cache efficiency:
 #   1. System deps (rarely change)
-#   2. Node 20 via NodeSource
+#   2. Node 22 via NodeSource
 #   3. Rust stable + clippy + rustfmt
 #   4. npm ci (cached until package-lock.json changes)
 #   5. cargo fetch (cached until Cargo.lock changes)
@@ -28,8 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Node 20 via NodeSource
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+# 2. Node 22 via NodeSource
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 

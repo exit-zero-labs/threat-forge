@@ -1,44 +1,41 @@
 # Adding a Feature
 
-Step-by-step guide for implementing new features in ThreatForge.
+Use this workflow for non-trivial ThreatForge features.
 
-## Before You Start
+## 1. Start From GitHub
 
-1. **Check the backlog** — Read `docs/plans/backlog.md` for feature specs and priorities.
-2. **Read todo.md** — Check `docs/plans/todo.md` for current work in progress. Write your plan there.
-3. **Understand the architecture** — See `docs/knowledge/architecture.md` and `CLAUDE.md`.
+1. Find or create the GitHub issue.
+2. Add it to the
+   [Threat Forge project](https://github.com/orgs/exit-zero-labs/projects/2).
+3. Set `Status`, `Priority`, and `Size`.
+4. Link the parent initiative and any blocking issues.
+5. Write measurable acceptance criteria in the issue.
+6. Apply exactly one autonomy label:
+   - `agent-ready` when no earlier human action is needed
+   - `human-blocked` for secrets, provisioning, external accounts, or unresolved decisions
 
-## Branch Workflow
+GitHub is the only execution tracker. Do not create a second backlog in Markdown.
+
+Use the size as a capability contract:
+
+- XS/S: the issue body is executable.
+- M/L: run the issue planner and commit `docs/plans/<issue>-<slug>.md` before code.
+- XL: keep it as a parent initiative and decompose it into sub-issues.
+
+## 2. Create a Branch
 
 ```bash
-# Ensure you're on main and up to date
 git checkout main
 git pull origin main
-
-# Create a feature branch
 git checkout -b feat/short-description
 ```
 
-Branch naming uses Conventional Commits prefixes: `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`.
+Use Conventional Commits prefixes: `feat/`, `fix/`, `refactor/`, `chore/`, or `docs/`.
+Move the project item to `In progress`.
 
-## Implementation Steps
+## 3. Understand Existing Code
 
-### 1. Write Your Plan
-
-Update `docs/plans/todo.md` with a dated checklist:
-
-```markdown
-## YYYY-MM-DD — Feature description
-
-- [ ] Task 1
-  - [ ] Sub-task 1a
-- [ ] Task 2
-- [ ] Validate: run tests
-```
-
-### 2. Understand Existing Code
-
-Read relevant source files before making changes. Key locations:
+Read the relevant knowledge docs and source before editing.
 
 | Area | Location |
 |------|----------|
@@ -50,66 +47,54 @@ Read relevant source files before making changes. Key locations:
 | Rust models | `src-tauri/src/models/` |
 | Tauri config | `src-tauri/tauri.conf.json` |
 
-### 3. Implement the Feature
+## 4. Plan M/L Work
 
-Follow project conventions:
+Use the `issue-planner` agent and `docs/plans/0000-template.md`. The planner may write only
+the plan. Implementation happens in a separate context after the plan is reviewable.
 
-- **TypeScript**: Strict mode, no `any`, named exports only, `kebab-case` files
-- **Rust**: `snake_case` functions, `PascalCase` types, `Result<T, String>` for commands
-- **State**: Zustand stores in `src/stores/`, no prop drilling beyond 2 levels
-- **Components**: Function components only, shadcn/ui primitives in `src/components/ui/`
+Skip this step for settled XS/S issues. Never execute an XL issue directly.
 
-### 4. Write Tests
+## 5. Implement and Test
 
-- **Frontend**: Vitest + React Testing Library. Test file lives next to source: `foo.test.ts`
-- **Rust**: `#[cfg(test)] mod tests` in the same file, or `src-tauri/tests/` for integration tests
-- **YAML schema changes**: Must include round-trip tests (serialize -> deserialize -> assert equal)
+- Keep the change within the issue's acceptance criteria.
+- Add tests with the implementation.
+- Preserve `.thf` backward compatibility; schema changes require round-trip tests and a
+  migration path.
+- Open linked sub-issues for discovered work that does not belong in the current change.
+- Run the `anti-slop-review` skill before claiming implementation complete.
 
-### 5. Validate
+## 6. Verify
 
 ```bash
-# TypeScript lint + format
 npx biome check --write .
-
-# Rust lint
 cargo clippy --manifest-path src-tauri/Cargo.toml
-
-# Frontend tests
 npx vitest --run
-
-# Rust tests
 cargo test --manifest-path src-tauri/Cargo.toml
-
-# Full local CI (recommended before pushing)
 npm run ci:local
 ```
 
-### 6. Update todo.md
+Use the smallest relevant commands first. Run Docker CI for release-sensitive changes.
 
-Check off completed items. Add notes about decisions or surprises.
+Verification proves the written contract. It does not replace owner intent validation.
 
-### 7. Commit and Push
+## 7. Run Agent Preflight
 
-```bash
-# Stage specific files (not git add -A)
-git add src/path/to/changed-files
-git commit -m "feat(scope): short description"
-git push -u origin feat/short-description
-```
+Always run independent general and slop review lanes. Add:
 
-### 8. Open a Pull Request
+- `security-auditor` for IPC, file, crypto, key, AI execution, updater, release, or
+  supply-chain changes
+- `threat-model-expert` for `.thf`, STRIDE, schema, migration, or threat-generation changes
 
-Target `main`. Include:
-- Summary of changes
-- Test plan
-- Screenshots (for UI changes)
+Fix must-fix and should-fix findings and rerun the same lanes until they converge.
 
-## Checklist
+## 8. Open the Pull Request
 
-- [ ] Plan written in `docs/plans/todo.md`
-- [ ] Feature branch created (not on `main`)
-- [ ] Code follows project conventions
-- [ ] Tests written and passing
-- [ ] Biome and Clippy clean
-- [ ] `todo.md` updated with completion status
-- [ ] PR opened with description and test plan
+- Link it with `Closes #N`.
+- Link the M/L plan or state `N/A — XS/S`.
+- Separate verification evidence from owner validation steps.
+- Include before/after screenshots for UI changes.
+- Move the project item to `In review`.
+
+Only `Shreyasdbz` and `exitzerolabs-admin` may merge or update `main`.
+Commit, push, PR creation, approval, and merge each require explicit authorization. Owners
+must not use bypass access to skip repository safeguards.
