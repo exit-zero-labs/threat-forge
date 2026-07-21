@@ -141,6 +141,77 @@ Some text
 	});
 });
 
+describe("update action field allowlist", () => {
+	const updateActions = [
+		{ action: "update_element", legalField: "name" },
+		{ action: "update_data_flow", legalField: "protocol" },
+		{ action: "update_trust_boundary", legalField: "name" },
+		{ action: "update_threat", legalField: "title" },
+	] as const;
+
+	for (const { action, legalField } of updateActions) {
+		it(`rejects ${action} that rewrites id`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "id": "hijacked" } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+
+		it(`rejects ${action} that smuggles id alongside a legal field`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed", "id": "hijacked" } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+
+		it(`still accepts ${action} carrying only allowlisted fields`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed" } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(1);
+		});
+
+		it(`rejects ${action} carrying an unknown field`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed", "injected": true } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+
+		it(`rejects ${action} whose updates is an array`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": ["id", "hijacked"] }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+	}
+
+	it("keeps every allowlisted field of update_element writable", () => {
+		const text = `\`\`\`actions
+[{ "action": "update_element", "id": "api-gw", "updates": {
+  "name": "Gateway", "type": "process", "trust_zone": "dmz",
+  "description": "Edge", "technologies": ["nginx"]
+} }]
+\`\`\``;
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		const updates = (actions[0] as { updates: Record<string, unknown> }).updates;
+		expect(Object.keys(updates)).toHaveLength(5);
+	});
+
+	it("rejects a hijacking action without discarding valid actions beside it", () => {
+		const text = `\`\`\`actions
+[
+  { "action": "update_element", "id": "a", "updates": { "id": "hijacked" } },
+  { "action": "update_element", "id": "b", "updates": { "name": "Legit" } }
+]
+\`\`\``;
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		expect((actions[0] as { id: string }).id).toBe("b");
+	});
+});
+
 describe("describeAction", () => {
 	it("describes add_element", () => {
 		const action: AiAction = {

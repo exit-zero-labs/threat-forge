@@ -195,6 +195,53 @@ const VALID_CATEGORIES = new Set<string>([
 
 const VALID_SEVERITIES = new Set<string>(["critical", "high", "medium", "low", "info"]);
 
+/**
+ * Fields each update action may write.
+ *
+ * `id` is deliberately absent from every list. It is the document's reference
+ * key: data flows, threats, and trust boundary `contains` entries all point at
+ * it. Rewriting an id through an update would leave those references dangling
+ * while the element itself still looks valid, so the damage surfaces later on
+ * save, reopen, or STRIDE analysis rather than at the point of the edit.
+ */
+const UPDATABLE_FIELDS: Record<string, ReadonlySet<string>> = {
+	update_element: new Set(["name", "type", "trust_zone", "description", "technologies"]),
+	update_data_flow: new Set(["name", "from", "to", "protocol", "data", "authenticated"]),
+	update_trust_boundary: new Set(["name", "contains"]),
+	update_threat: new Set([
+		"title",
+		"category",
+		"element",
+		"flow",
+		"severity",
+		"description",
+		"mitigation",
+	]),
+};
+
+/** Narrow to a non-null, non-array object so `Object.keys` reflects real fields. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Validate an update payload against its action's allowlist.
+ *
+ * Model output is untrusted, and the executor applies `updates` by spreading it
+ * over the existing entity. Anything not listed here would be written verbatim,
+ * so an unknown field is rejected rather than dropped: a silent drop would let
+ * the assistant report success for an edit that never happened.
+ */
+function validateUpdates(type: AiActionType, updates: unknown): Record<string, unknown> | null {
+	if (!isPlainRecord(updates)) return null;
+	const allowed = UPDATABLE_FIELDS[type];
+	if (!allowed) return null;
+	for (const key of Object.keys(updates)) {
+		if (!allowed.has(key)) return null;
+	}
+	return updates;
+}
+
 /** Validate a single parsed action object. Returns the action if valid, null otherwise. */
 function validateAction(obj: unknown): AiAction | null {
 	if (!obj || typeof obj !== "object") return null;
@@ -212,7 +259,7 @@ function validateAction(obj: unknown): AiAction | null {
 		}
 		case "update_element": {
 			if (!action.id || typeof action.id !== "string") return null;
-			if (!action.updates || typeof action.updates !== "object") return null;
+			if (!validateUpdates(type, action.updates)) return null;
 			return action as unknown as UpdateElementPayload;
 		}
 		case "delete_element":
@@ -230,7 +277,7 @@ function validateAction(obj: unknown): AiAction | null {
 		}
 		case "update_data_flow": {
 			if (!action.id || typeof action.id !== "string") return null;
-			if (!action.updates || typeof action.updates !== "object") return null;
+			if (!validateUpdates(type, action.updates)) return null;
 			return action as unknown as UpdateDataFlowPayload;
 		}
 		case "add_trust_boundary": {
@@ -240,7 +287,7 @@ function validateAction(obj: unknown): AiAction | null {
 		}
 		case "update_trust_boundary": {
 			if (!action.id || typeof action.id !== "string") return null;
-			if (!action.updates || typeof action.updates !== "object") return null;
+			if (!validateUpdates(type, action.updates)) return null;
 			return action as unknown as UpdateTrustBoundaryPayload;
 		}
 		case "add_threat": {
@@ -252,8 +299,8 @@ function validateAction(obj: unknown): AiAction | null {
 		}
 		case "update_threat": {
 			if (!action.id || typeof action.id !== "string") return null;
-			if (!action.updates || typeof action.updates !== "object") return null;
-			const updates = action.updates as Record<string, unknown>;
+			const updates = validateUpdates(type, action.updates);
+			if (!updates) return null;
 			if (updates.category && !VALID_CATEGORIES.has(updates.category as string)) return null;
 			if (updates.severity && !VALID_SEVERITIES.has((updates.severity as string).toLowerCase()))
 				return null;
