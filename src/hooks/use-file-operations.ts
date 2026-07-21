@@ -29,6 +29,18 @@ function getAuthorIdentity(): string {
 	return "";
 }
 
+/**
+ * Keep the active document's file-scoped settings in sync with a just-saved model. The
+ * document session owns `fileSettings`; `setModel` refreshes the model but not the cached
+ * settings, so a save that rewrites metadata refreshes the session's copy here.
+ */
+function syncActiveFileSettings(model: ThreatModel): void {
+	const registry = useDocumentRegistry.getState();
+	const activeId = registry.activeDocumentId;
+	if (!activeId) return;
+	registry.setDocumentFileSettings(activeId, model.metadata.settings ?? null);
+}
+
 /** Write current canvas positions, boundary colors, and label offsets back into the model. */
 function captureCanvasIntoModel(model: ThreatModel): ThreatModel {
 	const { nodes, edges, viewport } = useCanvasStore.getState();
@@ -109,8 +121,8 @@ export function useFileOperations() {
 		const registry = useDocumentRegistry.getState();
 		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
 		// New models use default positions, so there is no pending layout to apply.
+		// The new document owns its own file settings (seeded from metadata by createDocument).
 		registry.createDocument({ model: created, filePath: null, pendingLayout: null });
-		useSettingsStore.getState().clearFileSettings();
 		// syncFromModel runs from the DfdCanvas effect once the new bundle is active.
 	}, [isDirty]);
 
@@ -150,8 +162,8 @@ export function useFileOperations() {
 
 		const registry = useDocumentRegistry.getState();
 		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		// createDocument seeds the new document's fileSettings from loaded.metadata.settings.
 		registry.createDocument({ model: loaded, filePath: path, pendingLayout });
-		useSettingsStore.getState().loadFileSettings(loaded.metadata.settings);
 		// syncFromModel runs from the DfdCanvas effect once the new bundle is active.
 	}, [isDirty]);
 
@@ -174,6 +186,7 @@ export function useFileOperations() {
 		if (!savedPath) return;
 
 		setModel(captured, savedPath);
+		syncActiveFileSettings(captured);
 	}, [model, filePath, setModel]);
 
 	const saveModelAs = useCallback(async () => {
@@ -195,6 +208,7 @@ export function useFileOperations() {
 		if (!savedPath) return;
 
 		setModel(captured, savedPath);
+		syncActiveFileSettings(captured);
 	}, [model, setModel]);
 
 	const closeModel = useCallback(async () => {
@@ -206,8 +220,8 @@ export function useFileOperations() {
 		const registry = useDocumentRegistry.getState();
 		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
 		// With no active document the facades resolve to a fresh scratch bundle, so the canvas
-		// is empty by construction — no explicit syncFromModel needed.
-		useSettingsStore.getState().clearFileSettings();
+		// is empty by construction — no explicit syncFromModel needed. File settings are disposed
+		// with the closed document's session.
 	}, [isDirty]);
 
 	const importModel = useCallback(async () => {
@@ -236,9 +250,9 @@ export function useFileOperations() {
 		const registry = useDocumentRegistry.getState();
 		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
 		// Imported models have no file path — user must Save As to create a .thf file.
+		// TM7 imports carry no ThreatForge file settings; createDocument seeds fileSettings to
+		// null from the absent metadata.settings.
 		registry.createDocument({ model: imported, filePath: null, pendingLayout });
-		// TM7 imports have no ThreatForge file settings — clear to defaults.
-		useSettingsStore.getState().clearFileSettings();
 	}, [isDirty]);
 
 	const exportAsHtml = useCallback(async () => {
