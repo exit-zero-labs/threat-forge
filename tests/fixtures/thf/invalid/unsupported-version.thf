@@ -1,0 +1,12 @@
+# ThreatForge Threat Model
+# Invalid: schema version `2.0` is not supported by this build.
+version: "2.0"
+metadata:
+  title: "Unsupported Version"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+elements:
+  - id: app
+    type: process
+    name: "Application"
