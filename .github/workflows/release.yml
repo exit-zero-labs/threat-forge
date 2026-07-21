@@ -19,9 +19,9 @@ jobs:
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".node-version"
           cache: "npm"
@@ -51,12 +51,12 @@ jobs:
             libdbus-1-dev \
             libssl-dev
 
-      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master 2026-02-13
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
         with:
           toolchain: stable
           components: clippy, rustfmt
 
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ env.CARGO_HOME }}/registry
@@ -105,9 +105,9 @@ jobs:
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".node-version"
           cache: "npm"
@@ -117,12 +117,12 @@ jobs:
 
       - run: npm ci
 
-      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master 2026-02-13
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
         with:
           toolchain: stable
           targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ${{ env.CARGO_HOME }}/registry
@@ -173,7 +173,7 @@ jobs:
           }
           echo "DLIB_PATH=$dlib" >> $env:GITHUB_ENV
 
-      - uses: tauri-apps/tauri-action@f650639e43adf15f35dd1023d248b3ecc3568b64 # action-v0.6.1
+      - uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Azure Trusted Signing (Windows)
