@@ -103,6 +103,13 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 			const idx = model.data_flows.findIndex((f) => f.id === action.id);
 			if (idx === -1) return null;
 			const updated = { ...model.data_flows[idx], ...action.updates };
+			// Check the resulting endpoints, not just the fields the action supplied:
+			// updating only `from` still has to hold against the existing `to`.
+			// `add_data_flow` already refuses unresolvable endpoints, and without the
+			// same check here an update could leave the flow pointing at a deleted or
+			// never-created element — an edge to nowhere that only fails on reopen.
+			if (!model.elements.some((e) => e.id === updated.from)) return null;
+			if (!model.elements.some((e) => e.id === updated.to)) return null;
 			const data_flows = [...model.data_flows];
 			data_flows[idx] = updated;
 			return { ...model, data_flows };
@@ -135,7 +142,16 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 		case "update_trust_boundary": {
 			const idx = model.trust_boundaries.findIndex((b) => b.id === action.id);
 			if (idx === -1) return null;
-			const updated = { ...model.trust_boundaries[idx], ...action.updates };
+			const merged = { ...model.trust_boundaries[idx], ...action.updates };
+			// `add_trust_boundary` drops unresolvable member refs rather than refusing
+			// the whole boundary, so updates follow the same rule. Membership is a
+			// weaker relationship than a flow endpoint: a boundary containing one
+			// stale id is still a meaningful boundary, whereas a flow missing an
+			// endpoint is not a flow.
+			const updated = {
+				...merged,
+				contains: merged.contains.filter((c) => model.elements.some((e) => e.id === c)),
+			};
 			const trust_boundaries = [...model.trust_boundaries];
 			trust_boundaries[idx] = updated;
 			return { ...model, trust_boundaries };
