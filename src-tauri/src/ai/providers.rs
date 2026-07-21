@@ -8,6 +8,31 @@ use tauri::{AppHandle, Emitter};
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
+/// Map a provider HTTP failure to a user-safe message.
+///
+/// This deliberately takes only the status code. Provider error bodies are
+/// provider-controlled and routinely carry request IDs, organization
+/// identifiers, and internal routing detail; an OpenAI 401 body additionally
+/// echoes a partially masked form of the submitted API key. Every string
+/// returned here crosses the IPC boundary into the webview, so there is no safe
+/// way to include the body — and a signature that cannot accept one makes that
+/// a structural property rather than a rule someone has to remember.
+///
+/// The body is not logged either: `AGENTS.md` requires that key material never
+/// reach logs, and a partially masked key is still key material.
+fn user_safe_provider_error(provider: &str, status: reqwest::StatusCode) -> String {
+    let reason = match status.as_u16() {
+        400 => "the request was rejected as malformed",
+        401 | 403 => "the API key was rejected — check the key configured for this provider",
+        404 => "the requested model was not found",
+        413 => "the request was too large for this model",
+        429 => "the rate limit or quota was exceeded — wait and try again",
+        500..=599 => "the provider is temporarily unavailable",
+        _ => "the request failed",
+    };
+    format!("{provider} API error ({status}): {reason}")
+}
+
 /// Stream a chat response from the configured provider, emitting Tauri events
 /// for each text chunk.
 ///
@@ -114,10 +139,8 @@ async fn stream_anthropic(
         })?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
         return Err(ThreatForgeError::AiRequest {
-            message: format!("Anthropic API error ({status}): {body}"),
+            message: user_safe_provider_error("Anthropic", response.status()),
         });
     }
 
@@ -212,10 +235,8 @@ async fn stream_openai(
         })?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
         return Err(ThreatForgeError::AiRequest {
-            message: format!("OpenAI API error ({status}): {body}"),
+            message: user_safe_provider_error("OpenAI", response.status()),
         });
     }
 
@@ -263,6 +284,60 @@ async fn stream_openai(
 
 #[cfg(test)]
 mod tests {
+    use super::user_safe_provider_error;
+    use reqwest::StatusCode;
+
+    /// A realistic OpenAI 401 body. The provider echoes a partially masked form
+    /// of the submitted key and the account URL; none of it may reach the UI.
+    const OPENAI_401_BODY: &str = r#"{"error":{"message":"Incorrect API key provided: sk-proj-AbC123XyZ9. You can find your API key at https://platform.openai.com/account/api-keys","type":"invalid_request_error","param":null,"code":"invalid_api_key"}}"#;
+
+    #[test]
+    fn provider_error_cannot_leak_the_response_body() {
+        let message = user_safe_provider_error("OpenAI", StatusCode::UNAUTHORIZED);
+
+        assert!(
+            !message.contains("sk-proj"),
+            "leaked key material: {message}"
+        );
+        assert!(!message.contains(OPENAI_401_BODY));
+        assert!(!message.contains("platform.openai.com"));
+        assert!(!message.contains("invalid_api_key"));
+
+        // Still actionable: the user needs to know which provider and why.
+        assert!(message.contains("OpenAI"));
+        assert!(message.contains("401"));
+        assert!(message.contains("API key was rejected"));
+    }
+
+    #[test]
+    fn provider_error_maps_each_status_class_to_a_distinct_reason() {
+        let cases = [
+            (StatusCode::BAD_REQUEST, "malformed"),
+            (StatusCode::UNAUTHORIZED, "API key was rejected"),
+            (StatusCode::FORBIDDEN, "API key was rejected"),
+            (StatusCode::NOT_FOUND, "model was not found"),
+            (StatusCode::PAYLOAD_TOO_LARGE, "too large"),
+            (StatusCode::TOO_MANY_REQUESTS, "rate limit or quota"),
+            (StatusCode::INTERNAL_SERVER_ERROR, "temporarily unavailable"),
+            (StatusCode::SERVICE_UNAVAILABLE, "temporarily unavailable"),
+        ];
+
+        for (status, expected) in cases {
+            let message = user_safe_provider_error("Anthropic", status);
+            assert!(
+                message.contains(expected),
+                "status {status} produced {message:?}, expected it to mention {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_error_falls_back_for_unmapped_statuses() {
+        let message = user_safe_provider_error("Anthropic", StatusCode::IM_A_TEAPOT);
+        assert!(message.contains("the request failed"));
+        assert!(message.contains("418"));
+    }
+
     #[test]
     fn test_anthropic_sse_parsing() {
         // Simulate an Anthropic SSE data line
