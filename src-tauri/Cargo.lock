@@ -4791,6 +4791,7 @@ dependencies = [
  "aes-gcm",
  "chrono",
  "futures",
+ "http",
  "quick-xml 0.37.5",
  "rand 0.9.2",
  "reqwest 0.12.28",
