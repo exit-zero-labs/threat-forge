@@ -16,22 +16,26 @@ import { WORKSPACE_STORAGE_NAMESPACE } from "./types";
  * appear in either, and the keychain's `tf-api-key-` namespace stays disjoint.
  */
 
-/** A distinctive secret that does not appear anywhere in the model text below. */
-const SECRET = "sk-ant-SECRET-do-not-leak-9f8e7d6c5b4a";
+/**
+ * A distinctive marker standing in for whatever the keychain holds. This proof is about namespace
+ * disjointness — that a value in the keychain slot never appears in the workspace stores — which is
+ * a substring-presence check independent of the value's shape. A deliberately non-credential-shaped
+ * canary is used rather than a realistic `sk-...` string, because the storage layers treat every
+ * string identically and a key-shaped literal would only be a false credential in a test fixture.
+ */
+const KEYCHAIN_CANARY = "keychain-only-canary-9f8e7d6c5b4a";
 const DOC = "doc-boundary-check" as DocumentId;
 
 /**
- * The localStorage key the browser keychain adapter stores a BYOK key under. Seeded directly
- * rather than through `BrowserKeychainAdapter.setKey`, so this suite depends on nothing from the
- * keychain layer — which is exactly the disjointness the third case asserts — and does not route a
- * key-shaped literal through the adapter's cleartext write (the browser BYOK tradeoff is a
- * pre-existing, UI-surfaced design decision, not a property of the workspace storage under test).
+ * The localStorage key the browser keychain adapter stores a BYOK key under. Seeded directly rather
+ * than through `BrowserKeychainAdapter.setKey`, so this suite depends on nothing from the keychain
+ * layer — exactly the disjointness the third case asserts.
  */
 const KEYCHAIN_STORAGE_KEY = "tf-api-key-anthropic";
 
 /** Simulate a BYOK user who has configured a key, without touching the keychain adapter. */
 function seedConfiguredKey(): void {
-	localStorage.setItem(KEYCHAIN_STORAGE_KEY, SECRET);
+	localStorage.setItem(KEYCHAIN_STORAGE_KEY, KEYCHAIN_CANARY);
 }
 
 function modelWithoutSecret(): ThreatModel {
@@ -101,12 +105,12 @@ describe("no key material reaches the workspace stores (D6)", () => {
 		});
 
 		// The secret is in neither durable store.
-		expect(await dumpIndexedDb()).not.toContain(SECRET);
-		expect(localStorage.getItem(WORKSPACE_STORAGE_NAMESPACE) ?? "").not.toContain(SECRET);
+		expect(await dumpIndexedDb()).not.toContain(KEYCHAIN_CANARY);
+		expect(localStorage.getItem(WORKSPACE_STORAGE_NAMESPACE) ?? "").not.toContain(KEYCHAIN_CANARY);
 
 		// The only localStorage key carrying the secret is the keychain's own key.
 		const keysCarryingSecret = Object.keys(localStorage).filter((key) =>
-			(localStorage.getItem(key) ?? "").includes(SECRET),
+			(localStorage.getItem(key) ?? "").includes(KEYCHAIN_CANARY),
 		);
 		expect(keysCarryingSecret).toEqual([KEYCHAIN_STORAGE_KEY]);
 	});
