@@ -1,0 +1,16 @@
+# ThreatForge Threat Model
+# Invalid: `cluster-1.parent` names a group that does not exist.
+version: "1.0"
+metadata:
+  title: "Unknown Group Parent"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+groups:
+  - id: cluster-1
+    name: "API Cluster"
+    parent: missing-cluster
+elements:
+  - id: app
+    type: process
+    name: "Application"

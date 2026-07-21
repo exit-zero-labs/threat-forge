@@ -1,0 +1,16 @@
+# ThreatForge Threat Model
+# Invalid: `app.layer` names a layer that does not exist.
+version: "1.0"
+metadata:
+  title: "Unknown Element Layer"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+layers:
+  - id: data
+    name: "Data"
+elements:
+  - id: app
+    type: process
+    name: "Application"
+    layer: presentation

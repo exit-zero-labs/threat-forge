@@ -40,6 +40,11 @@ export interface Metadata {
 	created_by?: string;
 	modified_by?: string;
 	last_edit_timestamp?: number;
+	/**
+	 * Tri-state threat-analysis flag. `undefined` is not "disabled": an existing file carries no
+	 * flag and its state is inferred from whether it has threats. Mirrors Rust `Option<bool>`.
+	 */
+	threat_analysis_enabled?: boolean;
 	settings?: FileSettings;
 }
 
@@ -64,10 +69,16 @@ export interface Element {
 	type: ElementType;
 	name: string;
 	trust_zone: string;
+	/** Optional architecture layer this element belongs to (references `Layer.id`). */
+	layer?: string;
+	/** Optional non-security group this element belongs to (references `Group.id`). */
+	group?: string;
 	subtype?: string;
 	icon?: string;
 	description: string;
 	technologies: string[];
+	/** Free-form classification labels. */
+	tags?: string[];
 	stores?: string[];
 	encryption?: string;
 	position?: Position;
@@ -107,6 +118,53 @@ export interface TrustBoundary {
 	stroke_opacity?: number;
 }
 
+/**
+ * A horizontal architecture layer. Array order is display order (mirrors Rust `Layer`).
+ * Member order must match the Rust struct — the browser writer emits keys in this order.
+ */
+export interface Layer {
+	id: string;
+	name: string;
+	description?: string;
+}
+
+/**
+ * A non-security grouping of components. Mirrors Rust `Group`; membership is element-side
+ * (`Element.group`), not a `contains` list, and groups may nest via `parent`.
+ */
+export interface Group {
+	id: string;
+	name: string;
+	type?: string;
+	parent?: string;
+	description?: string;
+	position?: Position;
+	size?: Size;
+	fill_color?: string;
+	stroke_color?: string;
+	fill_opacity?: number;
+	stroke_opacity?: number;
+}
+
+/**
+ * A non-data-flow relationship between two elements (e.g. `deploys_to`, `depends_on`). Mirrors
+ * Rust `Relationship`. Deliberately separate from `DataFlow`: relationships are never analyzed by
+ * STRIDE, so they cannot manufacture false-positive threats. `type` is required.
+ */
+export interface Relationship {
+	id: string;
+	type: string;
+	from: string;
+	to: string;
+	name?: string;
+	description?: string;
+	source_handle?: string;
+	target_handle?: string;
+	label_offset?: Position;
+	stroke_color?: string;
+	stroke_opacity?: number;
+}
+
 export interface Mitigation {
 	status: MitigationStatus;
 	description: string;
@@ -126,6 +184,9 @@ export interface Threat {
 export interface Diagram {
 	id: string;
 	name: string;
+	/** Free-form view kind (e.g. "architecture", "dfd", "deployment"). */
+	kind?: string;
+	description?: string;
 	layout_file?: string;
 	viewport?: Viewport;
 }
@@ -133,8 +194,11 @@ export interface Diagram {
 export interface ThreatModel {
 	version: string;
 	metadata: Metadata;
+	layers?: Layer[];
+	groups?: Group[];
 	elements: Element[];
 	data_flows: DataFlow[];
+	relationships?: Relationship[];
 	trust_boundaries: TrustBoundary[];
 	threats: Threat[];
 	diagrams: Diagram[];

@@ -1,0 +1,16 @@
+# ThreatForge Threat Model
+# Invalid: `app.group` names a group that does not exist.
+version: "1.0"
+metadata:
+  title: "Unknown Element Group"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+groups:
+  - id: frontend
+    name: "Frontend Cluster"
+elements:
+  - id: app
+    type: process
+    name: "Application"
+    group: backend

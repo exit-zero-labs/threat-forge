@@ -123,6 +123,14 @@ const elementUpdateShape = {
 	technologies: z.array(z.string()).optional(),
 	stores: z.array(z.string()).optional(),
 	encryption: z.string().optional(),
+	// Architecture references from #57. There is no add_layer/add_group action,
+	// so the model can only point at human-created layers and groups — and the
+	// executor validates both refs against the document, because the reader now
+	// rejects dangling ones and an unvalidated write would produce a saved file
+	// that cannot be reopened (the #98 failure class, by a new route).
+	layer: z.string().optional(),
+	group: z.string().optional(),
+	tags: z.array(z.string()).optional(),
 	position: positionSchema.optional(),
 	fill_color: z.string().optional(),
 	stroke_color: z.string().optional(),

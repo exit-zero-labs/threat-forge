@@ -115,6 +115,14 @@ fn validate_version(version: &str) -> Result<(), ThreatForgeError> {
 fn validate_references(model: &ThreatModel) -> Result<(), ThreatForgeError> {
     let element_ids: Vec<&str> = model.elements.iter().map(|e| e.id.as_str()).collect();
     let flow_ids: Vec<&str> = model.data_flows.iter().map(|f| f.id.as_str()).collect();
+    let layer_ids: Vec<&str> = model.layers.iter().map(|l| l.id.as_str()).collect();
+    let group_ids: Vec<&str> = model.groups.iter().map(|g| g.id.as_str()).collect();
+    let relationship_ids: Vec<&str> = model.relationships.iter().map(|r| r.id.as_str()).collect();
+    let boundary_ids: Vec<&str> = model
+        .trust_boundaries
+        .iter()
+        .map(|b| b.id.as_str())
+        .collect();
 
     // Check for duplicate element IDs
     let mut seen = std::collections::HashSet::new();
@@ -138,6 +146,61 @@ fn validate_references(model: &ThreatModel) -> Result<(), ThreatForgeError> {
         }
     }
 
+    // Check for duplicate layer IDs
+    seen.clear();
+    for id in &layer_ids {
+        if !seen.insert(id) {
+            return Err(ThreatForgeError::DuplicateId {
+                id: id.to_string(),
+                section: "layers".to_string(),
+            });
+        }
+    }
+
+    // Check for duplicate group IDs
+    seen.clear();
+    for id in &group_ids {
+        if !seen.insert(id) {
+            return Err(ThreatForgeError::DuplicateId {
+                id: id.to_string(),
+                section: "groups".to_string(),
+            });
+        }
+    }
+
+    // Check for duplicate relationship IDs
+    seen.clear();
+    for id in &relationship_ids {
+        if !seen.insert(id) {
+            return Err(ThreatForgeError::DuplicateId {
+                id: id.to_string(),
+                section: "relationships".to_string(),
+            });
+        }
+    }
+
+    // Namespace collisions, scoped to the new sections so no pre-existing file is invalidated.
+    // Groups share the ReactFlow node ID space with elements and trust boundaries.
+    for group in &model.groups {
+        let gid = group.id.as_str();
+        if element_ids.contains(&gid) || boundary_ids.contains(&gid) {
+            return Err(ThreatForgeError::DuplicateId {
+                id: gid.to_string(),
+                section: "groups".to_string(),
+            });
+        }
+    }
+
+    // Relationships share the edge ID space with data flows.
+    for id in &relationship_ids {
+        if flow_ids.contains(id) {
+            return Err(ThreatForgeError::DuplicateId {
+                id: id.to_string(),
+                section: "relationships".to_string(),
+            });
+        }
+    }
+
     // Validate data flow references point to existing elements
     for flow in &model.data_flows {
         if !element_ids.contains(&flow.from.as_str()) {
@@ -153,6 +216,81 @@ fn validate_references(model: &ThreatModel) -> Result<(), ThreatForgeError> {
                 reference: flow.to.clone(),
                 valid: element_ids.iter().map(|s| s.to_string()).collect(),
             });
+        }
+    }
+
+    // Validate element layer and group membership references
+    for element in &model.elements {
+        if let Some(layer) = &element.layer {
+            if !layer_ids.contains(&layer.as_str()) {
+                return Err(ThreatForgeError::InvalidReference {
+                    field: format!("elements[{}].layer", element.id),
+                    reference: layer.clone(),
+                    valid: layer_ids.iter().map(|s| s.to_string()).collect(),
+                });
+            }
+        }
+        if let Some(group) = &element.group {
+            if !group_ids.contains(&group.as_str()) {
+                return Err(ThreatForgeError::InvalidReference {
+                    field: format!("elements[{}].group", element.id),
+                    reference: group.clone(),
+                    valid: group_ids.iter().map(|s| s.to_string()).collect(),
+                });
+            }
+        }
+    }
+
+    // Validate group parent references
+    for group in &model.groups {
+        if let Some(parent) = &group.parent {
+            if !group_ids.contains(&parent.as_str()) {
+                return Err(ThreatForgeError::InvalidReference {
+                    field: format!("groups[{}].parent", group.id),
+                    reference: parent.clone(),
+                    valid: group_ids.iter().map(|s| s.to_string()).collect(),
+                });
+            }
+        }
+    }
+
+    // Validate relationship endpoints. Endpoints are element IDs only, matching `data_flows`.
+    for relationship in &model.relationships {
+        if !element_ids.contains(&relationship.from.as_str()) {
+            return Err(ThreatForgeError::InvalidReference {
+                field: format!("relationships[{}].from", relationship.id),
+                reference: relationship.from.clone(),
+                valid: element_ids.iter().map(|s| s.to_string()).collect(),
+            });
+        }
+        if !element_ids.contains(&relationship.to.as_str()) {
+            return Err(ThreatForgeError::InvalidReference {
+                field: format!("relationships[{}].to", relationship.id),
+                reference: relationship.to.clone(),
+                valid: element_ids.iter().map(|s| s.to_string()).collect(),
+            });
+        }
+    }
+
+    // Detect circular group nesting, including self-parenting. Parents are already validated to
+    // exist, so the traversal is bounded by the number of groups. Iterative with a visited set:
+    // no recursion and no `unwrap`.
+    let parent_of: HashMap<&str, &str> = model
+        .groups
+        .iter()
+        .filter_map(|g| g.parent.as_deref().map(|p| (g.id.as_str(), p)))
+        .collect();
+    for group in &model.groups {
+        let mut visited = std::collections::HashSet::new();
+        let mut current = group.id.as_str();
+        visited.insert(current);
+        while let Some(&parent) = parent_of.get(current) {
+            if !visited.insert(parent) {
+                return Err(ThreatForgeError::CircularGroupNesting {
+                    id: parent.to_string(),
+                });
+            }
+            current = parent;
         }
     }
 
@@ -425,5 +563,73 @@ data_flows:
             .unwrap_err()
             .to_string()
             .contains("Invalid reference"));
+    }
+
+    #[test]
+    fn test_rejects_self_parenting_group() {
+        // Self-parenting is a one-node cycle and must be caught by the same visited-set traversal.
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "Self Parent"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+groups:
+  - id: cluster-1
+    name: "Cluster"
+    parent: cluster-1
+"#;
+        let file = write_temp_yaml(yaml);
+        match read_threat_model(file.path()).expect_err("self-parenting must be rejected") {
+            ThreatForgeError::CircularGroupNesting { id } => assert_eq!(id, "cluster-1"),
+            other => panic!("expected CircularGroupNesting, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_accepts_valid_architecture_graph() {
+        // A consistent architecture graph — nested groups, layered elements, and a typed
+        // relationship — must read without error. This is the counterpart to the invalid corpus.
+        let yaml = r#"
+version: "1.0"
+metadata:
+  title: "Architecture Graph"
+  author: "Test"
+  created: 2026-03-15
+  modified: 2026-03-15
+layers:
+  - id: presentation
+    name: "Presentation"
+  - id: data
+    name: "Data"
+groups:
+  - id: backend
+    name: "Backend"
+  - id: api
+    name: "API"
+    parent: backend
+elements:
+  - id: web-app
+    type: process
+    name: "Web App"
+    layer: presentation
+    group: api
+  - id: orders-db
+    type: data_store
+    name: "Orders DB"
+    layer: data
+    group: backend
+relationships:
+  - id: rel-1
+    type: depends_on
+    from: web-app
+    to: orders-db
+"#;
+        let file = write_temp_yaml(yaml);
+        let model = read_threat_model(file.path()).expect("valid architecture graph must read");
+        assert_eq!(model.layers.len(), 2);
+        assert_eq!(model.groups.len(), 2);
+        assert_eq!(model.relationships.len(), 1);
     }
 }

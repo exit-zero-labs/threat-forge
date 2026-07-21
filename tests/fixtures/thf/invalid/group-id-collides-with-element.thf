@@ -1,0 +1,15 @@
+# ThreatForge Threat Model
+# Invalid: group `web-app` collides with an element in the shared node ID space.
+version: "1.0"
+metadata:
+  title: "Group Element ID Collision"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+groups:
+  - id: web-app
+    name: "Frontend Cluster"
+elements:
+  - id: web-app
+    type: process
+    name: "Web Application"
