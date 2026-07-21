@@ -1,3 +1,4 @@
+import type { Viewport } from "@xyflow/react";
 import { create } from "zustand";
 
 /**
@@ -14,11 +15,17 @@ interface CanvasInstanceState {
 	rfZoomIn: (() => void) | null;
 	rfZoomOut: (() => void) | null;
 	rfPanBy: ((delta: { x: number; y: number }) => void) | null;
+	/** Push a viewport (pan/zoom) into the mounted ReactFlow instance. */
+	rfSetViewport: ((viewport: Viewport) => void) | null;
+	/** Read the mounted ReactFlow instance's live viewport (pan/zoom). */
+	rfGetViewport: (() => Viewport) | null;
 	setReactFlowActions: (actions: {
 		fitView: () => void;
 		zoomIn: () => void;
 		zoomOut: () => void;
 		panBy: (delta: { x: number; y: number }) => void;
+		setViewport?: (viewport: Viewport) => void;
+		getViewport?: () => Viewport;
 	}) => void;
 
 	/** Element type currently being dragged from palette (workaround for WKWebView dataTransfer issues) */
@@ -52,12 +59,16 @@ export const useCanvasInstanceStore = create<CanvasInstanceState>((set) => ({
 	rfZoomIn: null,
 	rfZoomOut: null,
 	rfPanBy: null,
+	rfSetViewport: null,
+	rfGetViewport: null,
 	setReactFlowActions: (actions) =>
 		set({
 			rfFitView: actions.fitView,
 			rfZoomIn: actions.zoomIn,
 			rfZoomOut: actions.zoomOut,
 			rfPanBy: actions.panBy,
+			rfSetViewport: actions.setViewport ?? null,
+			rfGetViewport: actions.getViewport ?? null,
 		}),
 
 	draggedType: null,

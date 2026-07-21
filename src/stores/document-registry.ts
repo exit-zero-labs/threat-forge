@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { createDocumentId } from "@/lib/document-id";
 import type { DocumentId, DocumentSession } from "@/types/document";
 import type { DiagramLayout, FileSettings, ThreatModel } from "@/types/threat-model";
+import { useCanvasInstanceStore } from "./canvas-instance-store";
+import { useChatStore } from "./chat-store";
 import { createDocumentStores, type DocumentStores, setActiveStores } from "./document-stores";
 
 /** Everything needed to seed a new document's bundle at creation time. */
@@ -86,10 +88,66 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 	},
 
 	activateDocument: (id) => {
-		const session = get().documents[id];
+		const state = get();
+		const session = state.documents[id];
 		if (!session) return;
+
+		const prevActiveId = state.activeDocumentId;
+		// A real switch moves between two live documents. Creation flows (New, Open, Import,
+		// template) reach here with `prevActiveId === null` because they close the previous
+		// document first, so their viewport/session behavior is left to the DfdCanvas mount
+		// and stays pixel-identical to the single-document path.
+		const isSwitch = prevActiveId !== null && prevActiveId !== id;
+		const instance = useCanvasInstanceStore.getState();
+		const chat = useChatStore.getState();
+
+		// Leaving a document cancels any in-flight AI stream so a response started under the
+		// outgoing document cannot append into the newly visible one. chat-store's abort clears
+		// `isStreaming` and drops later chunks; #53 owns only this call, not the chat internals.
+		chat.stopGenerating();
+
+		if (isSwitch) {
+			const outgoing = state.documents[prevActiveId];
+			if (outgoing) {
+				// Flush the live viewport into the outgoing document's own canvas store before the
+				// swap. onMoveEnd only fires at the end of a user gesture, so a programmatic zoom
+				// immediately before switching would otherwise be lost.
+				if (instance.rfGetViewport) {
+					outgoing.stores.canvas.setState({ viewport: instance.rfGetViewport() });
+				}
+				// Remember which AI session the outgoing document was on so returning restores it.
+				set((s) => {
+					const current = s.documents[prevActiveId];
+					if (!current) return s;
+					return {
+						documents: {
+							...s.documents,
+							[prevActiveId]: { ...current, activeChatSessionId: chat.activeSessionId },
+						},
+					};
+				});
+			}
+		}
+
 		set({ activeDocumentId: id });
 		setActiveStores(session.stores);
+
+		if (isSwitch) {
+			// Restore the incoming document's on-screen viewport. A document that has never been
+			// laid out (no nodes yet) keeps the existing fit-to-view behavior.
+			const incoming = session.stores.canvas.getState();
+			if (incoming.nodes.length > 0) {
+				instance.rfSetViewport?.(incoming.viewport);
+			} else {
+				instance.rfFitView?.();
+			}
+		}
+
+		// Restore the incoming document's last AI session when it still exists. switchSession
+		// no-ops for an unknown id, so this fails safe when that session was deleted.
+		if (session.activeChatSessionId) {
+			chat.switchSession(session.activeChatSessionId);
+		}
 	},
 
 	closeDocument: (id) => {

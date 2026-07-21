@@ -7,7 +7,6 @@ import { useClipboardStore } from "@/stores/clipboard-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
-import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { useFileOperations } from "./use-file-operations";
 
@@ -24,8 +23,8 @@ async function openFileByPath(filePath: string) {
 	const pendingLayout = buildLayoutFromModel(model);
 	const registry = useDocumentRegistry.getState();
 	if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+	// createDocument seeds the new document's fileSettings from model.metadata.settings.
 	registry.createDocument({ model, filePath, pendingLayout });
-	useSettingsStore.getState().loadFileSettings(model.metadata.settings);
 }
 
 /**

@@ -2,16 +2,12 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { UserSettings } from "@/types/settings";
 import { DEFAULT_USER_SETTINGS } from "@/types/settings";
-import type { FileSettings } from "@/types/threat-model";
 
 export type SettingsTab = "general" | "appearance" | "ai" | "updates" | "support";
 
 interface SettingsState {
 	/** User-level settings persisted to localStorage */
 	settings: UserSettings;
-
-	/** File-scoped settings loaded from the current threat model (not persisted to localStorage) */
-	fileSettings: FileSettings | null;
 
 	/** Whether the settings dialog is open */
 	settingsDialogOpen: boolean;
@@ -22,8 +18,6 @@ interface SettingsState {
 	// Actions
 	updateSetting: <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => void;
 	resetToDefaults: () => void;
-	loadFileSettings: (fileSettings: FileSettings | undefined) => void;
-	clearFileSettings: () => void;
 	openSettingsDialog: () => void;
 	openSettingsDialogAtTab: (tab: SettingsTab) => void;
 	closeSettingsDialog: () => void;
@@ -33,7 +27,6 @@ export const useSettingsStore = create<SettingsState>()(
 	persist(
 		(set) => ({
 			settings: { ...DEFAULT_USER_SETTINGS },
-			fileSettings: null,
 			settingsDialogOpen: false,
 			settingsDialogInitialTab: null,
 
@@ -43,10 +36,6 @@ export const useSettingsStore = create<SettingsState>()(
 				})),
 
 			resetToDefaults: () => set({ settings: { ...DEFAULT_USER_SETTINGS } }),
-
-			loadFileSettings: (fileSettings) => set({ fileSettings: fileSettings ?? null }),
-
-			clearFileSettings: () => set({ fileSettings: null }),
 
 			openSettingsDialog: () => set({ settingsDialogOpen: true, settingsDialogInitialTab: null }),
 			openSettingsDialogAtTab: (tab) =>
