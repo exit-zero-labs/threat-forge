@@ -18,7 +18,7 @@ Triage one issue. Do not plan M/L work or edit production code.
    - relevant domain labels
    - `Priority`: P0/P1/P2
    - `Size`: XS/S/M/L/XL
-   - exactly one autonomy label: `agent-ready` or `human-blocked`
+   - exactly one autonomy label: `Automatable` or `HITL`
    - parent, dependencies, and acceptance criteria
    - `Ready` only when executable; otherwise `Backlog`
 5. XS/S issues must contain an executable contract. M/L issues must state that a committed plan
