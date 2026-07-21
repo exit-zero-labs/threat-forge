@@ -9,7 +9,8 @@ use crate::models::{
     DataFlow, Diagram, Element, Metadata, Mitigation, MitigationStatus, Position, Severity, Size,
     StrideCategory, Threat, ThreatModel, TrustBoundary, Viewport,
 };
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::escape::resolve_predefined_entity;
+use quick_xml::events::{BytesRef, BytesStart, Event};
 use quick_xml::Reader;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -75,8 +76,11 @@ struct Tm7Meta {
 
 /// Parse a TM7 XML string into a `ThreatModel`.
 pub fn parse_tm7(xml: &str) -> Result<ThreatModel, Tm7Error> {
+    // Reader-level trimming is deliberately left off: quick-xml 0.38 splits a
+    // text run at every entity reference, so per-event trimming would eat the
+    // spaces around `&amp;` and friends. `read_text_content` trims the
+    // reassembled value instead.
     let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
 
     let mut meta = Tm7Meta::default();
     let mut border_elements: Vec<Tm7Element> = Vec::new();
@@ -366,7 +370,29 @@ fn local_name(e: &BytesStart<'_>) -> String {
     full.to_string()
 }
 
+/// Resolve a general entity reference to the text it stands for.
+///
+/// quick-xml 0.38 streams entity references as their own event instead of
+/// unescaping them into the surrounding text, so the importer resolves them.
+/// TM7 uses only numeric character references and the five predefined XML
+/// entities; an unresolvable reference contributes nothing rather than failing
+/// the whole import.
+fn resolve_general_ref(e: &BytesRef<'_>) -> Option<String> {
+    match e.resolve_char_ref() {
+        Ok(Some(c)) => return Some(c.to_string()),
+        // Not a character reference; fall through to the predefined entities.
+        Ok(None) => {}
+        Err(_) => return None,
+    }
+    let name = e.decode().ok()?;
+    resolve_predefined_entity(&name).map(str::to_owned)
+}
+
 /// Read all text content until the matching end tag, skipping nested elements.
+///
+/// Entity references are resolved back into the surrounding text, and the
+/// result is trimmed once so that the indentation TMT writes around element
+/// content does not leak into names, descriptions, and numbers.
 fn read_text_content(reader: &mut Reader<&[u8]>) -> Result<String, Tm7Error> {
     let mut buf = Vec::new();
     let mut text = String::new();
@@ -375,9 +401,16 @@ fn read_text_content(reader: &mut Reader<&[u8]>) -> Result<String, Tm7Error> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Text(e)) => {
                 if depth == 1 {
-                    // Use unwrap_or_default for resilience — malformed XML entities
-                    // (e.g. &invalid;) produce empty text rather than failing the import.
-                    text.push_str(&e.unescape().unwrap_or_default());
+                    // Use unwrap_or_default for resilience — text that cannot be
+                    // decoded contributes nothing rather than failing the import.
+                    text.push_str(&e.decode().unwrap_or_default());
+                }
+            }
+            Ok(Event::GeneralRef(e)) => {
+                if depth == 1 {
+                    if let Some(resolved) = resolve_general_ref(&e) {
+                        text.push_str(&resolved);
+                    }
                 }
             }
             Ok(Event::Start(_)) => {
@@ -395,7 +428,7 @@ fn read_text_content(reader: &mut Reader<&[u8]>) -> Result<String, Tm7Error> {
         }
         buf.clear();
     }
-    Ok(text)
+    Ok(text.trim().to_string())
 }
 
 /// Skip over an element and all its children until the matching end tag.
@@ -1056,6 +1089,140 @@ fn parse_mitigation_status(state: &str, justification: &str) -> Mitigation {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Microsoft TMT 4.3 shaped export covering every branch the importer walks.
+    const FIXTURE_TM7: &str = include_str!("fixtures/tmt-4.3-sample.tm7");
+
+    /// The import result pinned for [`FIXTURE_TM7`], regenerated only when a
+    /// deliberate importer behavior change is being made.
+    const FIXTURE_EXPECTED_YAML: &str = include_str!("fixtures/tmt-4.3-sample.expected.yaml");
+
+    /// Import the fixture and serialize it, pinning the two clock-derived
+    /// metadata dates so the result is byte-comparable across runs.
+    fn import_fixture_as_yaml() -> String {
+        let mut model = parse_tm7(FIXTURE_TM7).expect("fixture .tm7 should import");
+        let pinned = chrono::NaiveDate::from_ymd_opt(2000, 1, 1).expect("literal date is valid");
+        model.metadata.created = pinned;
+        model.metadata.modified = pinned;
+        serde_yaml::to_string(&model).expect("imported model should serialize")
+    }
+
+    #[test]
+    fn fixture_import_is_byte_identical_to_the_pinned_result() {
+        assert_eq!(
+            import_fixture_as_yaml(),
+            FIXTURE_EXPECTED_YAML,
+            "TM7 import drifted from src/importers/fixtures/tmt-4.3-sample.expected.yaml"
+        );
+    }
+
+    #[test]
+    fn fixture_import_resolves_xml_entities_in_text() {
+        let model = parse_tm7(FIXTURE_TM7).expect("fixture .tm7 should import");
+
+        assert_eq!(model.metadata.title, "Payments & Billing Platform");
+        assert_eq!(
+            model.metadata.description,
+            "Checkout for the \"Payments & Billing\" platform.\n\
+             Cardholder data never leaves the <Corporate Network> boundary.\n\
+             Batch reconciliation is the finance team's responsibility.",
+            "predefined entities and numeric character references must survive import"
+        );
+        assert_eq!(model.diagrams[0].name, "Level 0 & 1 DFD");
+        assert_eq!(model.elements[1].name, "Payments & Billing API");
+        assert_eq!(
+            model.elements[1].id, "payments-billing-api",
+            "the resolved '&' is punctuation and collapses out of the generated ID"
+        );
+        assert_eq!(model.data_flows[0].name, "Browse & Checkout");
+        assert_eq!(
+            model.threats[0].title,
+            "SQL Injection against \"Billing Database\""
+        );
+        assert_eq!(
+            model.threats[0].description,
+            "An attacker submits input containing <script> or 'OR 1=1 and the API concatenates it into a query."
+        );
+        assert_eq!(
+            model.threats[0]
+                .mitigation
+                .as_ref()
+                .expect("threat has a mitigation")
+                .description,
+            "Parameterized queries & least-privilege database credentials."
+        );
+    }
+
+    #[test]
+    fn undeclared_entity_is_dropped_without_discarding_surrounding_text() {
+        let xml = r#"<?xml version="1.0"?>
+<ThreatModel xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <DrawingSurfaceList/>
+  <MetaInformation>
+    <ThreatModelName>Acme &nope; Corp</ThreatModelName>
+    <Owner/>
+    <HighLevelSystemDescription/>
+  </MetaInformation>
+  <ThreatInstances/>
+  <Version>4.3</Version>
+</ThreatModel>"#;
+
+        let model = parse_tm7(xml).expect("an undeclared entity must not fail the import");
+        assert_eq!(
+            model.metadata.title, "Acme  Corp",
+            "only the unresolvable reference is dropped, not the whole text run"
+        );
+    }
+
+    /// Byte offset of the `<Lines ...>` start tag in the fixture, i.e. a cut
+    /// point where `<Borders>` has just closed but the document has not.
+    fn fixture_lines_tag_offset() -> usize {
+        FIXTURE_TM7
+            .find("<Lines ")
+            .expect("fixture contains a Lines section")
+    }
+
+    #[test]
+    fn truncated_tm7_inside_a_tag_is_rejected() {
+        // Cut in the middle of `<Lines ...>`, leaving an unterminated tag.
+        let truncated = &FIXTURE_TM7[..fixture_lines_tag_offset() + 4];
+
+        let err = parse_tm7(truncated).expect_err("an unterminated tag must be rejected");
+        let message = err.to_string();
+        assert!(
+            message.starts_with("XML parsing error: "),
+            "import errors must stay user-safe and prefixed, got: {message}"
+        );
+    }
+
+    /// Characterization test, not an endorsement of the behavior. `quick-xml`
+    /// reports plain EOF rather than an unclosed-element error when input ends
+    /// cleanly on an element boundary, so the importer returns the prefix it
+    /// managed to parse. Pinned so a dependency upgrade cannot change it
+    /// silently; making this fail closed is a separate product decision.
+    #[test]
+    fn truncated_tm7_on_an_element_boundary_yields_only_the_parsed_prefix() {
+        let truncated = &FIXTURE_TM7[..fixture_lines_tag_offset()];
+
+        let model = parse_tm7(truncated).expect("boundary-truncated input currently parses");
+        assert_eq!(
+            model.elements.len(),
+            5,
+            "elements parsed before the cut are retained"
+        );
+        assert!(
+            model.data_flows.is_empty(),
+            "no data flow survives the cut, because <Lines> was never read"
+        );
+        assert!(
+            model.threats.is_empty(),
+            "no threat survives the cut, because <ThreatInstances> was never read"
+        );
+        assert_eq!(
+            model.metadata.title, "Imported Threat Model",
+            "<MetaInformation> was never read, so the fallback title is used"
+        );
+    }
 
     const MINIMAL_TM7: &str = r#"<?xml version="1.0"?>
 <ThreatModel xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
