@@ -79,15 +79,18 @@ export function DfdCanvas() {
 		[getReactFlowViewport, setReactFlowViewport],
 	);
 
-	// Expose ReactFlow actions to the canvas instance store so keyboard shortcuts can use them
+	// Expose ReactFlow actions to the canvas instance store so keyboard shortcuts and document
+	// activation (viewport restore/flush on switch) can drive the mounted instance.
 	useEffect(() => {
 		useCanvasInstanceStore.getState().setReactFlowActions({
 			fitView: () => fitViewFn(),
 			zoomIn: () => zoomInFn(),
 			zoomOut: () => zoomOutFn(),
 			panBy: (delta) => panByFn(delta),
+			setViewport: (viewport) => setReactFlowViewport(viewport),
+			getViewport: () => getReactFlowViewport(),
 		});
-	}, [fitViewFn, zoomInFn, zoomOutFn, panByFn]);
+	}, [fitViewFn, zoomInFn, zoomOutFn, panByFn, setReactFlowViewport, getReactFlowViewport]);
 
 	// Context menu state
 	const [contextMenu, setContextMenu] = useState<{

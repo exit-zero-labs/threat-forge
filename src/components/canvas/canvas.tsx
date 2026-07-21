@@ -53,8 +53,8 @@ function EmptyCanvas() {
 		const pendingLayout = buildLayoutFromModel(model);
 		const registry = useDocumentRegistry.getState();
 		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		// Templates carry no file settings; createDocument seeds fileSettings to null.
 		registry.createDocument({ model, filePath: null, pendingLayout });
-		useSettingsStore.getState().clearFileSettings();
 	}, []);
 
 	return (
