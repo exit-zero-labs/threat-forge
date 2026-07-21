@@ -1,0 +1,20 @@
+# ThreatForge Threat Model
+# Simulates a document written by a hypothetical newer ThreatForge build:
+# it carries a section, a metadata key, and an element key that this build
+# does not know about. Field names are deliberately reserved for this fixture
+# and must never become real schema fields.
+version: "1.0"
+metadata:
+  title: "Forward Compatibility Model"
+  author: "Sam Rivera"
+  created: 2026-02-11
+  modified: 2026-02-11
+  unknown_future_flag: true
+unknown_future_section:
+  - id: future-1
+    name: "Section introduced by a newer build"
+elements:
+  - id: app
+    type: process
+    name: "Application"
+    unknown_future_note: "written by a newer ThreatForge build"

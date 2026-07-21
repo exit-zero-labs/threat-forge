@@ -57,6 +57,7 @@ ThreatForge Desktop App (Tauri v2)
 | **ADR-006** | Inline layout data | Positions stored inline on each element in the `.thf` file; single-file portability | Slightly larger diffs when repositioning; but eliminates sidecar file complexity |
 | **ADR-007** | AES-256-GCM encrypted file storage for API keys | Cross-platform without OS-specific keychain quirks; secure at rest | Managed by app, not OS keychain |
 | **ADR-008** | Tailwind + shadcn/ui | Lightweight, customizable, excellent dark mode, growing Tauri adoption | More manual composition than MUI |
+| **ADR-009** | Additive schema growth keeps `version: "1.0"` | Additive optional fields break nothing, so bumping would make every already-shipped build refuse to open every new file; `validate_version` stays exact-match and fail-closed. Full argument in [`file-format.md`](file-format.md#schema-versioning-policy) | An older desktop build that opens and saves a newer document silently discards the sections it does not know |
 
 ## Project Structure
 

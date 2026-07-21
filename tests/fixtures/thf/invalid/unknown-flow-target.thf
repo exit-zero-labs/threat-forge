@@ -1,0 +1,17 @@
+# ThreatForge Threat Model
+# Invalid: `flow-1.to` names an element that does not exist.
+version: "1.0"
+metadata:
+  title: "Unknown Flow Target"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+elements:
+  - id: app
+    type: process
+    name: "Application"
+data_flows:
+  - id: flow-1
+    from: app
+    to: missing-db
+    protocol: "PostgreSQL/TLS"
