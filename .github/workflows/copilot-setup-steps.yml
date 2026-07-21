@@ -5,17 +5,23 @@ on:
   push:
     paths:
       - ".github/workflows/copilot-setup-steps.yml"
+      - ".npmrc"
       - ".node-version"
       - "package.json"
       - "package-lock.json"
+      - "scripts/check-lockfile-registry.mjs"
+      - "scripts/check-tauri-version-alignment.mjs"
       - "src-tauri/Cargo.toml"
       - "src-tauri/Cargo.lock"
   pull_request:
     paths:
       - ".github/workflows/copilot-setup-steps.yml"
+      - ".npmrc"
       - ".node-version"
       - "package.json"
       - "package-lock.json"
+      - "scripts/check-lockfile-registry.mjs"
+      - "scripts/check-tauri-version-alignment.mjs"
       - "src-tauri/Cargo.toml"
       - "src-tauri/Cargo.lock"
 
@@ -23,6 +29,8 @@ jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
     permissions:
       contents: read
     steps:
@@ -54,5 +62,8 @@ jobs:
           toolchain: stable
           components: clippy, rustfmt
 
+      - name: Verify Tauri JavaScript and Rust versions align
+        run: node scripts/check-tauri-version-alignment.mjs
+
       - name: Pre-fetch Rust dependencies
-        run: cargo fetch --manifest-path src-tauri/Cargo.toml
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked

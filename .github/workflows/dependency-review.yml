@@ -11,6 +11,8 @@ jobs:
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -20,6 +22,13 @@ jobs:
 
       - name: Verify package registry and integrity
         run: node scripts/check-lockfile-registry.mjs
+
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master 2026-02-13
+        with:
+          toolchain: stable
+
+      - name: Verify Tauri JavaScript and Rust versions align
+        run: node scripts/check-tauri-version-alignment.mjs
 
       - name: Review dependency changes
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0

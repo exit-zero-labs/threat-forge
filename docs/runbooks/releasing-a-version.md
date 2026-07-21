@@ -46,7 +46,7 @@ ThreatForge uses [Semantic Versioning](https://semver.org/):
 git checkout main
 git pull origin main
 npm run ci:local          # Local lint, test, and web-build gate
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --frozen
 ```
 
 ### 2. Bump Version Numbers
