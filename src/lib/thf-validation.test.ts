@@ -23,10 +23,22 @@ import {
 	validateThreatModel,
 } from "@/lib/thf-validation";
 import type { ThreatModel } from "@/types/threat-model";
+import architectureCanonicalFullRaw from "../../tests/fixtures/thf/architecture-canonical-full.thf?raw";
+import architectureOnlyRaw from "../../tests/fixtures/thf/architecture-only.thf?raw";
+import circularGroupNestingRaw from "../../tests/fixtures/thf/invalid/circular-group-nesting.thf?raw";
 import duplicateElementIdRaw from "../../tests/fixtures/thf/invalid/duplicate-element-id.thf?raw";
+import duplicateGroupIdRaw from "../../tests/fixtures/thf/invalid/duplicate-group-id.thf?raw";
+import duplicateLayerIdRaw from "../../tests/fixtures/thf/invalid/duplicate-layer-id.thf?raw";
+import duplicateRelationshipIdRaw from "../../tests/fixtures/thf/invalid/duplicate-relationship-id.thf?raw";
+import groupIdCollidesWithElementRaw from "../../tests/fixtures/thf/invalid/group-id-collides-with-element.thf?raw";
 import missingMetadataRaw from "../../tests/fixtures/thf/invalid/missing-metadata.thf?raw";
+import relationshipIdCollidesWithFlowRaw from "../../tests/fixtures/thf/invalid/relationship-id-collides-with-flow.thf?raw";
 import truncatedRaw from "../../tests/fixtures/thf/invalid/truncated.thf?raw";
+import unknownElementGroupRaw from "../../tests/fixtures/thf/invalid/unknown-element-group.thf?raw";
+import unknownElementLayerRaw from "../../tests/fixtures/thf/invalid/unknown-element-layer.thf?raw";
 import unknownFlowTargetRaw from "../../tests/fixtures/thf/invalid/unknown-flow-target.thf?raw";
+import unknownGroupParentRaw from "../../tests/fixtures/thf/invalid/unknown-group-parent.thf?raw";
+import unknownRelationshipEndpointRaw from "../../tests/fixtures/thf/invalid/unknown-relationship-endpoint.thf?raw";
 import unsupportedVersionRaw from "../../tests/fixtures/thf/invalid/unsupported-version.thf?raw";
 import legacySidecarRaw from "../../tests/fixtures/thf/legacy-sidecar/model.thf?raw";
 import canonicalFullRaw from "../../tests/fixtures/thf/v1.0-canonical-full.thf?raw";
@@ -39,10 +51,11 @@ interface InvalidCase {
 	/** The rejection class this fixture maps to, mirroring the `reader.rs` match arm. */
 	kind: ThfValidationErrorKind;
 	/**
-	 * For the three content-determined classes, the exact `Error.message`. It equals the desktop
-	 * `#[error(...)]` `Display` output byte for byte (see `src-tauri/src/errors.rs`). Omitted for
-	 * `parse` and `missing-section`, whose desktop messages carry a path and parser text and so
-	 * cannot match byte for byte — parity there is class-level only.
+	 * For the content-determined classes (`unsupported-version`, `duplicate-id`,
+	 * `invalid-reference`, `circular-group-nesting`), the exact `Error.message`. It equals the
+	 * desktop `#[error(...)]` `Display` output byte for byte (see `src-tauri/src/errors.rs`).
+	 * Omitted for `parse` and `missing-section`, whose desktop messages carry a path and parser
+	 * text and so cannot match byte for byte — parity there is class-level only.
 	 */
 	message?: string;
 }
@@ -82,6 +95,78 @@ const INVALID_CASES: InvalidCase[] = [
 		raw: missingMetadataRaw,
 		kind: "missing-section",
 	},
+
+	// Architecture rules (#57 / #123). All are content-determined, so all pin an exact message.
+	{
+		// reader.rs: DuplicateId { id: "data", section: "layers" }
+		name: "invalid/duplicate-layer-id.thf",
+		raw: duplicateLayerIdRaw,
+		kind: "duplicate-id",
+		message: `Duplicate ID 'data' in section 'layers'`,
+	},
+	{
+		// reader.rs: DuplicateId { id: "cluster", section: "groups" }
+		name: "invalid/duplicate-group-id.thf",
+		raw: duplicateGroupIdRaw,
+		kind: "duplicate-id",
+		message: `Duplicate ID 'cluster' in section 'groups'`,
+	},
+	{
+		// reader.rs: DuplicateId { id: "rel-1", section: "relationships" }
+		name: "invalid/duplicate-relationship-id.thf",
+		raw: duplicateRelationshipIdRaw,
+		kind: "duplicate-id",
+		message: `Duplicate ID 'rel-1' in section 'relationships'`,
+	},
+	{
+		// reader.rs: namespace collision — a group ID that is also an element ID. Section "groups".
+		name: "invalid/group-id-collides-with-element.thf",
+		raw: groupIdCollidesWithElementRaw,
+		kind: "duplicate-id",
+		message: `Duplicate ID 'web-app' in section 'groups'`,
+	},
+	{
+		// reader.rs: namespace collision — a relationship ID that is also a data-flow ID.
+		name: "invalid/relationship-id-collides-with-flow.thf",
+		raw: relationshipIdCollidesWithFlowRaw,
+		kind: "duplicate-id",
+		message: `Duplicate ID 'flow-1' in section 'relationships'`,
+	},
+	{
+		// reader.rs: InvalidReference { field: "elements[app].layer", reference: "presentation" }
+		name: "invalid/unknown-element-layer.thf",
+		raw: unknownElementLayerRaw,
+		kind: "invalid-reference",
+		message: `Invalid reference in 'elements[app].layer': 'presentation' not found. Valid IDs: ["data"]`,
+	},
+	{
+		// reader.rs: InvalidReference { field: "elements[app].group", reference: "backend" }
+		name: "invalid/unknown-element-group.thf",
+		raw: unknownElementGroupRaw,
+		kind: "invalid-reference",
+		message: `Invalid reference in 'elements[app].group': 'backend' not found. Valid IDs: ["frontend"]`,
+	},
+	{
+		// reader.rs: InvalidReference { field: "groups[cluster-1].parent", reference: "missing-cluster" }
+		name: "invalid/unknown-group-parent.thf",
+		raw: unknownGroupParentRaw,
+		kind: "invalid-reference",
+		message: `Invalid reference in 'groups[cluster-1].parent': 'missing-cluster' not found. Valid IDs: ["cluster-1"]`,
+	},
+	{
+		// reader.rs: InvalidReference { field: "relationships[rel-1].to", reference: "missing-service" }
+		name: "invalid/unknown-relationship-endpoint.thf",
+		raw: unknownRelationshipEndpointRaw,
+		kind: "invalid-reference",
+		message: `Invalid reference in 'relationships[rel-1].to': 'missing-service' not found. Valid IDs: ["app"]`,
+	},
+	{
+		// reader.rs: CircularGroupNesting { id: "group-a" } — group-a and group-b are each other's parent.
+		name: "invalid/circular-group-nesting.thf",
+		raw: circularGroupNestingRaw,
+		kind: "circular-group-nesting",
+		message: `Circular group nesting detected at group 'group-a'`,
+	},
 ];
 
 const VALID_FIXTURES = [
@@ -89,6 +174,9 @@ const VALID_FIXTURES = [
 	{ name: "v1.0-canonical-full.thf", raw: canonicalFullRaw },
 	{ name: "v1.0-unknown-fields.thf", raw: unknownFieldsRaw },
 	{ name: "legacy-sidecar/model.thf", raw: legacySidecarRaw },
+	// Architecture fixtures (#57 / #123): every layer/group/relationship reference resolves.
+	{ name: "architecture-canonical-full.thf", raw: architectureCanonicalFullRaw },
+	{ name: "architecture-only.thf", raw: architectureOnlyRaw },
 ];
 
 /** Run `fn`, returning the `ThfValidationError` it throws or failing loudly if it does not. */
@@ -210,6 +298,29 @@ describe("browser `.thf` read validation — semantic layer", () => {
 		expect(error.message).toBe(
 			`Invalid reference in 'trust_boundaries[b1].contains': 'ghost' not found. Valid IDs: ["app"]`,
 		);
+	});
+
+	it("rejects a group that is its own parent (self-nesting cycle)", () => {
+		// The two-node cycle is covered by `circular-group-nesting.thf`; this pins the self-parent
+		// branch of the iterative walk, where the very first parent is already the start node.
+		const model = makeModel({
+			groups: [{ id: "solo", name: "Solo", parent: "solo" }],
+		});
+		const error = catchValidationError(() => validateThreatModel(model));
+		expect(error.kind).toBe("circular-group-nesting");
+		expect(error.message).toBe(`Circular group nesting detected at group 'solo'`);
+	});
+
+	it("accepts a valid multi-level group parent chain", () => {
+		// A non-cyclic chain a -> b -> c must pass; the iterative walk must terminate, not loop.
+		const model = makeModel({
+			groups: [
+				{ id: "a", name: "A", parent: "b" },
+				{ id: "b", name: "B", parent: "c" },
+				{ id: "c", name: "C" },
+			],
+		});
+		expect(() => validateThreatModel(model)).not.toThrow();
 	});
 });
 

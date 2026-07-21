@@ -47,14 +47,17 @@ out; it is that function's stable fixed point.
 | `invalid/missing-metadata.thf` | invalid | `YamlParse` — required sections are *not* covered by unknown-field tolerance |
 
 Both readers classify the `invalid/` fixtures from a shared manifest. The Rust side is
-`invalid_fixtures_are_rejected_with_the_expected_error` (`src-tauri/src/file_io/fixtures_test.rs`);
-the browser side is `src/lib/thf-validation.test.ts`. The three content-determined fixtures
-(`unsupported-version`, `duplicate-element-id`, `unknown-flow-target`) also pin a byte-identical
-user-facing message on both platforms. Where `read_threat_model` returns `YamlParse`, the browser
-distinguishes a raw parse failure (`truncated` → `parse`) from a missing required section
-(`missing-metadata` → `missing-section`); both fail closed. A new reader rule adds its
-`invalid/<rule>.thf` fixture and a manifest entry on both sides, keeping the two languages in
-lockstep.
+`invalid_fixtures_are_rejected_with_the_expected_error` and
+`architecture_invalid_fixtures_are_rejected_with_the_expected_error`
+(`src-tauri/src/file_io/fixtures_test.rs`); the browser side is `src/lib/thf-validation.test.ts`.
+Every content-determined fixture (the `UnsupportedVersion`, `DuplicateId`, `InvalidReference`, and
+`CircularGroupNesting` variants — that is, all but the two `YamlParse` fixtures) also pins a
+byte-identical user-facing message on both platforms. Where `read_threat_model` returns `YamlParse`,
+the browser distinguishes a raw parse failure (`truncated` → `parse`) from a missing required
+section (`missing-metadata` → `missing-section`); both fail closed. The architecture rules
+(issue #57, merged in #123) were added through this manifest — each new `invalid/<rule>.thf`
+fixture and manifest entry forced the browser validator to grow the matching check in lockstep. A
+future reader rule extends it the same way.
 
 The unknown field names in `v1.0-unknown-fields.thf` (`unknown_future_section`,
 `unknown_future_flag`, `unknown_future_note`) are reserved for that fixture and must never become
