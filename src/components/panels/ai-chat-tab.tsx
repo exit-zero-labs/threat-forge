@@ -21,6 +21,7 @@ import { extractThreats, suggestionToThreat } from "@/lib/ai-utils";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
@@ -29,6 +30,7 @@ import { MarkdownContent } from "./markdown-content";
 export function AiChatTab() {
 	const model = useModelStore((s) => s.model);
 	const filePath = useModelStore((s) => s.filePath);
+	const activeDocumentId = useDocumentRegistry((s) => s.activeDocumentId);
 	const hasApiKey = useChatStore((s) => s.hasApiKey);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
@@ -41,7 +43,10 @@ export function AiChatTab() {
 		void checkApiKey();
 	}, [checkApiKey]);
 
-	// Load sessions when file path changes; migrate on Save As
+	// Load sessions when the active document changes; migrate on Save As. `activeDocumentId` is
+	// a dependency so a switch between two unsaved documents (both `filePath === null`) still
+	// re-binds the panel instead of leaving it on the previous document's sessions.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: activeDocumentId re-binds sessions on document switch
 	useEffect(() => {
 		const prev = prevFilePathRef.current;
 		// Migrate sessions when transitioning from unsaved/old path to a new path
@@ -50,7 +55,7 @@ export function AiChatTab() {
 		}
 		loadSessionsForFile(filePath);
 		prevFilePathRef.current = filePath;
-	}, [filePath, loadSessionsForFile, migrateSessionKey]);
+	}, [activeDocumentId, filePath, loadSessionsForFile, migrateSessionKey]);
 
 	if (!model) {
 		return (
