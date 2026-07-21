@@ -1,7 +1,12 @@
-import yaml from "js-yaml";
+import { load, YAML11_SCHEMA } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import type { ThreatModel } from "@/types/threat-model";
-import { parseThreatModelYaml, serializeThreatModelYaml, THF_YAML_SCHEMA } from "./thf-yaml";
+import {
+	parseThreatModelYaml,
+	serializeThreatModelYaml,
+	THF_YAML_DUMP_SCHEMA,
+	THF_YAML_SCHEMA,
+} from "./thf-yaml";
 
 const TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp";
 
@@ -14,16 +19,42 @@ metadata:
   modified: 2026-03-20
 `;
 
-describe("THF_YAML_SCHEMA", () => {
-	it("drops only the YAML 1.1 timestamp type from the default schema", () => {
-		const defaultTags = yaml.DEFAULT_SCHEMA.implicit.map((type) => type.tag);
-		const thfTags = THF_YAML_SCHEMA.implicit.map((type) => type.tag);
+describe("THF_YAML_SCHEMA and THF_YAML_DUMP_SCHEMA", () => {
+	it("keeps the YAML 1.1 timestamp type out of both the read and write schemas", () => {
+		// js-yaml 5 reorganized its schemas into a flat tag list and split the single default into a
+		// core read default and a YAML 1.1 write default. The timestamp type is the one tag that
+		// would coerce a calendar date to a `Date`, so it must be absent from both paths — and its
+		// absence is deliberate, since `YAML11_SCHEMA`, the write schema's basis, carries it.
+		expect(YAML11_SCHEMA.tags.map((tag) => tag.tagName)).toContain(TIMESTAMP_TAG);
+		expect(THF_YAML_SCHEMA.tags.map((tag) => tag.tagName)).not.toContain(TIMESTAMP_TAG);
+		expect(THF_YAML_DUMP_SCHEMA.tags.map((tag) => tag.tagName)).not.toContain(TIMESTAMP_TAG);
+	});
 
-		expect(defaultTags).toContain(TIMESTAMP_TAG);
-		expect(thfTags).not.toContain(TIMESTAMP_TAG);
-		expect(thfTags).toEqual(defaultTags.filter((tag) => tag !== TIMESTAMP_TAG));
-		// Explicit tags — `!!binary`, `!!omap`, `!!set`, and the rest — are untouched.
-		expect(THF_YAML_SCHEMA.explicit).toEqual(yaml.DEFAULT_SCHEMA.explicit);
+	it("keeps merge keys resolving on the read path", () => {
+		// The pre-upgrade schema dropped only the timestamp type; the read path still resolves the
+		// YAML 1.1 merge key rather than treating `<<` as a literal mapping key.
+		const merged = load("anchor: &base { a: 1 }\nchild:\n  <<: *base\n  b: 2\n", {
+			schema: THF_YAML_SCHEMA,
+		});
+
+		expect(merged).toEqual({ anchor: { a: 1 }, child: { a: 1, b: 2 } });
+	});
+
+	it("reads the coordinate key `y` as a string but writes it quoted", () => {
+		// The read schema uses core scalar resolution, so a bare `y` stays the string it is on disk.
+		// The write schema uses YAML 1.1 resolution, so it quotes `y`: a YAML 1.1 reader cannot then
+		// mistake the coordinate axis for the boolean `true`. The two schemas still round-trip.
+		const model = parseThreatModelYaml(`${DESKTOP_YAML}elements:
+  - id: app
+    type: process
+    name: App
+    position:
+      x: 100
+      y: 200
+`);
+
+		expect(model.elements[0].position).toEqual({ x: 100, y: 200 });
+		expect(serializeThreatModelYaml(model)).toContain('"y": 200');
 	});
 });
 
