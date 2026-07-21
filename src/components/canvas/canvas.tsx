@@ -3,7 +3,6 @@ import {
 	Cloud,
 	CreditCard,
 	FolderOpen,
-	Github,
 	HeartPulse,
 	type LucideIcon,
 	Radio,
@@ -11,6 +10,7 @@ import {
 	Smartphone,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { GithubIcon } from "@/components/icons/github-icon";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import { openExternalUrl } from "@/lib/platform";
@@ -121,7 +121,7 @@ function EmptyCanvas() {
 					onClick={() => void openExternalUrl("https://github.com/exit-zero-labs/threat-forge")}
 					className="flex items-center gap-1 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
 				>
-					<Github className="h-3 w-3" />
+					<GithubIcon className="h-3 w-3" />
 					GitHub
 				</button>
 				<span className="text-muted-foreground/30">·</span>

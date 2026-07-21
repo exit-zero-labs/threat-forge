@@ -57,7 +57,7 @@ Every non-trivial change requires an issue with:
 - `Status`, `Priority`, and `Size`
 - measurable acceptance criteria
 - dependencies and parent initiative when applicable
-- exactly one autonomy label: `agent-ready` or `human-blocked`
+- exactly one autonomy label: `Automatable` or `HITL`
 
 Project status semantics:
 
@@ -78,10 +78,39 @@ Priority remains `P0` → `P1` → `P2`. Size is a capability class:
 | `M` / `L` | A committed `docs/plans/<issue>-<slug>.md` is required before code |
 | `XL` | Initiative or parent only; decompose into executable sub-issues |
 
-`agent-ready` means an agent can reach a verification-complete PR without earlier human
-action. Final owner validation is still required. `human-blocked` means a secret,
+`Automatable` means an agent can reach a verification-complete PR without earlier human
+action. Final owner validation is still required. `HITL` means a secret,
 provisioning step, unresolved product/design decision, sensitive content decision, or
 external account action is required before that point.
+
+`Size` is mirrored onto the issue as a `size/XS`–`size/XL` label so effort is visible in
+issue lists, search, and the GitHub CLI without opening the project board. The Project 2
+`Size` field remains authoritative; the label must not contradict it.
+
+Each issue also carries one model-tier label naming the cheapest model that can do the work
+correctly:
+
+| Label | Use for |
+|-------|---------|
+| `model/haiku` | Mechanical, fully specified, low blast radius |
+| `model/sonnet` | Standard implementation against settled acceptance criteria |
+| `model/opus` | Architecture, schema, security, or cross-cutting design judgment |
+
+The tier is a floor, not a ceiling. Any work touching cryptography, the IPC boundary, the
+`.thf` schema, or a trust boundary is `model/opus` regardless of size.
+
+## Milestones
+
+Milestones express scope, not schedule. Every issue and pull request belongs to exactly one:
+
+| Milestone | Meaning |
+|-----------|---------|
+| `M1 • Minimum Polish Product (MPP)` | Shipped: reliable, well-crafted threat modeling. Closed work only |
+| `M2 • General Release` | The complete scoped feature set a user needs to adopt ThreatForge as their primary tool |
+| `M3 • V-Next` | Beyond general release; community and nice-to-have work. Unscoped by default |
+
+New work that has not been scoped against the general-release cutoff goes to `M3`. The owner
+may pull an `M3` item forward into `M2` at any time; agents may not.
 
 ## Verification is not validation
 

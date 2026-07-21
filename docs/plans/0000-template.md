@@ -11,7 +11,7 @@ State the measurable user or system outcome.
 - **Type:** `Task`, `Bug`, or `Feature`
 - **Size:** `M` or `L`
 - **Priority:** `P0`, `P1`, or `P2`
-- **Autonomy:** `agent-ready` or `human-blocked`
+- **Autonomy:** `Automatable` or `HITL`
 - **Dependencies:** linked issues, external prerequisites, or `None`
 - **Non-goals:** behavior explicitly excluded from this change
 
