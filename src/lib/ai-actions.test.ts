@@ -141,6 +141,169 @@ Some text
 	});
 });
 
+describe("update action field allowlist", () => {
+	const updateActions = [
+		{ action: "update_element", legalField: "name" },
+		{ action: "update_data_flow", legalField: "protocol" },
+		{ action: "update_trust_boundary", legalField: "name" },
+		{ action: "update_threat", legalField: "title" },
+	] as const;
+
+	for (const { action, legalField } of updateActions) {
+		it(`rejects ${action} that rewrites id`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "id": "hijacked" } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+
+		it(`rejects ${action} that smuggles id alongside a legal field`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed", "id": "hijacked" } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+
+		it(`still accepts ${action} carrying only allowlisted fields`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed" } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(1);
+		});
+
+		it(`rejects ${action} carrying an unknown field`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed", "injected": true } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+
+		it(`rejects ${action} whose updates is an array`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "original", "updates": ["id", "hijacked"] }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+	}
+
+	it("rejects a hijacking action without discarding valid actions beside it", () => {
+		const text = `\`\`\`actions
+[
+  { "action": "update_element", "id": "a", "updates": { "id": "hijacked" } },
+  { "action": "update_element", "id": "b", "updates": { "name": "Legit" } }
+]
+\`\`\``;
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		expect((actions[0] as { id: string }).id).toBe("b");
+	});
+
+	it("rejects fields resolved through the prototype chain", () => {
+		// A plain-object allowlist would resolve `toString` to Object.prototype's
+		// method — a truthy value — and let the field through.
+		for (const key of ["__proto__", "toString", "constructor", "hasOwnProperty"]) {
+			const text = `\`\`\`actions
+[{ "action": "update_element", "id": "a", "updates": { "${key}": "x" } }]
+\`\`\``;
+			expect(extractActions(text), `${key} must not be writable`).toHaveLength(0);
+		}
+	});
+});
+
+describe("update payloads keep every schema field writable", () => {
+	// Narrowing the allowlist to a "sensible" subset would silently withdraw
+	// working behavior. `stores` and `encryption` have no property-panel editor,
+	// so the assistant is the only in-app way to set them.
+	it("accepts every non-id Element field", () => {
+		const text = `\`\`\`actions
+[{ "action": "update_element", "id": "api-gw", "updates": {
+  "name": "Gateway", "type": "process", "trust_zone": "dmz", "subtype": "alb",
+  "icon": "aws/alb", "description": "Edge", "technologies": ["nginx"],
+  "stores": ["session"], "encryption": "AES-256", "position": { "x": 10, "y": 20 },
+  "fill_color": "#fff", "stroke_color": "#000", "fill_opacity": 0.5,
+  "stroke_opacity": 1, "font_size": 12, "font_weight": "bold"
+} }]
+\`\`\``;
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		expect(Object.keys((actions[0] as { updates: object }).updates)).toHaveLength(16);
+	});
+
+	it("accepts every non-id DataFlow field", () => {
+		const text = `\`\`\`actions
+[{ "action": "update_data_flow", "id": "f1", "updates": {
+  "flow_number": 2, "name": "Req", "from": "a", "to": "b", "protocol": "HTTPS",
+  "data": ["pii"], "authenticated": true, "label_offset": { "x": 1, "y": 2 },
+  "source_handle": "right", "target_handle": "left",
+  "stroke_color": "#000", "stroke_opacity": 0.8
+} }]
+\`\`\``;
+		expect(extractActions(text)).toHaveLength(1);
+	});
+
+	it("accepts every non-id TrustBoundary field", () => {
+		const text = `\`\`\`actions
+[{ "action": "update_trust_boundary", "id": "tb1", "updates": {
+  "name": "DMZ", "contains": ["a"], "position": { "x": 0, "y": 0 },
+  "size": { "width": 100, "height": 50 },
+  "fill_color": "#eee", "stroke_color": "#333", "fill_opacity": 0.2, "stroke_opacity": 1
+} }]
+\`\`\``;
+		expect(extractActions(text)).toHaveLength(1);
+	});
+});
+
+describe("update payload value types", () => {
+	const badValues: ReadonlyArray<[string, string, string]> = [
+		["update_element", "technologies", '"not-an-array"'],
+		["update_element", "technologies", "[1, 2]"],
+		["update_element", "name", '{ "nested": true }'],
+		["update_element", "position", '{ "x": "left", "y": 0 }'],
+		["update_element", "font_size", '"large"'],
+		["update_data_flow", "authenticated", '"yes"'],
+		["update_data_flow", "data", '"pii"'],
+		["update_data_flow", "flow_number", '"two"'],
+		["update_trust_boundary", "contains", "5"],
+		["update_trust_boundary", "size", '{ "width": 10 }'],
+		["update_threat", "mitigation", '{ "status": "bogus", "description": "x" }'],
+		["update_threat", "mitigation", '"mitigated"'],
+		["update_threat", "severity", "5"],
+	];
+
+	for (const [action, field, value] of badValues) {
+		it(`rejects ${action}.${field} = ${value}`, () => {
+			const text = `\`\`\`actions
+[{ "action": "${action}", "id": "x", "updates": { "${field}": ${value} } }]
+\`\`\``;
+			expect(extractActions(text)).toHaveLength(0);
+		});
+	}
+
+	it("accepts a well-formed mitigation", () => {
+		const text = `\`\`\`actions
+[{ "action": "update_threat", "id": "t1", "updates": {
+  "mitigation": { "status": "mitigated", "description": "Added WAF" }
+} }]
+\`\`\``;
+		expect(extractActions(text)).toHaveLength(1);
+	});
+
+	it("rejects a non-string severity without discarding the rest of the block", () => {
+		// `severity` was previously passed to `.toLowerCase()`, which threw on a
+		// number. The throw escaped into extractActions' catch and silently
+		// discarded every remaining action in the same block.
+		const text = `\`\`\`actions
+[
+  { "action": "update_threat", "id": "t1", "updates": { "severity": 5 } },
+  { "action": "update_element", "id": "e1", "updates": { "name": "Survivor" } }
+]
+\`\`\``;
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		expect((actions[0] as { id: string }).id).toBe("e1");
+	});
+});
+
 describe("describeAction", () => {
 	it("describes add_element", () => {
 		const action: AiAction = {
