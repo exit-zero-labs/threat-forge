@@ -1,14 +1,6 @@
 import { create } from "zustand";
 import type { DataFlow, Element, TrustBoundary } from "@/types/threat-model";
-import {
-	boundaryToNode,
-	elementToNode,
-	flowToEdge,
-	generateBoundaryId,
-	generateElementId,
-	generateFlowId,
-	useCanvasStore,
-} from "./canvas-store";
+import { boundaryToNode, elementToNode, flowToEdge, useCanvasStore } from "./canvas-store";
 import { useHistoryStore } from "./history-store";
 import { useModelStore } from "./model-store";
 
@@ -119,16 +111,17 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
 		const offset = 50 * newCount;
 		const isFirstPaste = newCount === 1;
 
-		// Build old→new ID mapping
+		// Build old→new ID mapping, allocating ids from the active document's canvas store
+		const canvas = useCanvasStore.getState();
 		const idMap = new Map<string, string>();
 		for (const el of clipboard.elements) {
-			idMap.set(el.id, generateElementId());
+			idMap.set(el.id, canvas.nextElementId());
 		}
 		for (const b of clipboard.boundaries) {
-			idMap.set(b.id, generateBoundaryId());
+			idMap.set(b.id, canvas.nextBoundaryId());
 		}
 		for (const f of clipboard.flows) {
-			idMap.set(f.id, generateFlowId());
+			idMap.set(f.id, canvas.nextFlowId());
 		}
 
 		// Clone elements with new IDs and offset positions — deep-clone mutable arrays

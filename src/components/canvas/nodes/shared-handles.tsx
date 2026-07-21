@@ -1,5 +1,5 @@
 import { Handle, Position } from "@xyflow/react";
-import { useCanvasStore } from "@/stores/canvas-store";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 
 /**
  * Base handle style: small dot, hidden by default, smooth fade transition.
@@ -22,7 +22,7 @@ const HANDLE_STYLE =
  * 2. During connection drag (via `isConnecting` store state)
  */
 export function NodeHandles() {
-	const isConnecting = useCanvasStore((s) => s.isConnecting);
+	const isConnecting = useCanvasInstanceStore((s) => s.isConnecting);
 	const visibleClass = isConnecting ? "!opacity-100" : "";
 	const cls = `${HANDLE_STYLE} ${visibleClass}`;
 

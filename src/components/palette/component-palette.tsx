@@ -10,6 +10,7 @@ import {
 	searchComponents,
 } from "@/lib/component-library";
 import { cn } from "@/lib/utils";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 
 /** Generic palette items (always visible at top) */
@@ -215,11 +216,11 @@ function GenericPaletteItem({
 				e.dataTransfer.effectAllowed = "copy";
 				setDragGhost(e, label);
 				// Use setDraggedComponent to clear any stale subtype/icon/name from a prior library drag
-				useCanvasStore.getState().setDraggedComponent({ type });
+				useCanvasInstanceStore.getState().setDraggedComponent({ type });
 			}}
 			onDragEnd={(e) => {
-				const draggedType = useCanvasStore.getState().draggedType;
-				useCanvasStore.getState().setDraggedComponent(null);
+				const draggedType = useCanvasInstanceStore.getState().draggedType;
+				useCanvasInstanceStore.getState().setDraggedComponent(null);
 				if (!draggedType) return;
 
 				const target = document.elementFromPoint(e.clientX, e.clientY);
@@ -268,15 +269,15 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 				e.dataTransfer.setData("text/plain", component.id);
 				e.dataTransfer.effectAllowed = "copy";
 				setDragGhost(e, component.label);
-				useCanvasStore.getState().setDraggedComponent({
+				useCanvasInstanceStore.getState().setDraggedComponent({
 					type: component.id,
 					icon: component.icon,
 					name: component.label,
 				});
 			}}
 			onDragEnd={(e) => {
-				const draggedType = useCanvasStore.getState().draggedType;
-				useCanvasStore.getState().setDraggedComponent(null);
+				const draggedType = useCanvasInstanceStore.getState().draggedType;
+				useCanvasInstanceStore.getState().setDraggedComponent(null);
 				if (!draggedType) return;
 
 				const target = document.elementFromPoint(e.clientX, e.clientY);

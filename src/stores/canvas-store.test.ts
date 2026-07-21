@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import type { ThreatModel } from "@/types/threat-model";
+import { useCanvasInstanceStore } from "./canvas-instance-store";
 import { useCanvasStore } from "./canvas-store";
 import { useHistoryStore } from "./history-store";
 import { useModelStore } from "./model-store";
@@ -621,5 +622,49 @@ describe("canvas-store", () => {
 		const edgeAfterResync = useCanvasStore.getState().edges.find((e) => e.id === "flow-1");
 		expect(edgeAfterResync?.sourceHandle).toBe("bottom-right-source");
 		expect(edgeAfterResync?.targetHandle).toBe("top-left-target");
+	});
+
+	describe("node drag end", () => {
+		beforeEach(() => {
+			useCanvasInstanceStore.getState().setAltDragActive(false);
+		});
+
+		function dragNodeTo(id: string, position: { x: number; y: number }): void {
+			useCanvasStore.getState().onNodesChange([{ id, type: "position", dragging: true, position }]);
+			useCanvasStore
+				.getState()
+				.onNodesChange([{ id, type: "position", dragging: false, position }]);
+		}
+
+		it("records one undo step and writes the dropped position into the model", () => {
+			useModelStore.getState().setModel(createTestModel(), null);
+			useCanvasStore.getState().syncFromModel();
+
+			dragNodeTo("process-1", { x: 640, y: 480 });
+
+			expect(useHistoryStore.getState().past).toHaveLength(1);
+			const element = useModelStore.getState().model?.elements.find((e) => e.id === "process-1");
+			expect(element?.position).toEqual({ x: 640, y: 480 });
+		});
+
+		it("leaves history and the model to the Alt+drag handler while an Alt+drag is active", () => {
+			useModelStore.getState().setModel(createTestModel(), null);
+			useCanvasStore.getState().syncFromModel();
+			const positionBefore = useModelStore
+				.getState()
+				.model?.elements.find((e) => e.id === "process-1")?.position;
+
+			useCanvasInstanceStore.getState().setAltDragActive(true);
+			dragNodeTo("process-1", { x: 640, y: 480 });
+
+			// The canvas node moved, but the drag-end write-back was skipped so the
+			// Alt+drag handler owns the single undo entry and the final positions.
+			const node = useCanvasStore.getState().nodes.find((n) => n.id === "process-1");
+			expect(node?.position).toEqual({ x: 640, y: 480 });
+			expect(useHistoryStore.getState().past).toHaveLength(0);
+			expect(
+				useModelStore.getState().model?.elements.find((e) => e.id === "process-1")?.position,
+			).toEqual(positionBefore);
+		});
 	});
 });
