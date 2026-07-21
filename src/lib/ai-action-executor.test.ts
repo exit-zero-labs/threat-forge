@@ -197,3 +197,103 @@ describe("executeActions", () => {
 		expect(useHistoryStore.getState().past.length).toBe(1);
 	});
 });
+
+describe("reference integrity on updates", () => {
+	/** Model carrying one resolvable flow between the two mock elements. */
+	const modelWithFlow: ThreatModel = {
+		...mockModel,
+		data_flows: [
+			{
+				id: "flow-1",
+				flow_number: 1,
+				name: "Request",
+				from: "web-app",
+				to: "api-gw",
+				protocol: "HTTPS",
+				data: [],
+				authenticated: true,
+			},
+		],
+		trust_boundaries: [{ id: "tb-1", name: "Internal", contains: ["web-app", "api-gw"] }],
+	};
+
+	beforeEach(() => {
+		useModelStore.getState().setModel(modelWithFlow, null);
+		useHistoryStore.getState().clear();
+	});
+
+	it("rejects repointing a flow source at a nonexistent element", () => {
+		const ok = executeSingleAction({
+			action: "update_data_flow",
+			id: "flow-1",
+			updates: { from: "ghost" },
+		});
+		expect(ok).toBe(false);
+		expect(useModelStore.getState().model?.data_flows[0].from).toBe("web-app");
+	});
+
+	it("rejects repointing a flow target at a nonexistent element", () => {
+		const ok = executeSingleAction({
+			action: "update_data_flow",
+			id: "flow-1",
+			updates: { to: "ghost" },
+		});
+		expect(ok).toBe(false);
+		expect(useModelStore.getState().model?.data_flows[0].to).toBe("api-gw");
+	});
+
+	it("rejects repointing both endpoints at nonexistent elements", () => {
+		const ok = executeSingleAction({
+			action: "update_data_flow",
+			id: "flow-1",
+			updates: { from: "ghost-a", to: "ghost-b" },
+		});
+		expect(ok).toBe(false);
+	});
+
+	it("validates the resulting flow, so an unrelated field edit still checks endpoints", () => {
+		// `protocol` alone is harmless, and both existing endpoints resolve, so this
+		// must succeed — the check must not reject every update that omits from/to.
+		const ok = executeSingleAction({
+			action: "update_data_flow",
+			id: "flow-1",
+			updates: { protocol: "gRPC" },
+		});
+		expect(ok).toBe(true);
+		expect(useModelStore.getState().model?.data_flows[0].protocol).toBe("gRPC");
+	});
+
+	it("still allows repointing a flow at an element that exists", () => {
+		const ok = executeSingleAction({
+			action: "update_data_flow",
+			id: "flow-1",
+			updates: { from: "api-gw", to: "web-app" },
+		});
+		expect(ok).toBe(true);
+		const flow = useModelStore.getState().model?.data_flows[0];
+		expect(flow?.from).toBe("api-gw");
+		expect(flow?.to).toBe("web-app");
+	});
+
+	it("drops unresolvable trust boundary members instead of storing them", () => {
+		const ok = executeSingleAction({
+			action: "update_trust_boundary",
+			id: "tb-1",
+			updates: { contains: ["web-app", "ghost"] },
+		});
+		expect(ok).toBe(true);
+		expect(useModelStore.getState().model?.trust_boundaries[0].contains).toEqual(["web-app"]);
+	});
+
+	it("keeps resolvable trust boundary members on update", () => {
+		const ok = executeSingleAction({
+			action: "update_trust_boundary",
+			id: "tb-1",
+			updates: { name: "Renamed" },
+		});
+		expect(ok).toBe(true);
+		const boundary = useModelStore.getState().model?.trust_boundaries[0];
+		expect(boundary?.name).toBe("Renamed");
+		expect(boundary?.contains).toEqual(["web-app", "api-gw"]);
+	});
+});

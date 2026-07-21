@@ -10,7 +10,7 @@ Produce a read-only, reproducible briefing. Do not mutate GitHub or repository f
 1. Record the current `main` commit, open PR set, and report timestamp.
 2. Query Project 2 fields and open issue bodies.
 3. Separate:
-   - agent-ready executable work
+   - Automatable executable work
    - partly blocked work with the concrete blocker
    - owner-only/HITL decisions
    - unresolved `To triage` intake

@@ -1,5 +1,6 @@
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
+import { userSafeProviderError } from "@/lib/ai-provider-errors";
 import type { AiProvider, ChatMessage } from "@/stores/chat-store";
 import type { ThreatModel } from "@/types/threat-model";
 import type { ChatAdapter, ChatStreamCallbacks } from "./chat-adapter";
@@ -62,8 +63,7 @@ async function streamAnthropic(
 	});
 
 	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`Anthropic API error (${response.status}): ${errorText}`);
+		throw new Error(userSafeProviderError("Anthropic", response.status));
 	}
 
 	await parseSSEStream(response, signal, (event, data) => {
@@ -107,8 +107,7 @@ async function streamOpenAI(
 	});
 
 	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+		throw new Error(userSafeProviderError("OpenAI", response.status));
 	}
 
 	await parseSSEStream(response, signal, (_event, data) => {

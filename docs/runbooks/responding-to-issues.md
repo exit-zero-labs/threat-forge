@@ -38,10 +38,10 @@ Apply exactly one autonomy label:
 
 | Label | Meaning |
 |-------|---------|
-| `agent-ready` | An agent can reach a verification-complete PR without earlier human action |
-| `human-blocked` | A secret, account, provisioning step, or unresolved decision is required |
+| `Automatable` | An agent can reach a verification-complete PR without earlier human action |
+| `HITL` | A secret, account, provisioning step, or unresolved decision is required |
 
-Final owner validation does not make an issue `human-blocked`.
+Final owner validation does not make an issue `HITL`.
 
 ### 3. Shape the Work
 
