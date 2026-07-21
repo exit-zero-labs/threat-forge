@@ -1,0 +1,402 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hand-authored regression fixture modelled on the Microsoft Threat Modeling
+  Tool 2016 (schema Version 4.3) .NET DataContract export. It is deliberately
+  small but covers every branch the importer walks: each stencil shape, an
+  unknown GenericTypeId, an out-of-scope element, a nil element name, a border
+  boundary, a line boundary, a connector to an excluded element, entity-escaped
+  and multi-line text, a threat that falls back to its TypeId category, a threat
+  that falls back to its Properties priority, and a threat with an empty title.
+
+  The expected import result is pinned in tmt-4.3-sample.expected.yaml.
+-->
+<ThreatModel xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model">
+  <DrawingSurfaceList>
+    <DrawingSurfaceModel z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/">
+      <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">DRAWINGSURFACE</GenericTypeId>
+      <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">11111111-1111-1111-1111-111111111111</Guid>
+      <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+        <a:anyType i:type="b:HeaderDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+          <b:DisplayName>Diagram</b:DisplayName>
+        </a:anyType>
+        <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+          <b:DisplayName>Name</b:DisplayName>
+          <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Level 0 &amp; 1 DFD</b:Value>
+        </a:anyType>
+      </Properties>
+      <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">DRAWINGSURFACE</TypeId>
+      <Borders xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+        <a:KeyValueOfguidanyType>
+          <a:Key>22222222-0000-0000-0000-000000000001</a:Key>
+          <a:Value i:type="StencilRectangle">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.EI</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000001</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Customer</b:Value>
+              </a:anyType>
+              <a:anyType i:type="b:BooleanDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Out Of Scope</b:DisplayName>
+                <b:Value i:type="c:boolean" xmlns:c="http://www.w3.org/2001/XMLSchema">false</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.EI.BU</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">40</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">120</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>22222222-0000-0000-0000-000000000002</a:Key>
+          <a:Value i:type="StencilEllipse">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.P</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000002</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Payments &amp; Billing API</b:Value>
+              </a:anyType>
+              <a:anyType i:type="b:BooleanDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Out Of Scope</b:DisplayName>
+                <b:Value i:type="c:boolean" xmlns:c="http://www.w3.org/2001/XMLSchema">false</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.P.TW</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">340</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">120</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>22222222-0000-0000-0000-000000000003</a:Key>
+          <a:Value i:type="StencilParallelLines">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.DS</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000003</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Billing Database</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.DS.SQL</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">60</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">640</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">140</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">120</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>22222222-0000-0000-0000-000000000004</a:Key>
+          <a:Value i:type="StencilEllipse">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.XX.UNKNOWN</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000004</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Reporting Job</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.XX.UNKNOWN</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">340</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">300</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>22222222-0000-0000-0000-000000000005</a:Key>
+          <a:Value i:type="StencilEllipse">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.P</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000005</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:nil="true"/>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.P.TW</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">340</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">460</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>22222222-0000-0000-0000-000000000006</a:Key>
+          <a:Value i:type="StencilEllipse">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.P</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000006</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Legacy Batch Job</b:Value>
+              </a:anyType>
+              <a:anyType i:type="b:BooleanDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Out Of Scope</b:DisplayName>
+                <b:Value i:type="c:boolean" xmlns:c="http://www.w3.org/2001/XMLSchema">true</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.P.TW</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">900</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">460</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">100</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>33333333-0000-0000-0000-000000000001</a:Key>
+          <a:Value i:type="BorderBoundary">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.TB.B</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">33333333-0000-0000-0000-000000000001</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Corporate Network</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.TB.B</TypeId>
+            <Height xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">280</Height>
+            <Left xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">300</Left>
+            <Top xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">60</Top>
+            <Width xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">560</Width>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+      </Borders>
+      <Lines xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+        <a:KeyValueOfguidanyType>
+          <a:Key>44444444-0000-0000-0000-000000000001</a:Key>
+          <a:Value i:type="Connector">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.DF</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">44444444-0000-0000-0000-000000000001</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Browse &amp; Checkout</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.DF.HTTPS</TypeId>
+            <HandleX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">240</HandleX>
+            <HandleY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">170</HandleY>
+            <SourceGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000001</SourceGuid>
+            <SourceX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">140</SourceX>
+            <SourceY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">170</SourceY>
+            <TargetGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000002</TargetGuid>
+            <TargetX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">340</TargetX>
+            <TargetY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">170</TargetY>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>44444444-0000-0000-0000-000000000002</a:Key>
+          <a:Value i:type="Connector">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.DF</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">44444444-0000-0000-0000-000000000002</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">SQL Query</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.DF.SQL</TypeId>
+            <HandleX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">540</HandleX>
+            <HandleY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">170</HandleY>
+            <SourceGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000002</SourceGuid>
+            <SourceX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">440</SourceX>
+            <SourceY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">170</SourceY>
+            <TargetGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000003</TargetGuid>
+            <TargetX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">640</TargetX>
+            <TargetY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">170</TargetY>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>44444444-0000-0000-0000-000000000003</a:Key>
+          <a:Value i:type="Connector">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.DF</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">44444444-0000-0000-0000-000000000003</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Nightly Export</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.DF.SQL</TypeId>
+            <SourceGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000003</SourceGuid>
+            <SourceX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">700</SourceX>
+            <SourceY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">200</SourceY>
+            <TargetGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">22222222-0000-0000-0000-000000000006</TargetGuid>
+            <TargetX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">900</TargetX>
+            <TargetY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">500</TargetY>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+        <a:KeyValueOfguidanyType>
+          <a:Key>55555555-0000-0000-0000-000000000001</a:Key>
+          <a:Value i:type="LineBoundary">
+            <GenericTypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">GE.TB.L</GenericTypeId>
+            <Guid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">55555555-0000-0000-0000-000000000001</Guid>
+            <Properties xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts" xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+              <a:anyType i:type="b:StringDisplayAttribute" xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+                <b:DisplayName>Name</b:DisplayName>
+                <b:Value i:type="c:string" xmlns:c="http://www.w3.org/2001/XMLSchema">Internet Boundary</b:Value>
+              </a:anyType>
+            </Properties>
+            <TypeId xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">SE.TB.L</TypeId>
+            <SourceGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">00000000-0000-0000-0000-000000000000</SourceGuid>
+            <SourceX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">240</SourceX>
+            <SourceY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">40</SourceY>
+            <TargetGuid xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">00000000-0000-0000-0000-000000000000</TargetGuid>
+            <TargetX xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">240</TargetX>
+            <TargetY xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model.Abstracts">520</TargetY>
+          </a:Value>
+        </a:KeyValueOfguidanyType>
+      </Lines>
+    </DrawingSurfaceModel>
+  </DrawingSurfaceList>
+  <MetaInformation>
+    <Assumptions/>
+    <Contributors>Grace Hopper</Contributors>
+    <ExternalDependencies/>
+    <HighLevelSystemDescription>Checkout for the &quot;Payments &amp; Billing&quot; platform.
+Cardholder data never leaves the &lt;Corporate Network&gt; boundary.
+Batch reconciliation is the finance team&#39;s responsibility.</HighLevelSystemDescription>
+    <Owner>Ada Lovelace</Owner>
+    <Reviewer>Grace Hopper</Reviewer>
+    <ThreatModelName>Payments &amp; Billing Platform</ThreatModelName>
+  </MetaInformation>
+  <Notes/>
+  <ThreatInstances xmlns:a="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+    <a:KeyValueOfstringThreatpc_P0_PhOB>
+      <a:Key>T-000000000002-000000000002-000000000003</a:Key>
+      <a:Value xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+        <b:ChangedBy i:nil="true"/>
+        <b:DrawingSurfaceGuid>11111111-1111-1111-1111-111111111111</b:DrawingSurfaceGuid>
+        <b:FlowGuid>44444444-0000-0000-0000-000000000002</b:FlowGuid>
+        <b:Id>1</b:Id>
+        <b:InteractionKey>22222222-0000-0000-0000-000000000002:44444444-0000-0000-0000-000000000002:22222222-0000-0000-0000-000000000003</b:InteractionKey>
+        <b:ModifiedAt>0001-01-01T00:00:00</b:ModifiedAt>
+        <b:Priority>High</b:Priority>
+        <b:Properties>
+          <a:KeyValueOfstringstring>
+            <a:Key>Title</a:Key>
+            <a:Value>SQL Injection against &quot;Billing Database&quot;</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>UserThreatCategory</a:Key>
+            <a:Value>Tampering</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>UserThreatDescription</a:Key>
+            <a:Value>An attacker submits input containing &lt;script&gt; or &apos;OR 1=1 and the API concatenates it into a query.</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>Priority</a:Key>
+            <a:Value>High</a:Value>
+          </a:KeyValueOfstringstring>
+        </b:Properties>
+        <b:SourceGuid>22222222-0000-0000-0000-000000000002</b:SourceGuid>
+        <b:State>Mitigated</b:State>
+        <b:StateInformation>Parameterized queries &amp; least-privilege database credentials.</b:StateInformation>
+        <b:TargetGuid>22222222-0000-0000-0000-000000000003</b:TargetGuid>
+        <b:Title i:nil="true"/>
+        <b:TypeId>T7</b:TypeId>
+        <b:Upgraded>false</b:Upgraded>
+      </a:Value>
+    </a:KeyValueOfstringThreatpc_P0_PhOB>
+    <a:KeyValueOfstringThreatpc_P0_PhOB>
+      <a:Key>E-000000000001-000000000001-000000000002</a:Key>
+      <a:Value xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+        <b:ChangedBy i:nil="true"/>
+        <b:DrawingSurfaceGuid>11111111-1111-1111-1111-111111111111</b:DrawingSurfaceGuid>
+        <b:FlowGuid>44444444-0000-0000-0000-000000000001</b:FlowGuid>
+        <b:Id>2</b:Id>
+        <b:InteractionKey>22222222-0000-0000-0000-000000000001:44444444-0000-0000-0000-000000000001:22222222-0000-0000-0000-000000000002</b:InteractionKey>
+        <b:ModifiedAt>0001-01-01T00:00:00</b:ModifiedAt>
+        <b:Properties>
+          <a:KeyValueOfstringstring>
+            <a:Key>Title</a:Key>
+            <a:Value>Checkout session token can be replayed</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>UserThreatDescription</a:Key>
+            <a:Value>A stolen session cookie grants full access to the payments API.</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>Priority</a:Key>
+            <a:Value>Low</a:Value>
+          </a:KeyValueOfstringstring>
+        </b:Properties>
+        <b:SourceGuid>22222222-0000-0000-0000-000000000001</b:SourceGuid>
+        <b:State>NeedsInvestigation</b:State>
+        <b:StateInformation/>
+        <b:TargetGuid>22222222-0000-0000-0000-000000000002</b:TargetGuid>
+        <b:Title i:nil="true"/>
+        <b:TypeId>E12</b:TypeId>
+        <b:Upgraded>false</b:Upgraded>
+      </a:Value>
+    </a:KeyValueOfstringThreatpc_P0_PhOB>
+    <a:KeyValueOfstringThreatpc_P0_PhOB>
+      <a:Key>I-000000000003-000000000003-000000000006</a:Key>
+      <a:Value xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+        <b:ChangedBy i:nil="true"/>
+        <b:DrawingSurfaceGuid>11111111-1111-1111-1111-111111111111</b:DrawingSurfaceGuid>
+        <b:FlowGuid>44444444-0000-0000-0000-000000000003</b:FlowGuid>
+        <b:Id>3</b:Id>
+        <b:ModifiedAt>0001-01-01T00:00:00</b:ModifiedAt>
+        <b:Priority>Critical</b:Priority>
+        <b:Properties>
+          <a:KeyValueOfstringstring>
+            <a:Key>Title</a:Key>
+            <a:Value>Nightly export writes cardholder data to an unmonitored share</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>UserThreatCategory</a:Key>
+            <a:Value>Information Disclosure</a:Value>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>UserThreatDescription</a:Key>
+            <a:Value>The export target is outside the modelled scope, so nothing audits it.</a:Value>
+          </a:KeyValueOfstringstring>
+        </b:Properties>
+        <b:SourceGuid>22222222-0000-0000-0000-000000000003</b:SourceGuid>
+        <b:State>NotApplicable</b:State>
+        <b:StateInformation>Accepted; the share is decommissioned next quarter.</b:StateInformation>
+        <b:TargetGuid>22222222-0000-0000-0000-000000000006</b:TargetGuid>
+        <b:Title i:nil="true"/>
+        <b:TypeId>I5</b:TypeId>
+        <b:Upgraded>false</b:Upgraded>
+      </a:Value>
+    </a:KeyValueOfstringThreatpc_P0_PhOB>
+    <a:KeyValueOfstringThreatpc_P0_PhOB>
+      <a:Key>S-000000000001-000000000001-000000000002</a:Key>
+      <a:Value xmlns:b="http://schemas.datacontract.org/2004/07/ThreatModeling.KnowledgeBase">
+        <b:ChangedBy i:nil="true"/>
+        <b:DrawingSurfaceGuid>11111111-1111-1111-1111-111111111111</b:DrawingSurfaceGuid>
+        <b:FlowGuid>44444444-0000-0000-0000-000000000001</b:FlowGuid>
+        <b:Id>4</b:Id>
+        <b:ModifiedAt>0001-01-01T00:00:00</b:ModifiedAt>
+        <b:Priority>Medium</b:Priority>
+        <b:Properties>
+          <a:KeyValueOfstringstring>
+            <a:Key>Title</a:Key>
+            <a:Value/>
+          </a:KeyValueOfstringstring>
+          <a:KeyValueOfstringstring>
+            <a:Key>UserThreatCategory</a:Key>
+            <a:Value>Spoofing</a:Value>
+          </a:KeyValueOfstringstring>
+        </b:Properties>
+        <b:SourceGuid>22222222-0000-0000-0000-000000000001</b:SourceGuid>
+        <b:State>AutoGenerated</b:State>
+        <b:StateInformation/>
+        <b:TargetGuid>22222222-0000-0000-0000-000000000002</b:TargetGuid>
+        <b:Title i:nil="true"/>
+        <b:TypeId>S1</b:TypeId>
+        <b:Upgraded>false</b:Upgraded>
+      </a:Value>
+    </a:KeyValueOfstringThreatpc_P0_PhOB>
+  </ThreatInstances>
+  <ThreatGenerationEnabled>true</ThreatGenerationEnabled>
+  <Validations/>
+  <Version>4.3</Version>
+</ThreatModel>

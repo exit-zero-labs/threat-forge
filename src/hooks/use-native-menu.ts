@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import { isTauri } from "@/lib/platform";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
 import { useHistoryStore } from "@/stores/history-store";
@@ -155,13 +156,13 @@ export function useNativeMenu() {
 						useUiStore.getState().toggleRightPanel();
 						break;
 					case "view-zoom-in":
-						useCanvasStore.getState().rfZoomIn?.();
+						useCanvasInstanceStore.getState().rfZoomIn?.();
 						break;
 					case "view-zoom-out":
-						useCanvasStore.getState().rfZoomOut?.();
+						useCanvasInstanceStore.getState().rfZoomOut?.();
 						break;
 					case "view-fit":
-						useCanvasStore.getState().rfFitView?.();
+						useCanvasInstanceStore.getState().rfFitView?.();
 						break;
 					case "view-command-palette":
 						useUiStore.getState().openCommandPalette();

@@ -1,0 +1,129 @@
+version: '1.0'
+metadata:
+  title: Payments & Billing Platform
+  author: Ada Lovelace
+  created: 2000-01-01
+  modified: 2000-01-01
+  description: |-
+    Checkout for the "Payments & Billing" platform.
+    Cardholder data never leaves the <Corporate Network> boundary.
+    Batch reconciliation is the finance team's responsibility.
+elements:
+- id: customer
+  type: external_entity
+  name: Customer
+  trust_zone: ''
+  description: ''
+  position:
+    x: 40.0
+    y: 120.0
+- id: payments-billing-api
+  type: process
+  name: Payments & Billing API
+  trust_zone: ''
+  description: ''
+  position:
+    x: 340.0
+    y: 120.0
+- id: billing-database
+  type: data_store
+  name: Billing Database
+  trust_zone: ''
+  description: ''
+  position:
+    x: 640.0
+    y: 140.0
+- id: reporting-job
+  type: process
+  name: Reporting Job
+  trust_zone: ''
+  description: ''
+  position:
+    x: 340.0
+    y: 300.0
+- id: process
+  type: process
+  name: ''
+  trust_zone: ''
+  description: ''
+  position:
+    x: 340.0
+    y: 460.0
+data_flows:
+- id: flow-1
+  flow_number: 1
+  name: Browse & Checkout
+  from: customer
+  to: payments-billing-api
+  protocol: ''
+  data: []
+  authenticated: false
+- id: flow-2
+  flow_number: 2
+  name: SQL Query
+  from: payments-billing-api
+  to: billing-database
+  protocol: ''
+  data: []
+  authenticated: false
+trust_boundaries:
+- id: corporate-network
+  name: Corporate Network
+  contains:
+  - payments-billing-api
+  - billing-database
+  position:
+    x: 300.0
+    y: 60.0
+  size:
+    width: 560.0
+    height: 280.0
+- id: internet-boundary
+  name: Internet Boundary
+  contains:
+  - payments-billing-api
+  - reporting-job
+  - process
+  position:
+    x: 240.0
+    y: 40.0
+  size:
+    width: 200.0
+    height: 480.0
+threats:
+- id: threat-1
+  title: SQL Injection against "Billing Database"
+  category: Tampering
+  element: payments-billing-api
+  flow: flow-2
+  severity: high
+  description: An attacker submits input containing <script> or 'OR 1=1 and the API concatenates it into a query.
+  mitigation:
+    status: mitigated
+    description: Parameterized queries & least-privilege database credentials.
+- id: threat-2
+  title: Checkout session token can be replayed
+  category: Elevation of Privilege
+  element: customer
+  flow: flow-1
+  severity: low
+  description: A stolen session cookie grants full access to the payments API.
+  mitigation:
+    status: not_started
+    description: ''
+- id: threat-3
+  title: Nightly export writes cardholder data to an unmonitored share
+  category: Information Disclosure
+  element: billing-database
+  severity: critical
+  description: The export target is outside the modelled scope, so nothing audits it.
+  mitigation:
+    status: accepted
+    description: Accepted; the share is decommissioned next quarter.
+diagrams:
+- id: main-dfd
+  name: Level 0 & 1 DFD
+  viewport:
+    x: 0.0
+    y: 0.0
+    zoom: 1.0

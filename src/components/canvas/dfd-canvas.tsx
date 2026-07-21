@@ -13,8 +13,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import { EyeOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
-import { setAltDragActive, useCanvasStore } from "@/stores/canvas-store";
+import { useCanvasStore } from "@/stores/canvas-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -78,9 +79,9 @@ export function DfdCanvas() {
 		[getReactFlowViewport, setReactFlowViewport],
 	);
 
-	// Expose ReactFlow actions to the canvas store so keyboard shortcuts can use them
+	// Expose ReactFlow actions to the canvas instance store so keyboard shortcuts can use them
 	useEffect(() => {
-		useCanvasStore.getState().setReactFlowActions({
+		useCanvasInstanceStore.getState().setReactFlowActions({
 			fitView: () => fitViewFn(),
 			zoomIn: () => zoomInFn(),
 			zoomOut: () => zoomOutFn(),
@@ -142,12 +143,12 @@ export function DfdCanvas() {
 
 	const onConnectStart: OnConnectStart = useCallback((_event, params) => {
 		connectingNodeId.current = params.nodeId ?? null;
-		useCanvasStore.getState().setIsConnecting(true);
+		useCanvasInstanceStore.getState().setIsConnecting(true);
 	}, []);
 
 	const onConnectEnd = useCallback(() => {
 		connectingNodeId.current = null;
-		useCanvasStore.getState().setIsConnecting(false);
+		useCanvasInstanceStore.getState().setIsConnecting(false);
 	}, []);
 
 	const onReconnect = useCallback(
@@ -159,14 +160,14 @@ export function DfdCanvas() {
 
 	const onReconnectStart = useCallback(
 		(_event: React.MouseEvent, _edge: DfdEdge, _handleType: string) => {
-			useCanvasStore.getState().setIsConnecting(true);
+			useCanvasInstanceStore.getState().setIsConnecting(true);
 		},
 		[],
 	);
 
 	const onReconnectEnd = useCallback(
 		(_event: MouseEvent | TouchEvent, _edge: DfdEdge, _handleType: string) => {
-			useCanvasStore.getState().setIsConnecting(false);
+			useCanvasInstanceStore.getState().setIsConnecting(false);
 		},
 		[],
 	);
@@ -197,12 +198,12 @@ export function DfdCanvas() {
 			// Read type from Zustand store — workaround for WKWebView dataTransfer issues
 			// where getData() returns empty for custom MIME types during drop events.
 			// Clear immediately after reading to prevent onDragEnd fallback from double-creating.
-			const store = useCanvasStore.getState();
+			const store = useCanvasInstanceStore.getState();
 			const draggedType = store.draggedType;
 			const draggedSubtype = store.draggedSubtype;
 			const draggedIcon = store.draggedIcon;
 			const draggedName = store.draggedName;
-			useCanvasStore.getState().setDraggedComponent(null);
+			store.setDraggedComponent(null);
 			if (!draggedType) return;
 
 			// Convert screen coordinates to flow coordinates (accounts for zoom/pan)
@@ -269,7 +270,7 @@ export function DfdCanvas() {
 				const preCloneSnapshot = { ...model };
 
 				// Tell the canvas store to skip its own drag-end history push
-				setAltDragActive(true);
+				useCanvasInstanceStore.getState().setAltDragActive(true);
 
 				const cloneId = duplicateElement(node.id, {
 					offset: { x: 0, y: 0 },
@@ -284,7 +285,7 @@ export function DfdCanvas() {
 						preCloneSnapshot,
 					};
 				} else {
-					setAltDragActive(false);
+					useCanvasInstanceStore.getState().setAltDragActive(false);
 				}
 			}
 		},
@@ -298,7 +299,7 @@ export function DfdCanvas() {
 
 		// Always clear Alt+drag state
 		altDragRef.current = null;
-		setAltDragActive(false);
+		useCanvasInstanceStore.getState().setAltDragActive(false);
 
 		// If drag stopped on a different node (shouldn't happen, but safety), clean up the orphaned clone
 		if (node.id !== info.originalId) {

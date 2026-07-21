@@ -45,3 +45,9 @@ screenshots/
 
 # Local-only scratch (per-developer, never committed)
 *.local.md
+
+# Agent worktrees. Each is a full checkout containing its own biome.json, which
+# Biome discovers as a nested root configuration and errors on, breaking
+# `npm run ci:local` for anyone running a coding agent. Ignoring them also stops
+# a worktree being committed by accident.
+.claude/worktrees/
