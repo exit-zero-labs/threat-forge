@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import { getChatAdapter } from "@/lib/adapters/get-chat-adapter";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
-import type { AiProvider, LegacyChatMessage } from "@/lib/ai/protocol/messages";
+import { capMessageHistory } from "@/lib/ai/protocol/budget";
+import {
+	type AiProvider,
+	flattenText,
+	type LegacyChatMessage,
+	upgradeLegacyMessage,
+} from "@/lib/ai/protocol/messages";
 import { getDefaultModelId } from "@/lib/ai-models";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
@@ -319,11 +325,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const finalState = get();
 			const finalMessages = finalState.messages;
 
-			// Enforce max messages per session
-			const cappedMessages =
-				finalMessages.length > MAX_MESSAGES_PER_SESSION
-					? finalMessages.slice(-MAX_MESSAGES_PER_SESSION)
-					: finalMessages;
+			// Enforce max messages per session at tool-group granularity, so a saved
+			// session can never split a tool_call from the tool_result answering it.
+			// Messages are still string-content here (protocol event consumption is
+			// issue #61 step 10), so the upgrade/flatten round-trip is lossless today
+			// and already group-safe once messages carry tool blocks.
+			const cappedMessages: ChatMessage[] = capMessageHistory(
+				finalMessages.map(upgradeLegacyMessage),
+				MAX_MESSAGES_PER_SESSION,
+			).map((message) => ({ role: message.role, content: flattenText(message) }));
 
 			// Update session title from first user message if still default
 			const updatedSessions = finalState.sessions.map((s) => {

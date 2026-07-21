@@ -47,3 +47,21 @@ export interface ProtocolError {
 	 */
 	providerDetail?: string;
 }
+
+/**
+ * A thrown carrier for a {@link ProtocolError}.
+ *
+ * Synchronous protocol failures — request preflight (issue #61 step 3) is the
+ * first — throw this rather than a bare `Error` so a caller can branch on
+ * `code` instead of parsing a message. The `message` passed to `Error` is the
+ * same user-safe sentence, so an uncaught throw still renders acceptably.
+ */
+export class ProtocolException extends Error {
+	readonly error: ProtocolError;
+
+	constructor(error: ProtocolError) {
+		super(error.message);
+		this.name = "ProtocolException";
+		this.error = error;
+	}
+}

@@ -58,6 +58,92 @@ ThreatForge Desktop App (Tauri v2)
 | **ADR-007** | AES-256-GCM encrypted file storage for API keys | Cross-platform without OS-specific keychain quirks; secure at rest | Managed by app, not OS keychain |
 | **ADR-008** | Tailwind + shadcn/ui | Lightweight, customizable, excellent dark mode, growing Tauri adoption | More manual composition than MUI |
 | **ADR-009** | Additive schema growth keeps `version: "1.0"` | Additive optional fields break nothing, so bumping would make every already-shipped build refuse to open every new file; `validate_version` stays exact-match and fail-closed. Full argument in [`file-format.md`](file-format.md#schema-versioning-policy) | An older desktop build that opens and saves a newer document silently discards the sections it does not know |
+| **ADR-010** | Per-document state lives in swapped store bundles, not copied checkpoints | Each open document owns real model/canvas/history store instances; activation repoints the store facades at that document's bundle. Nothing is copied on switch, so no field can be forgotten and leak across documents, and every future document field is per-document by construction. Full rationale in [`docs/plans/53-document-registry.md`](../plans/53-document-registry.md) | `activateDocument` has no production caller until the tab UI (`#54`) renders more than one document at a time |
+
+## Document registry and per-document state scope
+
+ThreatForge shows one document at a time today, but the state layer already hosts many
+independent documents. `src/stores/document-registry.ts` (`useDocumentRegistry`) owns every open
+document and holds the single active-document pointer — the only global document-selection state.
+
+**Session and bundle.** Each open document is a `DocumentSession` (`src/types/document.ts`): a
+stable `DocumentId`, a `createdAt` stamp, its own `DocumentStores` bundle, its `fileSettings`, and
+an `activeChatSessionId` reference. A bundle (`src/stores/document-stores.ts`) is three real store
+instances built by injected factories in dependency order — history, then model, then canvas — so
+a document's canvas store can only ever write into its own model and history stores
+(`createCanvasStore({ model, history })`). Module-level mutable values that used to be shared by
+construction (history-debounce keys, the pre-drag and nudge gesture snapshots, and the
+`comp-`/`flow-`/`boundary-` id counters) now live inside each factory closure and are therefore
+per-document.
+
+**Bundle swap, not copy.** Activating a document repoints the facades at that document's bundle; it
+never copies state. `useModelStore`, `useCanvasStore`, and `useHistoryStore` (`model-store.ts`,
+`canvas-store.ts`, `history-store.ts`) are facades over an active-bundle pointer
+(`setActiveStores`/`useActiveStores`): the hook form subscribes through the pointer so a switch
+re-renders and re-subscribes React consumers, while `getState`/`setState`/`subscribe` delegate to
+the active bundle. Because nothing is copied, a field added to a factory-created store is
+per-document automatically and cannot be forgotten on a later switch. That is the decisive reason
+the design chose bundle-swap over a checkpoint/restore field list (ADR-010).
+
+**Scope rule.** Document-scoped state must be exactly as the user left it when they return to the
+document. Workspace-scoped state belongs to the single window, the mounted canvas, or the user.
+
+| Scope | State |
+|-------|-------|
+| Document | `model`, `filePath`, `isDirty`, the four selection ids, `isAnalyzing`, `nodes`, `edges`, `viewport`, `pendingLayout`, history `past`/`future`, id counters, history-debounce state, pre-drag and nudge gesture snapshots, `fileSettings`, `activeChatSessionId` |
+| Workspace | ReactFlow instance handles (`rfFitView`/`rfZoomIn`/`rfZoomOut`/`rfPanBy`) and in-flight pointer gesture state in `canvas-instance-store.ts`, clipboard contents, `ui-store` (panels, theme, `canvasLocked`, dialogs), `settings-store.settings`, chat provider and `hasApiKey`, onboarding, and update state |
+
+Anything not listed as workspace is document-scoped. `fileSettings` is owned by the
+`DocumentSession` record; the session-ownership PR (`#127`) removes the vestigial `fileSettings`
+field still declared on `settings-store` once every reader uses the session record.
+
+**Module graph (acyclic).**
+
+```
+model-store-factory.ts ─┐
+canvas-store-factory.ts ─┼─> document-stores.ts ─> document-registry.ts
+history-store-factory.ts┘        ^
+                                 │ (facade only)
+        model-store.ts ──────────┤
+        canvas-store.ts ─────────┤
+        history-store.ts ────────┘
+```
+
+No store module imports `document-registry.ts`. `document-stores.ts` seeds a scratch bundle at
+module load, so a unit test importing only `@/stores/model-store` still gets a model store wired to
+the same history store that `@/stores/history-store` resolves to.
+
+**Document ids never enter `.thf`.** `createDocumentId()` (`src/lib/document-id.ts`) returns a
+branded `doc-<uuid>` from `crypto.randomUUID`/`getRandomValues`, never `Math.random`, and never
+derived from a path, title, or model content. Ids exist only at runtime and in workspace metadata.
+The document model is stored and cloned as an opaque payload (`structuredClone` in the history
+factory), so schema-unknown fields survive undo/redo and a document switch. `#53` adds no `.thf`
+schema change, version bump, or migration.
+
+**Isolation is proven, not asserted.** `src/stores/document-registry.test.ts` carries the ten-case
+isolation suite (plan step 9); each case fails both for a leak and for the opposite defect of
+wiping a document's state on switch. Case 10 lives in
+`src/components/layout/status-bar.test.tsx` and proves the facade re-subscribes through React.
+
+### Handoff seams
+
+- **`#54` (tab UX):** `useDocumentStores(id)` / `getDocumentStores(id)` expose a document's own
+  bundle so a tab can render its title and dirty indicator without activating it. When the active
+  document closes, `closeDocument` falls back to the most-recently-created remaining document; that
+  close-activation policy is deliberately provisional and belongs to `#54`.
+- **`#55` (browser recovery and export):** operates on the same registry sessions; it introduces no
+  new document-identity concept.
+- **`#56` (IndexedDB persistence):** the `DocumentSession` is the persistence unit and holds no
+  credentials. `#56` adds an additive
+  `hydrateDocument({ id, model, filePath, pendingLayout, createdAt, activate })` registry action
+  that rebuilds a session under a *persisted* `DocumentId`/`createdAt` — where `createDocument`
+  always mints a fresh id and always activates. See
+  [`docs/plans/56-indexeddb-persistence.md`](../plans/56-indexeddb-persistence.md).
+- **`#63` (AI conversation persistence):** the registry owns only `activeChatSessionId`, a
+  reference — never conversation content. While chat storage stays keyed by `filePath`, two unsaved
+  documents share the `threatforge-chat-sessions:unsaved` bucket; `#63` rekeys conversation storage
+  to `DocumentId`. The session-binding effect and its `ai-chat-tab` effect-override limitation are
+  carried by the session-ownership PR (`#127`).
 
 ## Project Structure
 

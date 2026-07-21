@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { LEGACY_ACTION_TOOLS } from "@/lib/ai/schemas/actions";
 import type { ThreatModel } from "@/types/threat-model";
 import { buildSystemPrompt } from "./ai-prompt";
 
@@ -20,9 +21,11 @@ function emptyModel(): ThreatModel {
 	};
 }
 
+const NO_TOOLS = { tools: [] } as const;
+
 describe("buildSystemPrompt", () => {
 	it("includes STRIDE methodology and model metadata", () => {
-		const prompt = buildSystemPrompt(emptyModel());
+		const prompt = buildSystemPrompt(emptyModel(), NO_TOOLS);
 
 		expect(prompt).toContain("STRIDE");
 		expect(prompt).toContain("Test Model");
@@ -33,7 +36,7 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("omits sections for empty model", () => {
-		const prompt = buildSystemPrompt(emptyModel());
+		const prompt = buildSystemPrompt(emptyModel(), NO_TOOLS);
 
 		expect(prompt).not.toContain("Elements:");
 		expect(prompt).not.toContain("Data Flows:");
@@ -52,7 +55,7 @@ describe("buildSystemPrompt", () => {
 			technologies: ["nginx"],
 		});
 
-		const prompt = buildSystemPrompt(model);
+		const prompt = buildSystemPrompt(model, NO_TOOLS);
 
 		expect(prompt).toContain("Elements:");
 		expect(prompt).toContain("API Gateway");
@@ -63,7 +66,7 @@ describe("buildSystemPrompt", () => {
 	});
 
 	it("includes response format instructions", () => {
-		const prompt = buildSystemPrompt(emptyModel());
+		const prompt = buildSystemPrompt(emptyModel(), NO_TOOLS);
 
 		expect(prompt).toContain("<response>");
 		expect(prompt).toContain("Do NOT narrate");
@@ -81,11 +84,32 @@ describe("buildSystemPrompt", () => {
 			authenticated: true,
 		});
 
-		const prompt = buildSystemPrompt(model);
+		const prompt = buildSystemPrompt(model, NO_TOOLS);
 
 		expect(prompt).toContain("Data Flows:");
 		expect(prompt).toContain("web-app -> api-gw");
 		expect(prompt).toContain("HTTPS");
 		expect(prompt).toContain("authenticated: true");
+	});
+
+	it("emits the fenced actions instructions only when no tools are offered", () => {
+		// This single split is what makes #64's removal mechanical: native tools
+		// replace the fenced path, so the ` ```actions ` instructions must vanish
+		// exactly when a non-empty tool list is passed.
+		const fenced = buildSystemPrompt(emptyModel(), { tools: [] });
+		expect(fenced).toContain("```actions");
+
+		const withTools = buildSystemPrompt(emptyModel(), {
+			tools: [{ name: "add_element", description: "Add an element." }],
+		});
+		expect(withTools).not.toContain("```actions");
+	});
+
+	it("generates the supported-action catalogue from the tool registry", () => {
+		// The prompt cannot advertise an action the validator would reject, because
+		// both read the same registry.
+		const prompt = buildSystemPrompt(emptyModel(), { tools: [] });
+		const catalogue = LEGACY_ACTION_TOOLS.map((tool) => tool.name).join(", ");
+		expect(prompt).toContain(`Supported actions: ${catalogue}.`);
 	});
 });

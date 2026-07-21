@@ -26,7 +26,9 @@ export class BrowserChatAdapter implements ChatAdapter {
 			throw new Error(`No API key configured for ${provider}. Open AI Settings to add one.`);
 		}
 
-		const systemPrompt = buildSystemPrompt(model);
+		// No native tools yet (issue #61 steps 3–5); the empty list keeps the model
+		// on the fenced ` ```actions ` path that #62/#64 will replace.
+		const systemPrompt = buildSystemPrompt(model, { tools: [] });
 
 		if (provider === "anthropic") {
 			await streamAnthropic(apiKey, systemPrompt, messages, callbacks, modelId, signal);
