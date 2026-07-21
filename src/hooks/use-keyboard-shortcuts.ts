@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
 import { useHistoryStore } from "@/stores/history-store";
@@ -65,11 +66,11 @@ export function useKeyboardShortcuts() {
 					case "=":
 					case "+":
 						e.preventDefault();
-						useCanvasStore.getState().rfZoomIn?.();
+						useCanvasInstanceStore.getState().rfZoomIn?.();
 						return;
 					case "-":
 						e.preventDefault();
-						useCanvasStore.getState().rfZoomOut?.();
+						useCanvasInstanceStore.getState().rfZoomOut?.();
 						return;
 					case "ArrowUp":
 					case "ArrowDown":
@@ -84,7 +85,7 @@ export function useKeyboardShortcuts() {
 							useCanvasStore.getState().nudgeSelected(dx, dy);
 						} else {
 							// Pan canvas when nothing is selected
-							useCanvasStore.getState().rfPanBy?.({ x: -dx, y: -dy });
+							useCanvasInstanceStore.getState().rfPanBy?.({ x: -dx, y: -dy });
 						}
 						return;
 					}
@@ -191,15 +192,15 @@ export function useKeyboardShortcuts() {
 					break;
 				case "0":
 					e.preventDefault();
-					useCanvasStore.getState().rfFitView?.();
+					useCanvasInstanceStore.getState().rfFitView?.();
 					break;
 				case "=":
 					e.preventDefault();
-					useCanvasStore.getState().rfZoomIn?.();
+					useCanvasInstanceStore.getState().rfZoomIn?.();
 					break;
 				case "-":
 					e.preventDefault();
-					useCanvasStore.getState().rfZoomOut?.();
+					useCanvasInstanceStore.getState().rfZoomOut?.();
 					break;
 				case "k":
 					if (!isInputFocused) {

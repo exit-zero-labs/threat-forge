@@ -4,6 +4,7 @@
  */
 
 import { getAllComponents } from "@/lib/component-library";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -106,21 +107,21 @@ export function buildCommands(deps: {
 			label: "Fit to View",
 			category: "view",
 			shortcut: fmt("\u23180", "Ctrl+0"),
-			action: () => useCanvasStore.getState().rfFitView?.(),
+			action: () => useCanvasInstanceStore.getState().rfFitView?.(),
 		},
 		{
 			id: "view:zoom-in",
 			label: "Zoom In",
 			category: "view",
 			shortcut: "+",
-			action: () => useCanvasStore.getState().rfZoomIn?.(),
+			action: () => useCanvasInstanceStore.getState().rfZoomIn?.(),
 		},
 		{
 			id: "view:zoom-out",
 			label: "Zoom Out",
 			category: "view",
 			shortcut: "\u2212",
-			action: () => useCanvasStore.getState().rfZoomOut?.(),
+			action: () => useCanvasInstanceStore.getState().rfZoomOut?.(),
 		},
 
 		// Navigate commands

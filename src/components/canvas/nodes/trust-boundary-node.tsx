@@ -1,6 +1,7 @@
 import { type NodeProps, NodeResizeControl } from "@xyflow/react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import type { DfdNodeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
@@ -23,7 +24,7 @@ export function TrustBoundaryNode({ id, data, selected }: NodeProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	// Highlight boundary when an element is being dragged from the palette
-	const isDraggingElement = useCanvasStore(
+	const isDraggingElement = useCanvasInstanceStore(
 		(s) => s.draggedType !== null && s.draggedType !== "trust_boundary",
 	);
 
