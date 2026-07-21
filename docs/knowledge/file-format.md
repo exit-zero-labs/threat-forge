@@ -212,9 +212,68 @@ THREAT_MODEL
 - All element/flow references in threats must point to existing IDs
 - Reject files with duplicate IDs within any section
 
+## Schema versioning policy
+
+This is the detailed argument behind **ADR-009** in
+[`architecture.md`](architecture.md#architecture-decision-records-adrs).
+
+**Decision: additive schema growth does not bump `version`.** Documents that gain new optional
+sections or fields remain `version: "1.0"`. `validate_version`
+(`src-tauri/src/file_io/reader.rs`) keeps its exact-match, fail-closed behavior and is not
+widened.
+
+### The forward rule
+
+> Additive optional fields never bump the version. A bump happens only for a breaking change, and
+> a breaking bump is expected to hard-fail on older builds.
+
+### Why not bump
+
+1. **Additive change is not breaking change.** No field is removed, renamed, retyped, or given new
+   semantics, so there is nothing to migrate. `AGENTS.md` requires a bump for *breaking* schema
+   changes, and this is not one.
+2. **A bump converts graceful degradation into a hard failure.** `validate_version` matches `"1.0"`
+   exactly and returns `UnsupportedVersion` for anything else. Because serde tolerates unknown
+   fields, an already-released build opens a document containing sections it has never heard of and
+   simply ignores them. Bumping to `"1.1"` would instead make every already-shipped build refuse to
+   open **any** file saved by the newer version — including plain threat models carrying no new
+   data at all. That trades a narrow failure mode for a universal one and directly attacks the
+   "portable" product invariant.
+3. **`version` signals compatibility, not features.** The presence of a section is the feature
+   signal, and it is self-describing. `version` exists to tell a reader whether it can understand
+   the document at all.
+
+### Alternatives considered and rejected
+
+- **Bump to `"1.1"`.** Rejected per (2): it makes downgrade a total failure instead of a partial
+  one, for a change with no breaking element.
+- **Keep `"1.0"` but widen `validate_version` to accept any `1.x`.** Rejected. It cannot help the
+  installed base, because already-released builds hard-fail regardless. Going forward it would
+  convert a clear refusal into silent data loss the first time a build met an unknown `1.x`
+  document. Exact-match is the fail-closed behavior and stays.
+
+### Residual risk: downgrade data loss on the desktop writer
+
+The accepted cost is stated here rather than hidden. If an **older desktop build** opens a document
+containing sections it does not know and saves it, those sections are gone. The desktop writer
+deserializes into Rust structs, which have nowhere to keep unknown data, so `serde_yaml::to_string`
+emits only the fields that build understands. This is not generic preservation and must not be
+described as such.
+
+The browser writer behaves differently. `BrowserFileAdapter` dumps the plain object it loaded, so
+unknown sections and keys survive a browser load/save cycle. The asymmetry is real, not a
+guarantee, and it is pinned by tests in both languages:
+
+- `unknown_fields_fixture_parses_and_drops_the_unknown_data` (`src-tauri/src/file_io/fixtures_test.rs`)
+- `carries unknown sections and keys through a load/dump/load cycle` (`src/types/thf-fixtures.test.ts`)
+
+Comments are lost the same way and for the same reason: serde has nowhere to keep them, so any
+comment other than the header ThreatForge itself writes disappears on the first desktop save.
+
 ## Testing
 
 - Every schema change needs a round-trip test: YAML → Rust struct → YAML → assert equal
-- Sample `.thf` files in `tests/fixtures/` for regression testing
+- Sample `.thf` files live in [`tests/fixtures/thf/`](../../tests/fixtures/thf/README.md), read by
+  both `src-tauri/src/file_io/fixtures_test.rs` and `src/types/thf-fixtures.test.ts`
 - Test that git diffs for common operations are clean and minimal
 - Test backward compatibility: old files without new fields must still parse

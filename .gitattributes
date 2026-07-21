@@ -1,0 +1,3 @@
+# Byte-identity `.thf` fixtures are compared against `serde_yaml` output, which always emits LF.
+# A CRLF checkout would break those assertions, so pin the corpus to LF on every platform.
+tests/fixtures/** text eol=lf
