@@ -1,7 +1,6 @@
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
-import { BrowserKeychainAdapter } from "@/lib/adapters/browser-keychain-adapter";
 import { serializeThreatModelYaml } from "@/lib/thf-yaml";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { DocumentId } from "@/types/document";
@@ -20,6 +19,20 @@ import { WORKSPACE_STORAGE_NAMESPACE } from "./types";
 /** A distinctive secret that does not appear anywhere in the model text below. */
 const SECRET = "sk-ant-SECRET-do-not-leak-9f8e7d6c5b4a";
 const DOC = "doc-boundary-check" as DocumentId;
+
+/**
+ * The localStorage key the browser keychain adapter stores a BYOK key under. Seeded directly
+ * rather than through `BrowserKeychainAdapter.setKey`, so this suite depends on nothing from the
+ * keychain layer — which is exactly the disjointness the third case asserts — and does not route a
+ * key-shaped literal through the adapter's cleartext write (the browser BYOK tradeoff is a
+ * pre-existing, UI-surfaced design decision, not a property of the workspace storage under test).
+ */
+const KEYCHAIN_STORAGE_KEY = "tf-api-key-anthropic";
+
+/** Simulate a BYOK user who has configured a key, without touching the keychain adapter. */
+function seedConfiguredKey(): void {
+	localStorage.setItem(KEYCHAIN_STORAGE_KEY, SECRET);
+}
 
 function modelWithoutSecret(): ThreatModel {
 	return {
@@ -72,8 +85,8 @@ afterEach(() => {
 
 describe("no key material reaches the workspace stores (D6)", () => {
 	it("keeps a stored key out of both IndexedDB and the workspace manifest", async () => {
-		// A real key is stored via the keychain adapter's own namespace.
-		await new BrowserKeychainAdapter().setKey("anthropic", SECRET);
+		// A key is present in the keychain's own namespace, as a configured BYOK user would have.
+		seedConfiguredKey();
 
 		// A full persist cycle: durable body plus the manifest projection.
 		const storage = new IndexeddbWorkspaceStorage();
@@ -95,12 +108,12 @@ describe("no key material reaches the workspace stores (D6)", () => {
 		const keysCarryingSecret = Object.keys(localStorage).filter((key) =>
 			(localStorage.getItem(key) ?? "").includes(SECRET),
 		);
-		expect(keysCarryingSecret).toEqual(["tf-api-key-anthropic"]);
+		expect(keysCarryingSecret).toEqual([KEYCHAIN_STORAGE_KEY]);
 	});
 
 	it("never reads or writes a keychain key during a persist cycle", async () => {
-		// Store the key before spying so only the persistence cycle is observed.
-		await new BrowserKeychainAdapter().setKey("anthropic", SECRET);
+		// Seed the key before spying so only the persistence cycle is observed.
+		seedConfiguredKey();
 
 		const getItem = vi.spyOn(Storage.prototype, "getItem");
 		const setItem = vi.spyOn(Storage.prototype, "setItem");
