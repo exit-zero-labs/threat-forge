@@ -31,10 +31,30 @@ body:
       label: Alternatives Considered
       description: What other approaches did you consider? Why is your proposal better?
 
-  - type: dropdown
-    id: priority
+  - type: textarea
+    id: acceptance
     attributes:
-      label: How important is this to you?
+      label: Observable Success
+      description: What user-visible behavior would prove this request is complete?
+      placeholder: "A user can...; the result persists after...; failures show..."
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies, Parent, and Human Actions
+      description: Link a parent initiative or related issues and note required accounts, secrets, provisioning, external decisions, or other human blockers. Never paste API keys, tokens, passwords, or credential values.
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification and Owner Validation
+      description: Describe deterministic evidence that would verify the request, then the workflow or plausible-but-wrong result an owner must inspect before merge.
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: User Impact
+      description: Maintainers assign Project priority separately during triage.
       options:
         - Nice to have
         - Important -- affects my workflow

@@ -12,7 +12,55 @@ Thanks for your interest in contributing. ThreatForge is an open-source project 
 6. Make your changes
 7. Open a pull request against `main`
 
+All pull requests are reviewed and merged by the repository owners. Only
+`Shreyasdbz` and `exitzerolabs-admin` can update `main`; contributors never need direct
+repository write access.
+
 ## Development Workflow
+
+### Issue and Project Lifecycle
+
+GitHub Issues and
+[Threat Forge Project 2](https://github.com/orgs/exit-zero-labs/projects/2) are the sole
+execution tracker.
+
+| Status | Meaning |
+|--------|---------|
+| `To triage` | New and not yet shaped |
+| `Backlog` | Triaged but not executable or selected |
+| `Ready` | Criteria, dependencies, ownership, and autonomy are settled |
+| `In progress` | Implementation is underway |
+| `In review` | Verification and agent preflight are complete; owner validation remains |
+| `Done` | Merged or closed after validation |
+
+Every non-trivial issue receives P0/P1/P2 priority, XS–XL size, and exactly one autonomy
+label:
+
+- `agent-ready` — an agent can reach a verification-complete PR without earlier human action
+- `human-blocked` — a secret, account, provisioning step, or unresolved decision is needed
+
+Final owner validation is required for both labels.
+
+### Planning by Size
+
+- **XS/S:** the issue body is the executable specification.
+- **M/L:** add a committed plan based on `docs/plans/0000-template.md` before code.
+- **XL:** use a parent initiative and decompose it into executable sub-issues.
+
+Use native `Task`, `Bug`, and `Feature` issue types. Preserve parent/sub-issue relationships and
+Iteration assignments when shaping or decomposing work.
+
+Planning and implementation should use separate contexts for M/L work. Replans append dated
+history rather than replacing earlier decisions.
+
+### Verification and Validation
+
+Verification is deterministic evidence that the written contract was implemented: types,
+lint, tests, builds, security checks, and artifacts. Validation is an owner decision that the
+change solves the right problem and avoids plausible-but-wrong outcomes.
+
+Green CI does not mean a change is done. Move work to `In review` only after verification and
+agent preflight; owners perform final validation and merge.
 
 ### Branch Naming
 
@@ -55,22 +103,17 @@ Examples:
 
 ### Before Submitting a PR
 
-1. Run lint checks:
-   ```bash
-   npx biome check .
-   cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-   ```
+1. Run the smallest targeted checks while iterating.
+2. Run `npm run ci:local` before handoff.
+3. Add E2E, Docker, Tauri build, signing, or live-service checks when the change requires them.
+4. Run the author anti-slop pass and independent PR preflight.
+5. Link the issue with `Closes #N` and the M/L plan when required.
+6. Include before/after screenshots or traces for visible UI changes.
+7. List owner validation steps separately from automated verification.
 
-2. Run tests:
-   ```bash
-   npx vitest --run
-   cargo test --manifest-path src-tauri/Cargo.toml
-   ```
-
-3. Make sure the app builds:
-   ```bash
-   npm run tauri build
-   ```
+Commit, push, PR creation, approval, merge, and release each require explicit authorization.
+Tool permissions or repository ownership do not imply authorization. Owners do not bypass
+required checks, review, signed commits, thread resolution, or squash-only merging.
 
 ## What to Contribute
 
@@ -88,7 +131,7 @@ Look for issues labeled [`good first issue`](https://github.com/exit-zero-labs/t
 
 ### What We Probably Won't Accept
 
-- Features that require a cloud backend or SaaS infrastructure
+- Features that require a ThreatForge account or mandatory hosted backend
 - Changes that break the YAML file format without a migration path
 - Large refactors without prior discussion in an issue
 - Dependencies that significantly increase binary size
@@ -107,6 +150,12 @@ Open a [feature request](https://github.com/exit-zero-labs/threat-forge/issues/n
 - The problem you're trying to solve
 - Your proposed solution (if you have one)
 - Alternatives you've considered
+
+Substantial product directions should use the
+[roadmap initiative form](https://github.com/exit-zero-labs/threat-forge/issues/new?template=roadmap-initiative.yml).
+Live priority and status are maintained in the
+[Threat Forge project](https://github.com/orgs/exit-zero-labs/projects/2), not in external
+trackers.
 
 ## Code of Conduct
 

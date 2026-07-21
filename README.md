@@ -10,6 +10,7 @@
   <a href="#getting-started">Getting Started</a> &nbsp;&bull;&nbsp;
   <a href="#features">Features</a> &nbsp;&bull;&nbsp;
   <a href="#file-format">File Format</a> &nbsp;&bull;&nbsp;
+  <a href="docs/plans/roadmap.md">Roadmap</a> &nbsp;&bull;&nbsp;
   <a href="#contributing">Contributing</a> &nbsp;&bull;&nbsp;
   <a href="https://threatforge.dev">Website</a>
 </p>
@@ -133,7 +134,7 @@ Every element, flow, boundary, and threat is a discrete YAML block. Adding a com
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+
+- [Node.js](https://nodejs.org/) 22+
 - [Rust](https://www.rust-lang.org/tools/install) (stable)
 - [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
 
@@ -173,7 +174,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml      # Rust
 ### Local CI
 
 ```bash
-npm run ci:local          # Native lint + test (~30s)
+npm run ci:local          # Native lint + test + web/Worker build
 npm run ci:docker         # Docker lint + test (clean environment)
 npm run ci:docker:build   # Docker lint + test + Tauri build
 ```
@@ -229,6 +230,10 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md). Do not open a public 
 ## Contributing
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code style, and PR guidelines.
+
+Planning is public in [GitHub Issues](https://github.com/exit-zero-labs/threat-forge/issues)
+and the [Threat Forge project](https://github.com/orgs/exit-zero-labs/projects/2). See the
+[roadmap](docs/plans/roadmap.md) for product direction.
 
 Areas where help is especially valuable:
 - STRIDE threat rule expansion

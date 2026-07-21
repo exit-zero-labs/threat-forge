@@ -104,7 +104,7 @@ threat-forge/
 | Local | Developer workstation | `npm run tauri dev` (hot reload) | $0 |
 | CI | Automated builds + tests | GitHub Actions matrix (ubuntu, macos, windows) | $0 (public repo) |
 | Release | Signed binaries | GitHub Releases | $0 |
-| Website | Docs + landing page (threatforge.dev) | Cloudflare Pages (Git integration, auto-deploy on push to `main`) | $0 |
+| Website | Docs + browser app (threatforge.dev) | Cloudflare Workers Static Assets | $0 |
 
 ### CI Pipeline
 
@@ -120,7 +120,7 @@ Feature Branch → PR Created → GitHub Actions CI
 ### Local CI
 
 ```bash
-npm run ci:local         # Native lint + test (fast, ~30s)
+npm run ci:local         # Native lint + test + web build
 npm run ci:docker        # Docker lint + test (clean environment)
 npm run ci:docker:build  # Docker lint + test + Tauri build
 ```

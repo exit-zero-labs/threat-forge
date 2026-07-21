@@ -40,6 +40,14 @@ Layout data (positions, sizes, colors, viewport) is stored **inline** on each en
 - `data_flows[].stroke_color`, `stroke_opacity` — connector color
 - `diagrams[].viewport` — `{x, y, zoom}` canvas viewport
 
+### Legacy sidecar migration
+
+Current files store layout inline and require no sidecar. Older models may reference
+`.threatforge/layouts/*.json` through `diagrams[].layout_file`. On desktop open, the Rust backend
+reads an available legacy sidecar and merges its positions and viewport into the in-memory model.
+New saves write inline layout and omit `layout_file`. Missing legacy sidecars are tolerated so the
+model remains usable without recovered layout.
+
 ## Full Example
 
 ```yaml

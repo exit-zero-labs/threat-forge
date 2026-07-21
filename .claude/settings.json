@@ -1,4 +1,73 @@
 {
+  "permissions": {
+    "ask": [
+      "Bash(git add *)",
+      "Bash(git branch -d *)",
+      "Bash(git branch -D *)",
+      "Bash(git checkout -b *)",
+      "Bash(git commit *)",
+      "Bash(git mv *)",
+      "Bash(git push *)",
+      "Bash(git rm *)",
+      "Bash(git stash *)",
+      "Bash(git switch -c *)",
+      "Bash(git tag *)",
+      "Bash(gh api --method *)",
+      "Bash(gh api -X *)",
+      "Bash(gh issue close *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh issue create *)",
+      "Bash(gh issue edit *)",
+      "Bash(gh issue reopen *)",
+      "Bash(gh label create *)",
+      "Bash(gh label delete *)",
+      "Bash(gh label edit *)",
+      "Bash(gh project item-add *)",
+      "Bash(gh project item-archive *)",
+      "Bash(gh project item-delete *)",
+      "Bash(gh project item-edit *)",
+      "Bash(gh pr close *)",
+      "Bash(gh pr comment *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr reopen *)",
+      "Bash(gh pr review *)",
+      "Bash(gh release create *)",
+      "Bash(gh release delete *)",
+      "Bash(gh release edit *)",
+      "Bash(gh repo edit *)",
+      "Bash(gh run cancel *)",
+      "Bash(gh run rerun *)",
+      "Bash(gh workflow run *)"
+    ],
+    "deny": [
+      "Bash(git clean -f*)",
+      "Bash(git checkout -- *)",
+      "Bash(git commit --amend*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit * --no-verify*)",
+      "Bash(git merge --no-verify*)",
+      "Bash(git merge * --no-verify*)",
+      "Bash(git push --force*)",
+      "Bash(git push * --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git rebase *)",
+      "Bash(git reset --hard*)",
+      "Bash(git restore *)",
+      "Bash(gh pr merge --admin*)",
+      "Bash(npm run deploy:web)",
+      "Bash(npm run deploy:web *)",
+      "Bash(*wrangler delete*)",
+      "Bash(*wrangler deploy*)",
+      "Bash(*wrangler rollback*)",
+      "Bash(*wrangler versions deploy*)",
+      "Bash(*wrangler versions upload*)",
+      "Bash(rm -rf *)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -6,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [ -n \"$FILE_PATH\" ]; then case \"$FILE_PATH\" in *.ts|*.tsx|*.js|*.jsx|*.json) npx biome check --write \"$FILE_PATH\" 2>/dev/null || true ;; esac; fi",
+            "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [ -n \"$FILE_PATH\" ]; then case \"$FILE_PATH\" in *.ts|*.tsx|*.js|*.jsx|*.json) npx biome check --write \"$FILE_PATH\" ;; esac; fi",
             "timeout": 15
           }
         ]
@@ -18,7 +87,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [ -n \"$FILE_PATH\" ]; then case \"$FILE_PATH\" in *.env*|*credentials*|*secret*) echo \"Blocked: cannot write to sensitive file $FILE_PATH\" >&2; exit 2 ;; esac; fi",
+            "command": "FILE_PATH=$(cat | jq -r '.tool_input.file_path // empty'); if [ -n \"$FILE_PATH\" ]; then RESOLVED_PATH=$(realpath \"$FILE_PATH\" 2>/dev/null || printf '%s' \"$FILE_PATH\"); for CANDIDATE in \"$FILE_PATH\" \"$RESOLVED_PATH\"; do NORMALIZED_PATH=$(printf '%s' \"$CANDIDATE\" | tr '[:upper:]' '[:lower:]'); case \"$NORMALIZED_PATH\" in *.env.example) ;; *.env|*.env.*|*credentials*|*secret*) echo \"Blocked: cannot write to sensitive file $FILE_PATH\" >&2; exit 2 ;; esac; done; fi",
             "timeout": 5
           }
         ]
@@ -29,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Reminder: Run npx biome check --write . and cargo clippy before committing.'"
+            "command": "echo 'Reminder: run targeted checks, anti-slop review, and npm run ci:local before PR handoff.'"
           }
         ]
       }

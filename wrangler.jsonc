@@ -1,0 +1,19 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "threat-forge-web",
+	"compatibility_date": "2026-07-20",
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "single-page-application"
+	},
+	"routes": [
+		{
+			"pattern": "threatforge.dev",
+			"custom_domain": true
+		},
+		{
+			"pattern": "www.threatforge.dev",
+			"custom_domain": true
+		}
+	]
+}

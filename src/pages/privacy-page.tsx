@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { PageShell } from "./shared/page-shell";
 
-const LAST_UPDATED = "March 3, 2026";
+const LAST_UPDATED = "July 20, 2026";
 
 export function PrivacyPage() {
 	return (
@@ -33,7 +33,7 @@ export function PrivacyPage() {
 
 					<Section title="Web Application">
 						<p>
-							The web version at threatforge.dev is hosted on Cloudflare Pages. Standard hosting
+							The web version at threatforge.dev is hosted on Cloudflare Workers. Standard hosting
 							logs (IP addresses, request timestamps) may be collected as part of infrastructure
 							operation. We use Cloudflare Web Analytics, which is privacy-first and cookieless — it
 							does not use cookies, fingerprinting, or cross-site tracking, and does not profile

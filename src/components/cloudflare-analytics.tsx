@@ -8,7 +8,7 @@ const BEACON_TOKEN = import.meta.env.VITE_CF_BEACON_TOKEN as string | undefined;
  *
  * Privacy-first and cookieless — no user profiling. The beacon is injected at
  * runtime so it is never bundled into the Tauri desktop build, and it only loads
- * when `VITE_CF_BEACON_TOKEN` is set at build time (Cloudflare Pages env var).
+ * when `VITE_CF_BEACON_TOKEN` is set at build time.
  * Callers must still gate this behind `!isTauri()`.
  */
 export function CloudflareAnalytics() {

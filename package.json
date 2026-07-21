@@ -9,7 +9,12 @@
 		"build": "tsc && vite build",
 		"build:web": "tsc && vite build",
 		"preview": "vite preview",
+		"preview:web": "npm run build:web && wrangler dev",
+		"deploy:web": "npm run build:web && wrangler deploy",
+		"check:worker": "wrangler deploy --dry-run",
 		"tauri": "tauri",
+		"check:lockfile": "node scripts/check-lockfile-registry.mjs",
+		"check:tauri-versions": "node scripts/check-tauri-version-alignment.mjs",
 		"check": "biome check .",
 		"format": "biome check --write .",
 		"test": "vitest --run",
@@ -22,9 +27,9 @@
 		"prepare": "bash scripts/setup-hooks.sh"
 	},
 	"dependencies": {
-		"@tauri-apps/api": "^2",
-		"@tauri-apps/plugin-dialog": "^2.6.0",
-		"@tauri-apps/plugin-opener": "^2",
+		"@tauri-apps/api": "2.11.1",
+		"@tauri-apps/plugin-dialog": "2.7.2",
+		"@tauri-apps/plugin-opener": "2.5.4",
 		"@xyflow/react": "^12.10.1",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
@@ -42,7 +47,7 @@
 		"@biomejs/biome": "^2.4.4",
 		"@playwright/test": "^1.58.2",
 		"@tailwindcss/vite": "^4.2.1",
-		"@tauri-apps/cli": "^2",
+		"@tauri-apps/cli": "2.11.4",
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/react": "^16.3.2",
 		"@types/js-yaml": "^4.0.9",
@@ -53,6 +58,7 @@
 		"tailwindcss": "^4.2.1",
 		"typescript": "~5.6.2",
 		"vite": "^6.0.3",
-		"vitest": "^4.0.18"
+		"vitest": "^4.0.18",
+		"wrangler": "4.107.1"
 	}
 }

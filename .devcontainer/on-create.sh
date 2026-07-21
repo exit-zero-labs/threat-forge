@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 WORKSPACE_CONFIG="/workspace-config"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -45,6 +45,7 @@ sudo apt-get install -y -qq \
   libappindicator3-dev \
   librsvg2-dev \
   patchelf \
+  libdbus-1-dev \
   libssl-dev \
   libgtk-3-dev \
   libsoup-3.0-dev \
@@ -55,10 +56,14 @@ sudo apt-get install -y -qq \
 # 4. Install Node + Rust dependencies
 # ─────────────────────────────────────────────
 echo "  ↳ Installing npm dependencies..."
+node scripts/check-lockfile-registry.mjs
 npm ci
 
 echo "  ↳ Building Rust backend (first build may take a few minutes)..."
-cd src-tauri && cargo build 2>&1 | tail -5 && cd ..
+cd src-tauri
+cargo fetch --locked
+cargo build --frozen 2>&1 | tail -5
+cd ..
 
 echo ""
 echo "✅ ThreatForge dev environment ready"

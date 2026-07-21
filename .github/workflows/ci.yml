@@ -15,9 +15,34 @@ permissions:
   contents: read
 
 jobs:
+  lockfile:
+    name: Lockfile
+    runs-on: ubuntu-latest
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: ".node-version"
+
+      - name: Verify package registry and integrity
+        run: node scripts/check-lockfile-registry.mjs
+
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # master 2026-02-13
+        with:
+          toolchain: stable
+
+      - name: Verify Tauri JavaScript and Rust versions align
+        run: node scripts/check-tauri-version-alignment.mjs
+
   lint:
     name: Lint
+    needs: [lockfile]
     runs-on: ubuntu-latest
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -53,8 +78,8 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
@@ -63,12 +88,18 @@ jobs:
       - name: Rust format check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
 
+      - name: Fetch locked Rust dependencies
+        run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+
       - name: Clippy lint
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --frozen -- -D warnings
 
   test:
     name: Test
+    needs: [lockfile]
     runs-on: ubuntu-latest
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -100,15 +131,17 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
       - name: Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        run: |
+          cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+          cargo test --manifest-path src-tauri/Cargo.toml --frozen
 
   e2e:
     name: E2E Tests
@@ -144,6 +177,8 @@ jobs:
     name: Build (${{ matrix.platform }})
     needs: [lint, test]
     runs-on: ${{ matrix.platform }}
+    env:
+      CARGO_HOME: ${{ github.workspace }}/.cargo-home
     strategy:
       fail-fast: false
       matrix:
@@ -165,8 +200,8 @@ jobs:
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
+            ${{ env.CARGO_HOME }}/registry
+            ${{ env.CARGO_HOME }}/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
@@ -185,7 +220,17 @@ jobs:
             libssl-dev
 
       - name: Build Tauri app
-        run: npx tauri build
+        run: |
+          cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+          npx tauri build -- --frozen
+
+      - name: Build web app
+        if: runner.os == 'Linux'
+        run: npm run build:web
+
+      - name: Validate Cloudflare Worker bundle
+        if: runner.os == 'Linux'
+        run: npm run check:worker
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
