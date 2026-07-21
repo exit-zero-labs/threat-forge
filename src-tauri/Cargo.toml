@@ -45,6 +45,9 @@ futures = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
+# Build canned HTTP responses so the provider error path can be tested at the
+# call site rather than only through its helper. Already in the tree via reqwest.
+http = "1"
 
 [profile.release]
 strip = true
