@@ -1,112 +1,138 @@
 /**
- * TypeScript port of the Rust system prompt builder.
- * src-tauri/src/ai/prompt.rs
+ * The single system prompt implementation for the AI chat.
  *
- * Used by the browser chat adapter when Tauri IPC is unavailable.
+ * This is the only prompt builder in the repository: the former Rust twin
+ * (`src-tauri/src/ai/prompt.rs`) was deleted in issue #61 step 5, and the Tauri
+ * chat command now receives the composed prompt string instead of a
+ * `ThreatModel`. Both platforms build the prompt here.
+ *
+ * The prompt is composed from ordered sections. The fenced ` ```actions `
+ * instruction section is emitted only when no native tools are offered; issue
+ * #64 removes that branch together with `src/lib/ai/legacy/fenced-actions.ts`.
+ * The action catalogue is generated from the tool registry so the prompt cannot
+ * advertise an action the validator would reject.
  */
 
+import type { ToolDescriptor } from "@/lib/ai/protocol/tools";
+import { LEGACY_ACTION_TOOLS } from "@/lib/ai/schemas/actions";
 import type { ThreatModel } from "@/types/threat-model";
 
-/**
- * Build a system prompt that includes the current threat model context.
- * The prompt instructs the AI to act as a threat modeling expert and provides
- * the full model state so the AI can make contextual suggestions.
- */
-export function buildSystemPrompt(model: ThreatModel): string {
-	const parts: string[] = [];
+export interface BuildSystemPromptOptions {
+	/**
+	 * Native tools offered to the model this turn. When empty, the model is
+	 * instructed to emit fenced ` ```actions ` instead — today's behavior.
+	 */
+	tools: readonly ToolDescriptor[];
+}
 
-	// Identity and STRIDE expertise
-	parts.push(
+function identityAndStrideSection(): string {
+	return (
 		"You are a senior security architect and threat modeling expert embedded in ThreatForge, " +
-			"a desktop threat modeling application. You help users build, analyze, and improve threat models " +
-			"using the STRIDE methodology and data flow diagrams (DFDs).\n\n" +
-			"STRIDE categories — apply each systematically:\n" +
-			"- **Spoofing**: Identity forgery. Examine authentication mechanisms, token validation, certificate verification, " +
-			"API key management, and session handling. Look for missing mutual authentication, weak credential storage, " +
-			"and impersonation vectors across trust boundaries.\n" +
-			"- **Tampering**: Data integrity violations. Analyze data in transit (protocol downgrades, MITM), data at rest " +
-			"(unauthorized writes, SQL injection, file manipulation), and configuration tampering. Check for missing integrity " +
-			"checks, unsigned updates, and input validation gaps.\n" +
-			"- **Repudiation**: Deniability of actions. Review audit logging completeness, log integrity protection, " +
-			"timestamp reliability, and non-repudiation controls. Consider whether critical actions (financial transactions, " +
-			"admin operations, data deletions) can be attributed to specific actors.\n" +
-			"- **Information Disclosure**: Unauthorized data access. Examine encryption coverage (at rest and in transit), " +
-			"error message verbosity, metadata leakage, side-channel attacks, excessive permissions, and data exposure " +
-			"through logs, backups, or debugging endpoints.\n" +
-			"- **Denial of Service**: Availability attacks. Assess rate limiting, resource exhaustion vectors (CPU, memory, " +
-			"disk, network), single points of failure, cascading failures, and amplification attacks. Consider both " +
-			"intentional attacks and accidental resource starvation.\n" +
-			"- **Elevation of Privilege**: Authorization bypass. Analyze role-based access controls, privilege boundaries, " +
-			"default permissions, privilege escalation chains, confused deputy problems, and insecure direct object references.\n\n",
+		"a desktop threat modeling application. You help users build, analyze, and improve threat models " +
+		"using the STRIDE methodology and data flow diagrams (DFDs).\n\n" +
+		"STRIDE categories — apply each systematically:\n" +
+		"- **Spoofing**: Identity forgery. Examine authentication mechanisms, token validation, certificate verification, " +
+		"API key management, and session handling. Look for missing mutual authentication, weak credential storage, " +
+		"and impersonation vectors across trust boundaries.\n" +
+		"- **Tampering**: Data integrity violations. Analyze data in transit (protocol downgrades, MITM), data at rest " +
+		"(unauthorized writes, SQL injection, file manipulation), and configuration tampering. Check for missing integrity " +
+		"checks, unsigned updates, and input validation gaps.\n" +
+		"- **Repudiation**: Deniability of actions. Review audit logging completeness, log integrity protection, " +
+		"timestamp reliability, and non-repudiation controls. Consider whether critical actions (financial transactions, " +
+		"admin operations, data deletions) can be attributed to specific actors.\n" +
+		"- **Information Disclosure**: Unauthorized data access. Examine encryption coverage (at rest and in transit), " +
+		"error message verbosity, metadata leakage, side-channel attacks, excessive permissions, and data exposure " +
+		"through logs, backups, or debugging endpoints.\n" +
+		"- **Denial of Service**: Availability attacks. Assess rate limiting, resource exhaustion vectors (CPU, memory, " +
+		"disk, network), single points of failure, cascading failures, and amplification attacks. Consider both " +
+		"intentional attacks and accidental resource starvation.\n" +
+		"- **Elevation of Privilege**: Authorization bypass. Analyze role-based access controls, privilege boundaries, " +
+		"default permissions, privilege escalation chains, confused deputy problems, and insecure direct object references.\n\n"
 	);
+}
 
-	// Threat suggestion format
-	parts.push(
+function threatBlockFormatSection(): string {
+	return (
 		"When suggesting new threats, format them in a fenced code block with the language tag `threats` using YAML syntax:\n\n" +
-			"```threats\n" +
-			'- title: "Threat title here"\n' +
-			"  category: Spoofing|Tampering|Repudiation|Information Disclosure|Denial of Service|Elevation of Privilege\n" +
-			"  element: element-id-here\n" +
-			"  severity: critical|high|medium|low|info\n" +
-			'  description: "Description of the threat and its impact."\n' +
-			"```\n\n",
-	);
-
-	parts.push(
+		"```threats\n" +
+		'- title: "Threat title here"\n' +
+		"  category: Spoofing|Tampering|Repudiation|Information Disclosure|Denial of Service|Elevation of Privilege\n" +
+		"  element: element-id-here\n" +
+		"  severity: critical|high|medium|low|info\n" +
+		'  description: "Description of the threat and its impact."\n' +
+		"```\n\n" +
 		"Only use element IDs that exist in the current model. " +
-			"Be specific and actionable in your threat descriptions. " +
-			"Consider the trust zones and data flows when assessing severity. " +
-			"Group threats by STRIDE category and prioritize by severity. " +
-			"Proactively identify gaps in the model — missing trust boundaries, " +
-			"unprotected data flows, or elements without threats.\n\n",
+		"Be specific and actionable in your threat descriptions. " +
+		"Consider the trust zones and data flows when assessing severity. " +
+		"Group threats by STRIDE category and prioritize by severity. " +
+		"Proactively identify gaps in the model — missing trust boundaries, " +
+		"unprotected data flows, or elements without threats.\n\n"
 	);
+}
 
-	// AI action protocol
-	parts.push(
+/**
+ * The fenced ` ```actions ` instructions. Emitted only when no native tools are
+ * offered. The supported-action list is generated from the registry so it stays
+ * in lockstep with what `extractActions` accepts.
+ */
+function actionProtocolSection(): string {
+	const supportedActions = LEGACY_ACTION_TOOLS.map((tool) => tool.name).join(", ");
+	return (
 		"When the user asks you to modify the model (add, update, or delete elements, data flows, trust boundaries, or threats), " +
-			"output the changes in a fenced code block with the language tag `actions` as a JSON array:\n\n" +
-			"```actions\n" +
-			"[\n" +
-			'  { "action": "add_element", "element": { "type": "process", "name": "Auth Service", "trust_zone": "internal", "description": "Handles authentication", "technologies": ["OAuth2"], "position": { "x": 400, "y": 200 } } },\n' +
-			'  { "action": "add_data_flow", "data_flow": { "from": "web-app", "to": "auth-service", "name": "Auth Request", "protocol": "HTTPS", "data": ["credentials"], "authenticated": false } },\n' +
-			'  { "action": "update_element", "id": "api-gw", "updates": { "description": "Updated description" } },\n' +
-			'  { "action": "delete_element", "id": "old-service" },\n' +
-			'  { "action": "add_trust_boundary", "trust_boundary": { "name": "DMZ", "contains": ["api-gw"], "position": { "x": 50, "y": 100 } } },\n' +
-			'  { "action": "add_threat", "threat": { "title": "SQL Injection", "category": "Tampering", "element": "api-gw", "severity": "high", "description": "Risk of SQL injection." } }\n' +
-			"]\n" +
-			"```\n\n" +
-			"Supported actions: add_element, update_element, delete_element, add_data_flow, update_data_flow, delete_data_flow, " +
-			"add_trust_boundary, update_trust_boundary, delete_trust_boundary, add_threat, update_threat, delete_threat.\n" +
-			"For updates, only include fields that need to change. For deletes, only the id is needed.\n" +
-			'Element types: "process", "data_store", "external_entity", "text" (annotation, no STRIDE threats). ' +
-			"STRIDE categories: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege. " +
-			"Severities: critical, high, medium, low, info.\n" +
-			"The user will review and approve actions before they are applied.\n\n",
+		"output the changes in a fenced code block with the language tag `actions` as a JSON array:\n\n" +
+		"```actions\n" +
+		"[\n" +
+		'  { "action": "add_element", "element": { "type": "process", "name": "Auth Service", "trust_zone": "internal", "description": "Handles authentication", "technologies": ["OAuth2"], "position": { "x": 400, "y": 200 } } },\n' +
+		'  { "action": "add_data_flow", "data_flow": { "from": "web-app", "to": "auth-service", "name": "Auth Request", "protocol": "HTTPS", "data": ["credentials"], "authenticated": false } },\n' +
+		'  { "action": "update_element", "id": "api-gw", "updates": { "description": "Updated description" } },\n' +
+		'  { "action": "delete_element", "id": "old-service" },\n' +
+		'  { "action": "add_trust_boundary", "trust_boundary": { "name": "DMZ", "contains": ["api-gw"], "position": { "x": 50, "y": 100 } } },\n' +
+		'  { "action": "add_threat", "threat": { "title": "SQL Injection", "category": "Tampering", "element": "api-gw", "severity": "high", "description": "Risk of SQL injection." } }\n' +
+		"]\n" +
+		"```\n\n" +
+		`Supported actions: ${supportedActions}.\n` +
+		"For updates, only include fields that need to change. For deletes, only the id is needed.\n" +
+		'Element types: "process", "data_store", "external_entity", "text" (annotation, no STRIDE threats). ' +
+		"STRIDE categories: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege. " +
+		"Severities: critical, high, medium, low, info.\n" +
+		"The user will review and approve actions before they are applied.\n\n"
 	);
+}
 
-	// Canvas positioning guidance
-	parts.push(
+function canvasPositioningSection(): string {
+	return (
 		"CANVAS POSITIONING:\n" +
-			"When adding elements, include a `position: { x, y }` field. The canvas uses pixel coordinates " +
-			"with x increasing rightward and y increasing downward. Guidelines:\n" +
-			"- Space elements ~200px apart horizontally and ~150px apart vertically.\n" +
-			"- Arrange data flows left-to-right: external entities on the left, processes in the middle, data stores on the right.\n" +
-			"- Place related elements in a grid pattern near each other.\n" +
-			"- Trust boundaries should be positioned to enclose their elements with ~50px padding.\n" +
-			"- Use the existing element positions below to place new elements relative to them.\n\n",
+		"When adding elements, include a `position: { x, y }` field. The canvas uses pixel coordinates " +
+		"with x increasing rightward and y increasing downward. Guidelines:\n" +
+		"- Space elements ~200px apart horizontally and ~150px apart vertically.\n" +
+		"- Arrange data flows left-to-right: external entities on the left, processes in the middle, data stores on the right.\n" +
+		"- Place related elements in a grid pattern near each other.\n" +
+		"- Trust boundaries should be positioned to enclose their elements with ~50px padding.\n" +
+		"- Use the existing element positions below to place new elements relative to them.\n\n"
 	);
+}
 
-	// Response format instructions
-	parts.push(
+/**
+ * The `blocksReference` names the fenced blocks the model may emit: without
+ * native tools that is both ` ```actions ` and ` ```threats `, otherwise only
+ * ` ```threats ` since actions become native tool calls.
+ */
+function responseFormatSection(fenced: boolean): string {
+	const blocksReference = fenced ? "```actions and ```threats" : "```threats";
+	return (
 		"RESPONSE FORMAT:\n" +
-			"- Use Markdown formatting in your responses (headers, lists, bold, code).\n" +
-			"- When your response includes actions or threats blocks, structure your output as follows:\n" +
-			"  - Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n" +
-			"  - Place ```actions and ```threats code blocks OUTSIDE the <response> tags.\n" +
-			"  - Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n" +
-			"- Focus your <response> text on high-level analysis, security insights, and recommendations.\n\n",
+		"- Use Markdown formatting in your responses (headers, lists, bold, code).\n" +
+		"- When your response includes actions or threats blocks, structure your output as follows:\n" +
+		"  - Wrap all user-facing text (analysis, explanations, summaries) inside <response>...</response> tags.\n" +
+		`  - Place ${blocksReference} code blocks OUTSIDE the <response> tags.\n` +
+		"  - Do NOT narrate or list individual actions in your response text. The user sees a structured preview of each action separately.\n" +
+		"- Focus your <response> text on high-level analysis, security insights, and recommendations.\n\n"
 	);
+}
 
+/** Serialize the current model as the "--- CURRENT THREAT MODEL ---" context block. */
+function modelContextSection(model: ThreatModel): string {
+	const parts: string[] = [];
 	parts.push("--- CURRENT THREAT MODEL ---\n\n");
 
 	parts.push(`Title: ${model.metadata.title}\n`);
@@ -185,6 +211,25 @@ export function buildSystemPrompt(model: ThreatModel): string {
 	}
 
 	parts.push("--- END THREAT MODEL ---\n");
-
 	return parts.join("");
+}
+
+/**
+ * Build the system prompt for a turn, given the current model and the tools
+ * offered. With an empty tool list the output matches the pre-#61 prompt exactly,
+ * so today's fenced behavior is unchanged.
+ */
+export function buildSystemPrompt(model: ThreatModel, options: BuildSystemPromptOptions): string {
+	const fenced = options.tools.length === 0;
+
+	const sections = [
+		identityAndStrideSection(),
+		threatBlockFormatSection(),
+		fenced ? actionProtocolSection() : "",
+		canvasPositioningSection(),
+		responseFormatSection(fenced),
+		modelContextSection(model),
+	];
+
+	return sections.join("");
 }

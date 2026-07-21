@@ -36,9 +36,21 @@ export type ToolInputParseResult<T> =
 			issues: string[];
 	  };
 
-export interface ToolDefinition<Shape extends z.ZodRawShape> {
+/**
+ * A tool's advertised identity with its input shape erased.
+ *
+ * `ToolDefinition` satisfies this, so a heterogeneous tool list — the twelve
+ * legacy actions, and #64's native tools — can be passed to surfaces that only
+ * need the identity and not the generic input type: request preflight (which
+ * only asks whether any tool is offered) and the system prompt (which decides
+ * whether to emit the fenced-action instructions).
+ */
+export interface ToolDescriptor {
 	readonly name: string;
 	readonly description: string;
+}
+
+export interface ToolDefinition<Shape extends z.ZodRawShape> extends ToolDescriptor {
 	/**
 	 * Exposed so related tools can be combined — the legacy action registry
 	 * builds one discriminated union from all twelve.

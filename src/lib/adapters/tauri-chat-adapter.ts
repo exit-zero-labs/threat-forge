@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { buildSystemPrompt } from "@/lib/ai-prompt";
 import type { AiProvider, ChatMessage } from "@/stores/chat-store";
 import type { ThreatModel } from "@/types/threat-model";
 import type { ChatAdapter, ChatStreamCallbacks } from "./chat-adapter";
@@ -44,10 +45,16 @@ export class TauriChatAdapter implements ChatAdapter {
 				content: m.content,
 			}));
 
+			// The prompt is built here, not in Rust: issue #61 step 5 made TypeScript
+			// the sole prompt owner and dropped the `ThreatModel` from the command, so
+			// the model is no longer serialized across the IPC boundary on every turn.
+			// No native tools yet, so the empty list keeps the fenced ` ```actions ` path.
+			const systemPrompt = buildSystemPrompt(model, { tools: [] });
+
 			await invoke("send_chat_message", {
 				provider,
 				messages: ipcMessages,
-				model,
+				systemPrompt,
 				modelId,
 			});
 
