@@ -50,37 +50,52 @@ export async function addPaletteItem(page: Page, testId: string) {
 	});
 }
 
-/** Every guide id in src/lib/onboarding/guides.ts; auto-start is suppressed for all of them. */
-const ALL_GUIDE_IDS = ["welcome", "dfd-basics", "stride-analysis", "ai-assistant"];
+/**
+ * The guides that auto-start, and are therefore the ones that can block a test.
+ *
+ * Only these two have triggers in `use-onboarding-triggers.ts`. Seeding an id here suppresses
+ * it via `startGuide`'s completed/dismissed check, which only applies when the guide is
+ * `showOnce: true` — both of these are. `stride-analysis` and `ai-assistant` are
+ * `showOnce: false` and have no auto-start trigger, so listing them would be inert and
+ * misleading. If a new guide gains an auto-start trigger, add it here **and** confirm it is
+ * `showOnce: true`, or this seeding will silently not suppress it.
+ */
+const AUTO_START_GUIDE_IDS = ["welcome", "dfd-basics"];
 
 /**
- * Custom test fixture that seeds localStorage to suppress both first-run interstitials
- * before the page loads.
+ * Suppress both first-run interstitials before the page loads.
  *
  * Two distinct overlays block interaction, and both must be suppressed (#111):
  *
- * 1. The What's New overlay, keyed on `threatforge-last-seen-version`.
+ * 1. The What's New overlay, keyed on `threatforge-last-seen-version` (must equal
+ *    CURRENT_VERSION exactly).
  * 2. The onboarding guides, which render a full-viewport `guide-overlay` that intercepts
- *    pointer events. `welcome` auto-starts 500ms after mount and `dfd-basics` 800ms after
- *    the first model is created (`use-onboarding-triggers.ts`). Seeding only the What's New
- *    key actually *enables* the welcome guide, because `isWhatsNewVisible()` treats that key
- *    as proof no other modal is up. Specs previously passed only by racing ahead of the
- *    800ms timer, which made every add-element spec timing-dependent — the exact
- *    non-determinism #111 exists to remove.
+ *    pointer events. `welcome` auto-starts 500ms after mount and `dfd-basics` 800ms after the
+ *    first model is created. Seeding only the What's New key actually *enables* the welcome
+ *    guide, because `isWhatsNewVisible()` treats that key as proof no other modal is up. Specs
+ *    previously passed only by racing ahead of the 800ms timer, which made every add-element
+ *    spec timing-dependent — the exact non-determinism #111 exists to remove.
  *
- * Guide behavior itself is covered by unit tests in
- * src/components/onboarding/guide-overlay.test.tsx, so suppressing auto-start here removes a
- * timing dependency without dropping coverage of the feature.
+ * Note this does remove E2E coverage of auto-start. That behavior is not covered by unit tests
+ * either: `guide-overlay.test.tsx` tests only the presentational component, and
+ * `use-onboarding-triggers.test.ts` calls `startGuide` directly rather than rendering the hook.
+ * The timers and `isWhatsNewVisible()` are therefore untested in both lanes — tracked as a gap,
+ * not claimed as covered.
  */
+export async function suppressFirstRunOverlays(page: Page) {
+	await page.addInitScript((guideIds: string[]) => {
+		localStorage.setItem("threatforge-last-seen-version", "1.0.0");
+		localStorage.setItem(
+			"threatforge-onboarding",
+			JSON.stringify({ completedGuideIds: [], dismissedGuideIds: guideIds }),
+		);
+	}, AUTO_START_GUIDE_IDS);
+}
+
+/** Test fixture that applies {@link suppressFirstRunOverlays} to every page before it loads. */
 export const test = base.extend({
 	page: async ({ page }, use) => {
-		await page.addInitScript((guideIds: string[]) => {
-			localStorage.setItem("threatforge-last-seen-version", "1.0.0");
-			localStorage.setItem(
-				"threatforge-onboarding",
-				JSON.stringify({ completedGuideIds: [], dismissedGuideIds: guideIds }),
-			);
-		}, ALL_GUIDE_IDS);
+		await suppressFirstRunOverlays(page);
 		await use(page);
 	},
 });
