@@ -1,4 +1,4 @@
-import yaml from "js-yaml";
+import { YAMLException } from "js-yaml";
 import { parseThreatModelYaml } from "@/lib/thf-yaml";
 import type { ThreatModel } from "@/types/threat-model";
 
@@ -78,7 +78,7 @@ export function readThreatModelText(text: string): ThreatModel {
 		// array defaults. Reusing it keeps the shape narrowing in one place rather than parallel.
 		model = parseThreatModelYaml(text);
 	} catch (err) {
-		if (err instanceof yaml.YAMLException) {
+		if (err instanceof YAMLException) {
 			throw new ThfValidationError("parse", PARSE_MESSAGE);
 		}
 		// A shape-narrowing failure. `parseThreatModelYaml` already produced a user-safe, path-free
