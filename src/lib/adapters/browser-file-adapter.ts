@@ -1,4 +1,5 @@
-import { parseThreatModelYaml, serializeThreatModelYaml } from "@/lib/thf-yaml";
+import { readThreatModelText } from "@/lib/thf-validation";
+import { serializeThreatModelYaml } from "@/lib/thf-yaml";
 import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 import type { FileAdapter } from "./file-adapter";
 
@@ -43,7 +44,10 @@ export class BrowserFileAdapter implements FileAdapter {
 		if (!file) return null;
 
 		const text = await file.text();
-		return { model: parseThreatModelYaml(text), path: file.name };
+		// Apply the same version, duplicate-ID, and reference checks as the desktop reader
+		// (`read_threat_model`). A malformed document throws a user-safe `ThfValidationError`,
+		// which `openModel` surfaces (`src/hooks/use-file-operations.ts`).
+		return { model: readThreatModelText(text), path: file.name };
 	}
 
 	async importThreatModel(): Promise<{ model: ThreatModel } | null> {
