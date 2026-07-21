@@ -452,9 +452,10 @@ fn valid_fixtures_pass_reader_validation() {
 
 #[test]
 fn desktop_written_dates_are_unquoted_yaml_timestamps() {
-    // Pins the emitter behavior that `src/types/thf-fixtures.test.ts` characterizes from the
-    // other side: `serde_yaml` writes `created: 2026-03-15` with no quotes, which js-yaml
-    // resolves to a JavaScript `Date` rather than a string.
+    // Pins the emitter contract the browser reader depends on: `serde_yaml` writes
+    // `created: 2026-03-15` with no quotes. The browser parser reads that back as the string its
+    // declared type promises (see `src/lib/thf-yaml.ts`, which removes the YAML 1.1 timestamp
+    // type), so the scalar survives a cross-platform round trip unchanged.
     let yaml = serialize(&parse_fixture("v1.0-canonical-full.thf"));
     assert!(
         yaml.contains("\n  created: 2026-03-15\n"),
@@ -463,23 +464,34 @@ fn desktop_written_dates_are_unquoted_yaml_timestamps() {
 }
 
 #[test]
-fn browser_written_iso_timestamps_are_rejected_on_read() {
-    // Characterization of a live interoperability defect, not desired behavior.
-    //
-    // `serde_yaml` emits `created: 2026-03-15` unquoted. js-yaml loads that as a `Date`, and
-    // `yaml.dump` re-emits it as `2026-03-15T00:00:00.000Z`. chrono's `NaiveDate` then refuses
-    // the value, so a desktop-written file that is opened and saved in the browser can no longer
-    // be opened on the desktop. Fixing it belongs to the emitter work in #94, not to this net.
-    let yaml = "\
-version: '1.0'
-metadata:
-  title: Browser Round Trip
-  author: Alex Chen
-  created: 2026-03-15T00:00:00.000Z
-  modified: 2026-03-20T00:00:00.000Z
-";
-    let error = serde_yaml::from_str::<ThreatModel>(yaml)
-        .expect_err("chrono NaiveDate does not accept a full ISO timestamp");
+fn browser_written_dates_reopen_on_the_desktop() {
+    // Inversion of the former `browser_written_iso_timestamps_are_rejected_on_read`
+    // characterization. The browser writer no longer turns `created: 2026-03-15` into
+    // `2026-03-15T00:00:00.000Z`, so a desktop document opened and saved in the browser reopens on
+    // the desktop with its calendar dates intact. `v1.0-browser-roundtrip.thf` is the byte-for-byte
+    // browser output for `v1.0-canonical-full.thf`; `src/types/thf-fixtures.test.ts` proves the
+    // browser produces exactly those bytes.
+    let desktop = parse_fixture("v1.0-canonical-full.thf");
+    let browser = read_threat_model(&fixture_path("v1.0-browser-roundtrip.thf"))
+        .expect("a browser-written .thf must reopen on the desktop");
+
+    assert_eq!(browser.metadata.created, desktop.metadata.created);
+    assert_eq!(browser.metadata.modified, desktop.metadata.modified);
+    assert_eq!(browser.metadata.created.to_string(), "2026-03-15");
+    assert_eq!(browser.metadata.modified.to_string(), "2026-03-20");
+
+    // Reopening then saving on the desktop is a stable semantic round trip.
+    let reparsed: ThreatModel = serde_yaml::from_str(&serialize(&browser))
+        .expect("a re-serialized browser model must reparse");
+    assert_eq!(browser, reparsed);
+
+    // The desktop reader stays fail-closed. The ISO-timestamp form the browser used to emit — and
+    // any file already corrupted by it — is still refused, with the offending field named. This is
+    // the discriminating half: had the committed fixture carried this form, the read above panics.
+    let corrupted = fixture_body("v1.0-browser-roundtrip.thf")
+        .replace("created: 2026-03-15", "created: 2026-03-15T00:00:00.000Z");
+    let error = serde_yaml::from_str::<ThreatModel>(&corrupted)
+        .expect_err("chrono NaiveDate must reject a full ISO timestamp");
     assert!(
         error.to_string().contains("metadata.created"),
         "expected the error to name the offending field, got: {error}"
