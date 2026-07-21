@@ -8,7 +8,8 @@ Step-by-step guide for creating a new release of ThreatForge.
 - All CI checks passing on `main`
 - A second repository owner is available to approve the protected `Production` deployment
 - Code signing and updater signing are configured and verified (see
-  [Release Readiness](#release-readiness))
+  [Release Readiness](#release-readiness) and
+  [Configuring release signing](configuring-release-signing.md))
 
 ## Release Readiness
 
@@ -17,12 +18,17 @@ Do not publish a production release until every row is complete.
 | Control | Current state | Tracking |
 |---------|---------------|----------|
 | Protected production deployment | Configured; one owner approval required, self-approval disabled, `v*` tags only | [#52](https://github.com/exit-zero-labs/threat-forge/issues/52) |
-| Windows Azure Artifact Signing | Workflow and credentials configured; release-path verification remains | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
+| Windows Azure Artifact Signing | Legacy client-secret scaffold exists; OIDC migration, current client tooling, and release-path verification remain | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
 | macOS Developer ID and notarization | Apple credentials and end-to-end verification remain | [#51](https://github.com/exit-zero-labs/threat-forge/issues/51) |
 | Tauri updater signing | Public key, private signing key, manifest, and update verification remain | [#49](https://github.com/exit-zero-labs/threat-forge/issues/49) |
 
-The `Production` environment gates all platform build jobs after validation. Repository secrets
-are unavailable to those jobs until an eligible owner approves the deployment.
+The `Production` environment gates all platform build jobs after validation. The current Azure
+values are repository-scoped, so other workflows could reference them without this environment
+approval. Move provider credentials into `Production` and replace the Azure client secret with
+OIDC before enabling signed releases.
+
+Use [Configuring release signing](configuring-release-signing.md) for the portable owner and
+implementation procedure. Project 2 and issues #49 through #52 remain the live status source.
 
 ## Version Numbering
 
@@ -138,7 +144,7 @@ git push origin main v0.2.1
 |---------|----------|
 | Production deployment is waiting | The owner who did not push the tag must approve the protected environment |
 | macOS build fails signing | Check the Apple Developer secrets and certificate validity tracked in issue #51 |
-| Windows build fails signing | Check Azure credentials, Trusted Signing metadata, and issue #50 |
+| Windows build fails signing | Check Azure credentials, Artifact Signing metadata, and issue #50 |
 | Updater artifacts are absent | Do not publish; complete the updater signing controls tracked in issue #49 |
 | Release workflow doesn't trigger | Ensure tag matches `v*` pattern |
 | Binary too large | Check that `profile.release` settings are applied (LTO, strip, opt-level) |
