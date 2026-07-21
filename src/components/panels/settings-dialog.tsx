@@ -2,7 +2,6 @@ import {
 	Bug,
 	Download,
 	ExternalLink,
-	Github,
 	Globe,
 	LifeBuoy,
 	Lightbulb,
@@ -16,6 +15,7 @@ import {
 	X,
 } from "lucide-react";
 import { useState } from "react";
+import { GithubIcon } from "@/components/icons/github-icon";
 import { openExternalUrl } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type SettingsTab, useSettingsStore } from "@/stores/settings-store";
@@ -347,7 +347,7 @@ function SupportSection() {
 		<div className="space-y-5">
 			<div className="space-y-1">
 				<SupportLink
-					icon={<Github className="h-4 w-4" />}
+					icon={<GithubIcon className="h-4 w-4" />}
 					label="GitHub Repository"
 					description="Source code, issues, and discussions"
 					onClick={() => openExternal("https://github.com/exit-zero-labs/threat-forge")}
