@@ -1,0 +1,17 @@
+# ThreatForge Threat Model
+# Invalid: two groups share the id `cluster`.
+version: "1.0"
+metadata:
+  title: "Duplicate Group ID"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+groups:
+  - id: cluster
+    name: "Cluster"
+  - id: cluster
+    name: "Cluster Copy"
+elements:
+  - id: app
+    type: process
+    name: "Application"

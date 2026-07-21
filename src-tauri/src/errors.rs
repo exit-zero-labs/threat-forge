@@ -49,6 +49,9 @@ pub enum ThreatForgeError {
         valid: Vec<String>,
     },
 
+    #[error("Circular group nesting detected at group '{id}'")]
+    CircularGroupNesting { id: String },
+
     #[error("Key storage error: {message}")]
     KeyStorage { message: String },
 

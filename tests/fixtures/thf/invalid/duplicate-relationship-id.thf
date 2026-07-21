@@ -1,0 +1,24 @@
+# ThreatForge Threat Model
+# Invalid: two relationships share the id `rel-1`.
+version: "1.0"
+metadata:
+  title: "Duplicate Relationship ID"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+elements:
+  - id: app
+    type: process
+    name: "Application"
+  - id: db
+    type: data_store
+    name: "Database"
+relationships:
+  - id: rel-1
+    type: depends_on
+    from: app
+    to: db
+  - id: rel-1
+    type: deploys_to
+    from: db
+    to: app
