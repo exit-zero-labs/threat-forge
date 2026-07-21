@@ -13,6 +13,7 @@
 
 import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { readThreatModelText } from "@/lib/thf-validation";
 import {
 	parseThreatModelYaml,
 	serializeThreatModelYaml,
@@ -227,16 +228,18 @@ describe("`.thf` fixture corpus — cross-emitter date round trip", () => {
 		expect(dumped).toContain('"y": 200');
 	});
 
-	it("still applies no version or reference validation on the browser read path", () => {
-		// #116 territory: the browser parser gained a date and shape guard here, but the version
-		// gate and reference checks `read_threat_model` enforces are still absent, so it opens
-		// documents the desktop refuses. This must not silently expand into #116's scope.
-		expect(parseThreatModelYaml(unsupportedVersionRaw).version).toBe("2.0");
-		expect(() => parseThreatModelYaml(duplicateElementIdRaw)).not.toThrow();
-		expect(() => parseThreatModelYaml(unknownFlowTargetRaw)).not.toThrow();
+	it("now applies the same version and reference validation as the desktop read path", () => {
+		// Inversion of the former "still applies no version or reference validation on the browser
+		// read path". #116 gave the browser read path the version gate and reference checks
+		// `read_threat_model` enforces, via `readThreatModelText`. Against main's behavior
+		// (`parseThreatModelYaml`, the shape-only reader) these three documents opened cleanly; they
+		// are now rejected. The exhaustive per-fixture parity manifest lives in
+		// `src/lib/thf-validation.test.ts` — this is the corpus-suite pointer to the fixed behavior.
+		expect(() => readThreatModelText(unsupportedVersionRaw)).toThrow(/Unsupported schema version/);
+		expect(() => readThreatModelText(duplicateElementIdRaw)).toThrow(/Duplicate ID/);
+		expect(() => readThreatModelText(unknownFlowTargetRaw)).toThrow(/Invalid reference/);
 
-		// The one shape check added by this fix: a document with no metadata section is now
-		// rejected rather than opened with `metadata` undefined.
-		expect(() => parseThreatModelYaml(missingMetadataRaw)).toThrow(/metadata/);
+		// A document with no metadata section is still rejected (shape narrowing, unchanged by #116).
+		expect(() => readThreatModelText(missingMetadataRaw)).toThrow(/metadata/);
 	});
 });
