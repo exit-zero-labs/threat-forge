@@ -49,7 +49,7 @@ impl KeyStorage {
             key
         } else {
             let mut key = [0u8; KEY_LEN];
-            rand::thread_rng().fill_bytes(&mut key);
+            rand::rng().fill_bytes(&mut key);
             fs::write(&key_file, key).map_err(|e| ThreatForgeError::KeyStorage {
                 message: format!("Failed to write encryption key file: {e}"),
             })?;
@@ -132,10 +132,10 @@ impl KeyStorage {
             })?;
 
         let mut nonce_bytes = [0u8; NONCE_LEN];
-        rand::thread_rng().fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        rand::rng().fill_bytes(&mut nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
-        let ciphertext = cipher.encrypt(nonce, plaintext.as_ref()).map_err(|e| {
+        let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref()).map_err(|e| {
             ThreatForgeError::KeyStorage {
                 message: format!("Encryption failed: {e}"),
             }
@@ -167,14 +167,12 @@ impl KeyStorage {
             message: format!("Failed to read encrypted file: {e}"),
         })?;
 
-        if blob.len() < NONCE_LEN {
+        let Some((nonce_bytes, ciphertext)) = blob.split_first_chunk::<NONCE_LEN>() else {
             return Err(ThreatForgeError::KeyStorage {
                 message: "Encrypted file is too short".to_string(),
             });
-        }
-
-        let (nonce_bytes, ciphertext) = blob.split_at(NONCE_LEN);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        };
+        let nonce = Nonce::from(*nonce_bytes);
 
         let cipher =
             Aes256Gcm::new_from_slice(enc_key).map_err(|e| ThreatForgeError::KeyStorage {
@@ -183,7 +181,7 @@ impl KeyStorage {
 
         let plaintext =
             cipher
-                .decrypt(nonce, ciphertext)
+                .decrypt(&nonce, ciphertext)
                 .map_err(|e| ThreatForgeError::KeyStorage {
                     message: format!("Decryption failed (corrupted file or wrong key): {e}"),
                 })?;
@@ -198,8 +196,32 @@ impl KeyStorage {
 mod tests {
     use super::*;
 
+    /// `keys.dat` from a store written by ThreatForge on aes-gcm 0.10.3 / rand 0.8.5.
+    ///
+    /// Regenerate by checking out that revision, storing `anthropic` and `openai`
+    /// through `KeyStorage`, and hex-dumping `keys.dat` and `keys.enc`. These bytes
+    /// exist only to prove the post-upgrade reader still accepts the pre-upgrade
+    /// on-disk format; the key never protected a real credential.
+    const LEGACY_ENC_KEY_HEX: &str =
+        "19093c2872df5144f5d4ec55cb9eeeb3fb41f254b85e216a3a106d3ba2cb907b";
+
+    /// `keys.enc` from the same pre-upgrade store: 12-byte nonce, then the AES-256-GCM
+    /// ciphertext of the serialized `anthropic`/`openai` map with its trailing 16-byte tag.
+    const LEGACY_ENC_BLOB_HEX: &str = "9323b9c13babecb4018605ac77bc03c9bc9f9dc6ac586b2d41171828e0eb28b19a07a5637ee8cf9cc3d1d1f77db3ec78b0f96bd50348a78b66c968e8d4299a7b8610ce4d4f48b6daaf2e32a5b4bee2743c01e6b10d94d41df857cce3854e08d0ad682a5670";
+
     fn make_storage(dir: &std::path::Path) -> KeyStorage {
         KeyStorage::new(dir.to_path_buf()).expect("KeyStorage::new should succeed")
+    }
+
+    fn decode_hex(hex: &str) -> Vec<u8> {
+        assert!(
+            hex.len().is_multiple_of(2),
+            "fixture hex must have even length"
+        );
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("fixture hex must be valid"))
+            .collect()
     }
 
     #[test]
@@ -359,5 +381,104 @@ mod tests {
 
         // Deleting a key that doesn't exist should succeed
         storage.delete_key(&AiProvider::Anthropic).unwrap();
+    }
+
+    /// Nonce reuse under a fixed AES-GCM key is catastrophic, so each write must draw a
+    /// fresh nonce. Both writes go through one `KeyStorage` instance and serialize an
+    /// identical single-entry map, so a nonce hoisted out of the per-write path or seeded
+    /// deterministically would produce byte-identical files here.
+    #[test]
+    fn test_each_write_uses_a_fresh_nonce() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = make_storage(tmp.path());
+        let enc_file = tmp.path().join("keys.enc");
+
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-identical")
+            .unwrap();
+        let first = fs::read(&enc_file).unwrap();
+
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-identical")
+            .unwrap();
+        let second = fs::read(&enc_file).unwrap();
+
+        assert_eq!(
+            first.len(),
+            second.len(),
+            "both writes should encrypt the same plaintext"
+        );
+        assert_ne!(
+            first[..NONCE_LEN],
+            second[..NONCE_LEN],
+            "nonce must be regenerated for every encryption"
+        );
+        assert_ne!(
+            first[NONCE_LEN..],
+            second[NONCE_LEN..],
+            "identical plaintext must not produce identical ciphertext"
+        );
+    }
+
+    /// Every `KeyStorage` must get its own randomly generated AES key rather than a
+    /// constant or deterministically derived one.
+    #[test]
+    fn test_each_storage_generates_a_distinct_encryption_key() {
+        let first_dir = tempfile::tempdir().unwrap();
+        let second_dir = tempfile::tempdir().unwrap();
+        let _first = make_storage(first_dir.path());
+        let _second = make_storage(second_dir.path());
+
+        let first_key = fs::read(first_dir.path().join("keys.dat")).unwrap();
+        let second_key = fs::read(second_dir.path().join("keys.dat")).unwrap();
+
+        assert_eq!(first_key.len(), KEY_LEN);
+        assert_eq!(second_key.len(), KEY_LEN);
+        assert_ne!(first_key, second_key);
+    }
+
+    /// A store written before the aes-gcm 0.11 / rand 0.9 upgrade must still open, which
+    /// requires the `nonce || ciphertext || tag` layout and AES-256-GCM parameters to be
+    /// unchanged. If this fails, the upgrade has silently orphaned users' stored keys.
+    #[test]
+    fn test_pre_upgrade_key_store_still_decrypts() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("keys.dat"), decode_hex(LEGACY_ENC_KEY_HEX)).unwrap();
+        fs::write(tmp.path().join("keys.enc"), decode_hex(LEGACY_ENC_BLOB_HEX)).unwrap();
+
+        let storage = KeyStorage::new(tmp.path().to_path_buf())
+            .expect("pre-upgrade key store should still decrypt");
+
+        assert_eq!(
+            storage.get_key(&AiProvider::Anthropic).unwrap(),
+            "sk-ant-legacy-fixture"
+        );
+        assert_eq!(
+            storage.get_key(&AiProvider::OpenAi).unwrap(),
+            "sk-openai-legacy-fixture"
+        );
+    }
+
+    /// The pre-upgrade fixture must only decrypt under its own key; a wrong key has to
+    /// fail closed rather than yield attacker-influenced plaintext.
+    #[test]
+    fn test_pre_upgrade_key_store_rejects_a_different_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut wrong_key = decode_hex(LEGACY_ENC_KEY_HEX);
+        wrong_key[0] ^= 0x01;
+        fs::write(tmp.path().join("keys.dat"), &wrong_key).unwrap();
+        fs::write(tmp.path().join("keys.enc"), decode_hex(LEGACY_ENC_BLOB_HEX)).unwrap();
+
+        assert!(KeyStorage::new(tmp.path().to_path_buf()).is_err());
+    }
+
+    /// A file shorter than the nonce prefix must be rejected rather than panicking.
+    #[test]
+    fn test_truncated_enc_file_is_rejected() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(tmp.path().join("keys.dat"), decode_hex(LEGACY_ENC_KEY_HEX)).unwrap();
+        fs::write(tmp.path().join("keys.enc"), [0u8; NONCE_LEN - 1]).unwrap();
+
+        assert!(KeyStorage::new(tmp.path().to_path_buf()).is_err());
     }
 }
