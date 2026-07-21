@@ -1,0 +1,8 @@
+# ThreatForge Threat Model
+# Invalid: the required `metadata` section is absent. Unknown fields are tolerated,
+# but missing required fields are not — this fixture pins that asymmetry.
+version: "1.0"
+elements:
+  - id: app
+    type: process
+    name: "Application"

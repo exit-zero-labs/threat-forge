@@ -1,0 +1,15 @@
+# ThreatForge Threat Model
+# Invalid: two elements share the id `app`.
+version: "1.0"
+metadata:
+  title: "Duplicate Element ID"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+elements:
+  - id: app
+    type: process
+    name: "Application"
+  - id: app
+    type: process
+    name: "Application Copy"
