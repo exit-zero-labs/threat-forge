@@ -300,6 +300,49 @@ guarantee, and it is pinned by tests in both languages:
 Comments are lost the same way and for the same reason: serde has nowhere to keep them, so any
 comment other than the header ThreatForge itself writes disappears on the first desktop save.
 
+### Cross-platform read validation parity
+
+The browser read path applies the same checks as the desktop reader `read_threat_model`
+(`src-tauri/src/file_io/reader.rs`), in the reader's order: exact-match schema version; duplicate
+IDs within `elements`, `data_flows`, `layers`, `groups`, and `relationships`; group and
+relationship namespace collisions (a group ID that is also an element or trust-boundary ID; a
+relationship ID that is also a data-flow ID); cross-reference integrity for data-flow endpoints,
+`element.layer`/`element.group`, `group.parent`, relationship endpoints, trust-boundary members,
+and threat targets; and iterative group-cycle detection. ADR-009's fail-closed argument now holds
+on both platforms, not desktop only. The browser mirror is `readThreatModelText` /
+`validateThreatModel` in `src/lib/thf-validation.ts`.
+
+The two are held in lockstep by the shared invalid-fixture manifest, not by codegen. The browser
+contract test (`src/lib/thf-validation.test.ts`) and the Rust corpus tests
+(`invalid_fixtures_are_rejected_with_the_expected_error` and
+`architecture_invalid_fixtures_are_rejected_with_the_expected_error` in
+`src-tauri/src/file_io/fixtures_test.rs`) both classify every fixture in
+`tests/fixtures/thf/invalid/`. Because both languages read the identical bytes, a divergence is a
+red test in the same CI run. The architecture rules (issue #57, merged in #123) landed through this
+mechanism: each new `invalid/<rule>.thf` fixture and manifest entry forced the browser validator to
+grow the matching check in lockstep. A future reader rule extends the manifest the same way. The
+manifest is the extension point — not this list of rules.
+
+Two differences between the platforms are deliberate:
+
+- **Message parity is byte-identical only for the content-determined classes**
+  (`UnsupportedVersion`, `DuplicateId`, `InvalidReference`, `CircularGroupNesting`), whose desktop
+  `Display` strings carry no path or parser text. For a raw parse failure and a missing/invalid
+  required section the desktop message embeds a filesystem path and `serde_yaml` internals that do
+  not exist in the browser, so parity there is class-level with an actionable, path-free,
+  secret-free message — the browser message may be more specific.
+- **Shape narrowing is skeleton-depth by design.** The browser verifies the version, the metadata
+  block, and the entry fields the semantic checks read (an `id` per collection entry, flow and
+  relationship endpoints, layer/group membership, group parents, boundary members, threat
+  references). It tolerates unknown fields, matching serde's non-`deny_unknown_fields` behavior, and
+  does not re-check every optional scalar's type.
+
+Validation runs only at open, mirroring `read_threat_model`: there is no retroactive validation of
+documents already in the store or produced by AI, and no save-side validation (the browser writer
+stays symmetric with `write_threat_model`, which does not validate before serializing). The
+validator is non-destructive — it returns the parsed object with unknown sections and keys intact,
+preserving the browser writer's forward-compatibility behavior described above.
+
 ## Testing
 
 - Every schema change needs a round-trip test: YAML → Rust struct → YAML → assert equal

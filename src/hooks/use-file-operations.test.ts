@@ -206,3 +206,52 @@ describe("useFileOperations lifecycle through the document registry", () => {
 		expect(adapter.createNewModel).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("useFileOperations surfaces open rejections without partial loads", () => {
+	it("alerts the rejection message and leaves the current document intact", async () => {
+		adapter.createNewModel.mockResolvedValue(makeModel("Kept"));
+		const { result } = renderHook(() => useFileOperations());
+		await act(async () => {
+			await result.current.newModel();
+		});
+		const keptId = useDocumentRegistry.getState().openDocumentIds[0];
+
+		// The browser validator and the desktop reader both reject with the same message string;
+		// `openModel` shows it and returns early. A duplicate-ID rejection is used as the exemplar.
+		const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+		adapter.openThreatModel.mockRejectedValue(
+			new Error("Duplicate ID 'app' in section 'elements'"),
+		);
+
+		await act(async () => {
+			await result.current.openModel();
+		});
+
+		expect(alertSpy).toHaveBeenCalledWith("Open failed: Duplicate ID 'app' in section 'elements'");
+		// Discriminating against a partial-load regression: the previously-open document survives.
+		const registry = useDocumentRegistry.getState();
+		expect(registry.activeDocumentId).toBe(keptId);
+		expect(registry.openDocumentIds).toEqual([keptId]);
+		expect(useModelStore.getState().model?.metadata.title).toBe("Kept");
+		alertSpy.mockRestore();
+	});
+
+	it("does not alert on a successful open", async () => {
+		adapter.createNewModel.mockResolvedValue(makeModel("First"));
+		const { result } = renderHook(() => useFileOperations());
+		await act(async () => {
+			await result.current.newModel();
+		});
+
+		const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+		adapter.openThreatModel.mockResolvedValue({ model: makeModel("Second"), path: "/second.thf" });
+
+		await act(async () => {
+			await result.current.openModel();
+		});
+
+		expect(alertSpy).not.toHaveBeenCalled();
+		expect(useModelStore.getState().model?.metadata.title).toBe("Second");
+		alertSpy.mockRestore();
+	});
+});
