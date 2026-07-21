@@ -29,7 +29,7 @@ fn mcp_err(msg: impl Into<String>) -> ErrorData {
 }
 
 fn text_result(s: impl Into<String>) -> CallToolResult {
-    CallToolResult::success(vec![Content::text(s.into())])
+    CallToolResult::success(vec![ContentBlock::text(s.into())])
 }
 
 /// Shared, file-backed threat model state.
@@ -553,27 +553,116 @@ impl ThreatForgeServer {
     }
 }
 
-#[tool_handler]
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for ThreatForgeServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            protocol_version: ProtocolVersion::V_2024_11_05,
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            server_info: Implementation {
-                name: "threatforge-mcp".into(),
-                version: env!("CARGO_PKG_VERSION").into(),
-                title: None,
-                description: Some("ThreatForge MCP Server for threat model manipulation".into()),
-                icons: None,
-                website_url: Some("https://github.com/exit-zero-labs/threat-forge".into()),
-            },
-            instructions: Some(
+        // `ServerInfo` and `Implementation` are `#[non_exhaustive]`, so they are
+        // built through their constructors rather than struct literals.
+        //
+        // rmcp echoes back any protocol version it recognises, so the version
+        // set here is the fallback for clients that request an unknown one — it
+        // is not a ceiling on what the server will negotiate.
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_protocol_version(ProtocolVersion::V_2024_11_05)
+            .with_server_info(
+                Implementation::new("threatforge-mcp", env!("CARGO_PKG_VERSION"))
+                    .with_description("ThreatForge MCP Server for threat model manipulation")
+                    .with_website_url("https://github.com/exit-zero-labs/threat-forge"),
+            )
+            .with_instructions(
                 "ThreatForge MCP Server — read and modify threat models (.thf files). \
                  Tools: get_model, list_elements, list_threats, add_element, update_element, \
                  delete_element, add_data_flow, delete_data_flow, add_trust_boundary, \
-                 delete_trust_boundary, add_threat, delete_threat."
-                    .to_string(),
-            ),
+                 delete_trust_boundary, add_threat, delete_threat.",
+            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The tool names external assistants bind to. Renaming or dropping one is a
+    /// breaking change for every already-configured MCP client.
+    const EXPECTED_TOOL_NAMES: [&str; 12] = [
+        "add_data_flow",
+        "add_element",
+        "add_threat",
+        "add_trust_boundary",
+        "delete_data_flow",
+        "delete_element",
+        "delete_threat",
+        "delete_trust_boundary",
+        "get_model",
+        "list_elements",
+        "list_threats",
+        "update_element",
+    ];
+
+    /// The full advertised surface — names, descriptions, and input schemas —
+    /// as it goes over the wire. Regenerate only for a deliberate tool change.
+    ///
+    /// Note that rmcp strips the schema generator's `title` (the Rust request
+    /// type name) from `inputSchema` before publishing it, so it is absent here.
+    const EXPECTED_TOOL_SURFACE: &str = include_str!("fixtures/tool-surface.json");
+
+    fn advertised_tools() -> Vec<Tool> {
+        let mut tools = ThreatForgeServer::tool_router().list_all();
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        tools
+    }
+
+    fn advertised_tool_surface_json() -> String {
+        let mut json =
+            serde_json::to_string_pretty(&advertised_tools()).expect("tools should serialize");
+        json.push('\n');
+        json
+    }
+
+    #[test]
+    fn every_expected_tool_is_registered_and_nothing_else_is() {
+        let tools = advertised_tools();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        assert_eq!(names, EXPECTED_TOOL_NAMES);
+    }
+
+    #[test]
+    fn advertised_tool_surface_matches_the_pinned_contract() {
+        assert_eq!(
+            advertised_tool_surface_json(),
+            EXPECTED_TOOL_SURFACE,
+            "MCP tool surface drifted from src/mcp/fixtures/tool-surface.json"
+        );
+    }
+
+    #[test]
+    fn server_info_advertises_tools_and_names_every_tool_in_its_instructions() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("model.thf");
+        let model = ThreatModel::new("Fixture", "Tester");
+        std::fs::write(
+            &path,
+            serde_yaml::to_string(&model).expect("model should serialize"),
+        )
+        .expect("fixture .thf should be written");
+
+        let server = ThreatForgeServer::new(path).expect("server should load the .thf file");
+        let info = server.get_info();
+
+        assert_eq!(info.protocol_version, ProtocolVersion::V_2024_11_05);
+        assert!(
+            info.capabilities.tools.is_some(),
+            "the tools capability must stay enabled"
+        );
+        assert_eq!(info.server_info.name, "threatforge-mcp");
+        assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
+
+        let instructions = info.instructions.expect("instructions are advertised");
+        for name in EXPECTED_TOOL_NAMES {
+            assert!(
+                instructions.contains(name),
+                "instructions omit the {name} tool"
+            );
         }
     }
 }

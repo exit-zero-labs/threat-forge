@@ -1,0 +1,311 @@
+[
+  {
+    "name": "add_data_flow",
+    "description": "Add a data flow between two elements.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "authenticated": {
+          "description": "Whether the flow is authenticated",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "data": {
+          "description": "Data items carried",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "from": {
+          "description": "Source element ID",
+          "type": "string"
+        },
+        "name": {
+          "description": "Flow name",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol": {
+          "description": "Protocol (e.g. HTTPS/TLS-1.3)",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "description": "Target element ID",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "add_element",
+    "description": "Add a new DFD element (process, data_store, or external_entity) to the threat model.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "description": {
+          "description": "Description of the element",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "element_type": {
+          "description": "Element type: process, data_store, or external_entity",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable element name",
+          "type": "string"
+        },
+        "technologies": {
+          "description": "Technologies used (e.g. [\"nginx\", \"TLS\"])",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "trust_zone": {
+          "description": "Trust zone (e.g. internal, dmz, external)",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "element_type",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "add_threat",
+    "description": "Add a STRIDE threat to the threat model.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "category": {
+          "description": "STRIDE category: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege",
+          "type": "string"
+        },
+        "description": {
+          "description": "Detailed threat description",
+          "type": "string"
+        },
+        "element": {
+          "description": "Target element ID",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flow": {
+          "description": "Target data flow ID",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "severity": {
+          "description": "Severity: critical, high, medium, low, info",
+          "type": "string"
+        },
+        "title": {
+          "description": "Threat title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "category",
+        "severity",
+        "description"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "add_trust_boundary",
+    "description": "Add a trust boundary grouping elements.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "contains": {
+          "description": "Element IDs contained in this boundary",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Boundary name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "delete_data_flow",
+    "description": "Delete a data flow by ID.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "id": {
+          "description": "ID of the item to delete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "delete_element",
+    "description": "Delete an element and its connected data flows.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "id": {
+          "description": "ID of the item to delete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "delete_threat",
+    "description": "Delete a threat by ID.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "id": {
+          "description": "ID of the item to delete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "delete_trust_boundary",
+    "description": "Delete a trust boundary by ID.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "id": {
+          "description": "ID of the item to delete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_model",
+    "description": "Get the full threat model as JSON. Returns metadata, elements, data flows, trust boundaries, and threats.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_elements",
+    "description": "List all elements in the threat model with their IDs, types, and names.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_threats",
+    "description": "List all threats with their IDs, titles, categories, and severities.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_element",
+    "description": "Update an existing element's name, type, trust zone, or description.",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "description": {
+          "description": "New description",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "element_type": {
+          "description": "New type",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "ID of the element to update",
+          "type": "string"
+        },
+        "name": {
+          "description": "New name",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trust_zone": {
+          "description": "New trust zone",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  }
+]
