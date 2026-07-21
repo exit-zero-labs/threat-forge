@@ -297,3 +297,74 @@ describe("reference integrity on updates", () => {
 		expect(boundary?.contains).toEqual(["web-app", "api-gw"]);
 	});
 });
+
+describe("architecture reference integrity on element updates", () => {
+	// layer/group refs are validated the same way flow endpoints are: the reader
+	// rejects dangling ones, so an unchecked write would save an unopenable file.
+	const modelWithArchitecture: ThreatModel = {
+		...mockModel,
+		layers: [{ id: "presentation", name: "Presentation" }],
+		groups: [{ id: "frontend", name: "Frontend" }],
+	};
+
+	beforeEach(() => {
+		useModelStore.getState().setModel(modelWithArchitecture, null);
+		useHistoryStore.getState().clear();
+	});
+
+	it("rejects assigning an element to a nonexistent layer", () => {
+		const ok = executeSingleAction({
+			action: "update_element",
+			id: "web-app",
+			updates: { layer: "ghost" },
+		});
+		expect(ok).toBe(false);
+		expect(useModelStore.getState().model?.elements[0].layer).toBeUndefined();
+	});
+
+	it("rejects assigning an element to a nonexistent group", () => {
+		const ok = executeSingleAction({
+			action: "update_element",
+			id: "web-app",
+			updates: { group: "ghost" },
+		});
+		expect(ok).toBe(false);
+	});
+
+	it("assigns an element to a layer and group that exist", () => {
+		const ok = executeSingleAction({
+			action: "update_element",
+			id: "web-app",
+			updates: { layer: "presentation", group: "frontend" },
+		});
+		expect(ok).toBe(true);
+		const el = useModelStore.getState().model?.elements[0];
+		expect(el?.layer).toBe("presentation");
+		expect(el?.group).toBe("frontend");
+	});
+
+	it("validates the resulting element, so a later unrelated edit still checks refs", () => {
+		executeSingleAction({
+			action: "update_element",
+			id: "web-app",
+			updates: { layer: "presentation" },
+		});
+		// An unrelated rename must not be rejected by the existing valid ref.
+		const ok = executeSingleAction({
+			action: "update_element",
+			id: "web-app",
+			updates: { name: "Renamed" },
+		});
+		expect(ok).toBe(true);
+	});
+
+	it("accepts tags without reference checks — they are labels, not refs", () => {
+		const ok = executeSingleAction({
+			action: "update_element",
+			id: "web-app",
+			updates: { tags: ["pci", "external-facing"] },
+		});
+		expect(ok).toBe(true);
+		expect(useModelStore.getState().model?.elements[0].tags).toEqual(["pci", "external-facing"]);
+	});
+});

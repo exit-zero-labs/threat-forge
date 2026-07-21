@@ -497,3 +497,677 @@ fn browser_written_dates_reopen_on_the_desktop() {
         "expected the error to name the offending field, got: {error}"
     );
 }
+
+/// Each new architecture reference-integrity rule (issue #57, step 4) rejects a dedicated
+/// `invalid/` fixture with a specific error variant — not merely `is_err()`.
+#[test]
+fn architecture_invalid_fixtures_are_rejected_with_the_expected_error() {
+    fn expect_duplicate(fixture: &str, expected_id: &str, expected_section: &str) {
+        match read_threat_model(&fixture_path(fixture)).expect_err(fixture) {
+            ThreatForgeError::DuplicateId { id, section } => {
+                assert_eq!(id, expected_id, "{fixture}: duplicate id");
+                assert_eq!(section, expected_section, "{fixture}: duplicate section");
+            }
+            other => panic!("{fixture}: expected DuplicateId, got {other:?}"),
+        }
+    }
+
+    fn expect_invalid_reference(fixture: &str, expected_field: &str, expected_reference: &str) {
+        match read_threat_model(&fixture_path(fixture)).expect_err(fixture) {
+            ThreatForgeError::InvalidReference {
+                field, reference, ..
+            } => {
+                assert_eq!(field, expected_field, "{fixture}: reference field");
+                assert_eq!(reference, expected_reference, "{fixture}: reference value");
+            }
+            other => panic!("{fixture}: expected InvalidReference, got {other:?}"),
+        }
+    }
+
+    expect_duplicate("invalid/duplicate-layer-id.thf", "data", "layers");
+    expect_duplicate("invalid/duplicate-group-id.thf", "cluster", "groups");
+    expect_duplicate(
+        "invalid/duplicate-relationship-id.thf",
+        "rel-1",
+        "relationships",
+    );
+    expect_duplicate(
+        "invalid/group-id-collides-with-element.thf",
+        "web-app",
+        "groups",
+    );
+    expect_duplicate(
+        "invalid/relationship-id-collides-with-flow.thf",
+        "flow-1",
+        "relationships",
+    );
+
+    expect_invalid_reference(
+        "invalid/unknown-element-layer.thf",
+        "elements[app].layer",
+        "presentation",
+    );
+    expect_invalid_reference(
+        "invalid/unknown-element-group.thf",
+        "elements[app].group",
+        "backend",
+    );
+    expect_invalid_reference(
+        "invalid/unknown-group-parent.thf",
+        "groups[cluster-1].parent",
+        "missing-cluster",
+    );
+    expect_invalid_reference(
+        "invalid/unknown-relationship-endpoint.thf",
+        "relationships[rel-1].to",
+        "missing-service",
+    );
+
+    match read_threat_model(&fixture_path("invalid/circular-group-nesting.thf"))
+        .expect_err("a group nesting cycle must be rejected")
+    {
+        ThreatForgeError::CircularGroupNesting { id } => assert_eq!(id, "group-a"),
+        other => panic!("expected CircularGroupNesting, got {other:?}"),
+    }
+}
+
+// --- Architecture golden fixtures + cross-language contract (issue #57, step 6) ---------------
+//
+// The three artifacts — this Rust helper, the `maxFilledModel` literal in
+// `src/types/threat-model.contract.test.ts`, and `architecture-canonical-full.thf` — must be
+// updated together. That friction is intentional: it is the only mechanism that keeps the Rust
+// model, the TypeScript model, and the on-disk schema from drifting apart silently.
+
+/// A `ThreatModel` populating every field the schema defines, old and new. Its serialization is
+/// `architecture-canonical-full.thf`, and the TypeScript contract test mirrors it structurally.
+fn max_filled_model() -> ThreatModel {
+    use crate::models::{
+        DataFlow, Diagram, Element, FileSettings, Group, Layer, Metadata, Mitigation, Relationship,
+        Threat, TrustBoundary,
+    };
+    use chrono::NaiveDate;
+
+    ThreatModel {
+        version: "1.0".to_string(),
+        metadata: Metadata {
+            title: "Order Fulfillment Platform".to_string(),
+            author: "Dana Lee".to_string(),
+            created: NaiveDate::from_ymd_opt(2026, 4, 1).expect("valid date"),
+            modified: NaiveDate::from_ymd_opt(2026, 4, 10).expect("valid date"),
+            description:
+                "System architecture and threat model for the order fulfillment platform.\n"
+                    .to_string(),
+            created_by: Some("Dana Lee <dana@example.com>".to_string()),
+            modified_by: Some("Sam Ortiz <sam@example.com>".to_string()),
+            last_edit_timestamp: Some(1_743_206_400),
+            threat_analysis_enabled: Some(true),
+            settings: Some(FileSettings {
+                grid_size: Some(24),
+                default_element_fill: Some("#3b82f6".to_string()),
+                default_element_stroke: Some("#1e40af".to_string()),
+                default_boundary_fill: Some("#22c55e".to_string()),
+                default_boundary_stroke: Some("#15803d".to_string()),
+            }),
+        },
+        layers: vec![
+            Layer {
+                id: "presentation".to_string(),
+                name: "Presentation".to_string(),
+                description: Some("User-facing surfaces".to_string()),
+            },
+            Layer {
+                id: "application".to_string(),
+                name: "Application".to_string(),
+                description: Some("Business logic and services".to_string()),
+            },
+            Layer {
+                id: "data".to_string(),
+                name: "Data".to_string(),
+                description: Some("Persistence and storage".to_string()),
+            },
+        ],
+        groups: vec![
+            Group {
+                id: "frontend-cluster".to_string(),
+                name: "Frontend Cluster".to_string(),
+                r#type: Some("cluster".to_string()),
+                parent: None,
+                description: Some("Edge-facing services".to_string()),
+                position: Some(Position { x: 40.0, y: 40.0 }),
+                size: Some(Size {
+                    width: 320.0,
+                    height: 220.0,
+                }),
+                fill_color: Some("#3b82f6".to_string()),
+                stroke_color: Some("#1e40af".to_string()),
+                fill_opacity: Some(0.1),
+                stroke_opacity: Some(0.6),
+            },
+            Group {
+                id: "backend-cluster".to_string(),
+                name: "Backend Cluster".to_string(),
+                r#type: Some("cluster".to_string()),
+                parent: None,
+                description: Some("Internal services and stores".to_string()),
+                position: Some(Position { x: 420.0, y: 40.0 }),
+                size: Some(Size {
+                    width: 420.0,
+                    height: 360.0,
+                }),
+                fill_color: Some("#22c55e".to_string()),
+                stroke_color: Some("#15803d".to_string()),
+                fill_opacity: Some(0.1),
+                stroke_opacity: Some(0.6),
+            },
+            Group {
+                id: "api-subcluster".to_string(),
+                name: "API Subcluster".to_string(),
+                r#type: Some("cluster".to_string()),
+                parent: Some("backend-cluster".to_string()),
+                description: Some("API tier nested inside the backend".to_string()),
+                position: Some(Position { x: 440.0, y: 80.0 }),
+                size: Some(Size {
+                    width: 200.0,
+                    height: 160.0,
+                }),
+                fill_color: Some("#f97316".to_string()),
+                stroke_color: Some("#c2410c".to_string()),
+                fill_opacity: Some(0.12),
+                stroke_opacity: Some(0.7),
+            },
+        ],
+        elements: vec![
+            Element {
+                id: "web-app".to_string(),
+                element_type: "process".to_string(),
+                name: "Web Application".to_string(),
+                trust_zone: "internal".to_string(),
+                layer: Some("presentation".to_string()),
+                group: Some("frontend-cluster".to_string()),
+                subtype: None,
+                icon: None,
+                description: "React storefront".to_string(),
+                technologies: vec!["react".to_string(), "vite".to_string()],
+                tags: vec!["tier-1".to_string()],
+                stores: None,
+                encryption: None,
+                position: Some(Position { x: 100.0, y: 120.0 }),
+                fill_color: None,
+                stroke_color: None,
+                fill_opacity: None,
+                stroke_opacity: None,
+                font_size: None,
+                font_weight: None,
+            },
+            Element {
+                id: "api-gateway".to_string(),
+                element_type: "process".to_string(),
+                name: "API Gateway".to_string(),
+                trust_zone: "dmz".to_string(),
+                layer: Some("application".to_string()),
+                group: Some("api-subcluster".to_string()),
+                subtype: Some("api_gateway".to_string()),
+                icon: Some("router".to_string()),
+                description: "Terminates TLS and routes requests".to_string(),
+                technologies: vec!["nginx".to_string()],
+                tags: vec!["pci".to_string(), "tier-1".to_string()],
+                stores: None,
+                encryption: None,
+                position: Some(Position { x: 480.0, y: 120.0 }),
+                fill_color: Some("#3b82f6".to_string()),
+                stroke_color: Some("#1e40af".to_string()),
+                fill_opacity: Some(0.15),
+                stroke_opacity: Some(0.9),
+                font_size: Some(14.0),
+                font_weight: Some("normal".to_string()),
+            },
+            Element {
+                id: "orders-db".to_string(),
+                element_type: "data_store".to_string(),
+                name: "Orders Database".to_string(),
+                trust_zone: "internal".to_string(),
+                layer: Some("data".to_string()),
+                group: Some("backend-cluster".to_string()),
+                subtype: Some("sql_database".to_string()),
+                icon: Some("database".to_string()),
+                description: "Primary order store".to_string(),
+                technologies: vec!["postgresql".to_string()],
+                tags: vec!["pci".to_string()],
+                stores: Some(vec!["order_records".to_string()]),
+                encryption: Some("AES-256-at-rest".to_string()),
+                position: Some(Position { x: 480.0, y: 320.0 }),
+                fill_color: Some("#22c55e".to_string()),
+                stroke_color: Some("#15803d".to_string()),
+                fill_opacity: Some(0.2),
+                stroke_opacity: Some(0.95),
+                font_size: None,
+                font_weight: None,
+            },
+        ],
+        data_flows: vec![
+            DataFlow {
+                id: "flow-1".to_string(),
+                flow_number: Some(1),
+                name: "Checkout request".to_string(),
+                from: "web-app".to_string(),
+                to: "api-gateway".to_string(),
+                protocol: "HTTPS/TLS-1.3".to_string(),
+                data: vec!["order_request".to_string()],
+                authenticated: true,
+                label_offset: Some(Position { x: 12.0, y: -6.0 }),
+                source_handle: Some("right".to_string()),
+                target_handle: Some("left".to_string()),
+                stroke_color: Some("#ef4444".to_string()),
+                stroke_opacity: Some(0.85),
+            },
+            DataFlow {
+                id: "flow-2".to_string(),
+                flow_number: Some(2),
+                name: "Persist order".to_string(),
+                from: "api-gateway".to_string(),
+                to: "orders-db".to_string(),
+                protocol: "PostgreSQL/TLS".to_string(),
+                data: vec!["order_records".to_string()],
+                authenticated: true,
+                label_offset: None,
+                source_handle: None,
+                target_handle: None,
+                stroke_color: None,
+                stroke_opacity: None,
+            },
+        ],
+        relationships: vec![
+            Relationship {
+                id: "rel-1".to_string(),
+                relationship_type: "deploys_to".to_string(),
+                from: "api-gateway".to_string(),
+                to: "orders-db".to_string(),
+                name: Some("Runs alongside".to_string()),
+                description: Some(
+                    "Gateway is deployed in the same cluster as the store".to_string(),
+                ),
+                source_handle: Some("bottom".to_string()),
+                target_handle: Some("top".to_string()),
+                label_offset: Some(Position { x: 8.0, y: 4.0 }),
+                stroke_color: Some("#64748b".to_string()),
+                stroke_opacity: Some(0.5),
+            },
+            Relationship {
+                id: "rel-2".to_string(),
+                relationship_type: "depends_on".to_string(),
+                from: "web-app".to_string(),
+                to: "orders-db".to_string(),
+                name: None,
+                description: None,
+                source_handle: None,
+                target_handle: None,
+                label_offset: None,
+                stroke_color: None,
+                stroke_opacity: None,
+            },
+        ],
+        trust_boundaries: vec![TrustBoundary {
+            id: "boundary-1".to_string(),
+            name: "Corporate Network".to_string(),
+            contains: vec![
+                "web-app".to_string(),
+                "api-gateway".to_string(),
+                "orders-db".to_string(),
+            ],
+            position: Some(Position { x: 20.0, y: 20.0 }),
+            size: Some(Size {
+                width: 840.0,
+                height: 400.0,
+            }),
+            fill_color: Some("#22c55e".to_string()),
+            stroke_color: Some("#15803d".to_string()),
+            fill_opacity: Some(0.1),
+            stroke_opacity: Some(0.6),
+        }],
+        threats: vec![Threat {
+            id: "threat-1".to_string(),
+            title: "SQL injection on order queries".to_string(),
+            category: StrideCategory::Tampering,
+            element: Some("api-gateway".to_string()),
+            flow: Some("flow-2".to_string()),
+            severity: Severity::High,
+            description: "Unvalidated input could inject SQL into order queries.".to_string(),
+            mitigation: Some(Mitigation {
+                status: MitigationStatus::Mitigated,
+                description: "Parameterized queries via ORM".to_string(),
+            }),
+        }],
+        diagrams: vec![Diagram {
+            id: "main-arch".to_string(),
+            name: "Architecture View".to_string(),
+            kind: Some("architecture".to_string()),
+            description: Some("Top-level system architecture".to_string()),
+            layout_file: None,
+            viewport: Some(Viewport {
+                x: -40.0,
+                y: 25.0,
+                zoom: 0.85,
+            }),
+        }],
+    }
+}
+
+/// An architecture-first document: layers, groups, and relationships but no threats, with the
+/// analysis flag explicitly off. This is the shape #60's templates will follow.
+fn architecture_only_model() -> ThreatModel {
+    use crate::models::{Element, Group, Layer, Metadata, Relationship};
+    use chrono::NaiveDate;
+
+    ThreatModel {
+        version: "1.0".to_string(),
+        metadata: Metadata {
+            title: "Reference Architecture".to_string(),
+            author: "Dana Lee".to_string(),
+            created: NaiveDate::from_ymd_opt(2026, 4, 1).expect("valid date"),
+            modified: NaiveDate::from_ymd_opt(2026, 4, 1).expect("valid date"),
+            description: String::new(),
+            created_by: None,
+            modified_by: None,
+            last_edit_timestamp: None,
+            threat_analysis_enabled: Some(false),
+            settings: None,
+        },
+        layers: vec![
+            Layer {
+                id: "presentation".to_string(),
+                name: "Presentation".to_string(),
+                description: None,
+            },
+            Layer {
+                id: "data".to_string(),
+                name: "Data".to_string(),
+                description: None,
+            },
+        ],
+        groups: vec![Group {
+            id: "core".to_string(),
+            name: "Core Services".to_string(),
+            r#type: Some("cluster".to_string()),
+            parent: None,
+            description: None,
+            position: None,
+            size: None,
+            fill_color: None,
+            stroke_color: None,
+            fill_opacity: None,
+            stroke_opacity: None,
+        }],
+        elements: vec![
+            Element {
+                id: "web-app".to_string(),
+                element_type: "process".to_string(),
+                name: "Web Application".to_string(),
+                trust_zone: String::new(),
+                layer: Some("presentation".to_string()),
+                group: Some("core".to_string()),
+                subtype: None,
+                icon: None,
+                description: String::new(),
+                technologies: Vec::new(),
+                tags: Vec::new(),
+                stores: None,
+                encryption: None,
+                position: None,
+                fill_color: None,
+                stroke_color: None,
+                fill_opacity: None,
+                stroke_opacity: None,
+                font_size: None,
+                font_weight: None,
+            },
+            Element {
+                id: "orders-db".to_string(),
+                element_type: "data_store".to_string(),
+                name: "Orders Database".to_string(),
+                trust_zone: String::new(),
+                layer: Some("data".to_string()),
+                group: Some("core".to_string()),
+                subtype: None,
+                icon: None,
+                description: String::new(),
+                technologies: Vec::new(),
+                tags: Vec::new(),
+                stores: None,
+                encryption: None,
+                position: None,
+                fill_color: None,
+                stroke_color: None,
+                fill_opacity: None,
+                stroke_opacity: None,
+                font_size: None,
+                font_weight: None,
+            },
+        ],
+        data_flows: Vec::new(),
+        relationships: vec![Relationship {
+            id: "rel-1".to_string(),
+            relationship_type: "depends_on".to_string(),
+            from: "web-app".to_string(),
+            to: "orders-db".to_string(),
+            name: None,
+            description: None,
+            source_handle: None,
+            target_handle: None,
+            label_offset: None,
+            stroke_color: None,
+            stroke_opacity: None,
+        }],
+        trust_boundaries: Vec::new(),
+        threats: Vec::new(),
+        diagrams: vec![crate::models::Diagram {
+            id: "main-arch".to_string(),
+            name: "Architecture View".to_string(),
+            kind: Some("architecture".to_string()),
+            description: None,
+            layout_file: None,
+            viewport: None,
+        }],
+    }
+}
+
+#[test]
+#[ignore = "generator: run with --ignored to (re)write the architecture fixtures, then review"]
+fn regenerate_architecture_fixtures() {
+    for (name, model) in [
+        ("architecture-canonical-full.thf", max_filled_model()),
+        ("architecture-only.thf", architecture_only_model()),
+    ] {
+        let body = serialize(&model);
+        let contents = format!(
+            "# ThreatForge Threat Model\n# Canonical fixture generated by serde_yaml. Do not hand-edit; see README.md.\n{body}"
+        );
+        std::fs::write(fixture_path(name), contents)
+            .unwrap_or_else(|e| panic!("failed to write {name}: {e}"));
+    }
+}
+
+/// Count each distinct line in a document, for order-insensitive multiset comparison.
+fn line_counts(text: &str) -> std::collections::HashMap<&str, i64> {
+    let mut counts = std::collections::HashMap::new();
+    for line in text.lines() {
+        *counts.entry(line).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// Lines whose multiplicity dropped from `before` to `after`, with the count of each drop.
+fn removed_lines<'a>(before: &'a str, after: &'a str) -> Vec<(&'a str, i64)> {
+    let after_counts = line_counts(after);
+    let mut removed: Vec<(&str, i64)> = line_counts(before)
+        .into_iter()
+        .filter_map(|(line, count)| {
+            let delta = count - after_counts.get(line).copied().unwrap_or(0);
+            (delta > 0).then_some((line, delta))
+        })
+        .collect();
+    removed.sort_unstable();
+    removed
+}
+
+#[test]
+fn architecture_canonical_full_fixture_matches_the_rust_helper_byte_for_byte() {
+    // Pins Rust field order and presence. If this fails after a schema change, regenerate the
+    // fixture with `regenerate_architecture_fixtures` and update the TypeScript literal to match.
+    let expected = fixture_body("architecture-canonical-full.thf");
+    assert_yaml_bytes_eq(
+        "architecture-canonical-full.thf",
+        &serialize(&max_filled_model()),
+        &expected,
+    );
+}
+
+#[test]
+fn architecture_canonical_full_fixture_deserializes_to_the_rust_helper() {
+    let body = fixture_body("architecture-canonical-full.thf");
+    let parsed: ThreatModel =
+        serde_yaml::from_str(&body).expect("architecture-canonical-full.thf should parse");
+    assert_eq!(
+        parsed,
+        max_filled_model(),
+        "deserialized fixture must equal the Rust helper"
+    );
+}
+
+#[test]
+fn architecture_only_fixture_matches_the_rust_helper_and_reads() {
+    let expected = fixture_body("architecture-only.thf");
+    assert_yaml_bytes_eq(
+        "architecture-only.thf",
+        &serialize(&architecture_only_model()),
+        &expected,
+    );
+
+    let model =
+        read_threat_model(&fixture_path("architecture-only.thf")).expect("architecture-only reads");
+    assert_eq!(model.metadata.threat_analysis_enabled, Some(false));
+    assert!(model.threats.is_empty());
+}
+
+#[test]
+fn architecture_fixtures_pass_reader_validation() {
+    for name in ["architecture-canonical-full.thf", "architecture-only.thf"] {
+        read_threat_model(&fixture_path(name))
+            .unwrap_or_else(|e| panic!("architecture fixture {name} was rejected: {e}"));
+    }
+}
+
+#[test]
+fn reclassifying_one_element_layer_changes_exactly_one_line() {
+    // The discriminating test for "git diffs for common architecture edits stay minimal". A
+    // `skip_serializing_if` omission or a field reorder would perturb unrelated lines and fail.
+    let original = serialize(&max_filled_model());
+
+    let mut edited = max_filled_model();
+    let web_app = edited
+        .elements
+        .iter_mut()
+        .find(|e| e.id == "web-app")
+        .expect("web-app element");
+    assert_eq!(web_app.layer.as_deref(), Some("presentation"));
+    web_app.layer = Some("application".to_string());
+    let updated = serialize(&edited);
+
+    assert_eq!(
+        removed_lines(&original, &updated),
+        vec![("  layer: presentation", 1)],
+        "exactly one line should be removed"
+    );
+    assert_eq!(
+        removed_lines(&updated, &original),
+        vec![("  layer: application", 1)],
+        "exactly one line should be added"
+    );
+}
+
+#[test]
+fn appending_one_group_changes_only_that_groups_lines() {
+    use crate::models::Group;
+
+    let original = serialize(&max_filled_model());
+
+    let mut edited = max_filled_model();
+    edited.groups.push(Group {
+        id: "extra-group".to_string(),
+        name: "Extra Group".to_string(),
+        r#type: None,
+        parent: None,
+        description: None,
+        position: None,
+        size: None,
+        fill_color: None,
+        stroke_color: None,
+        fill_opacity: None,
+        stroke_opacity: None,
+    });
+    let updated = serialize(&edited);
+
+    assert!(
+        removed_lines(&original, &updated).is_empty(),
+        "appending a group must not remove any line"
+    );
+    // `removed_lines` returns its result sorted; a two-space-indented line sorts before `- id`.
+    assert_eq!(
+        removed_lines(&updated, &original),
+        vec![("  name: Extra Group", 1), ("- id: extra-group", 1)],
+        "appending a group adds exactly its own two lines"
+    );
+}
+
+/// The charter property of the relationships section: architecture overlays must
+/// never influence threat generation. Relationships are non-data edges — folding
+/// them into flow-targeted STRIDE rules would manufacture tampering and
+/// information-disclosure findings on edges that carry no data. This pins the
+/// property so a future refactor cannot silently start iterating them.
+#[test]
+fn architecture_sections_do_not_change_stride_output() {
+    let full = read_threat_model(&fixture_path("architecture-canonical-full.thf"))
+        .expect("architecture fixture parses");
+
+    let mut stripped = full.clone();
+    stripped.layers.clear();
+    stripped.groups.clear();
+    stripped.relationships.clear();
+    stripped.metadata.threat_analysis_enabled = None;
+    for element in &mut stripped.elements {
+        element.layer = None;
+        element.group = None;
+        element.tags.clear();
+    }
+
+    // Threat ids are freshly generated on every analyze() call, so compare
+    // everything except the id.
+    let essence = |threats: &[crate::models::Threat]| -> Vec<_> {
+        threats
+            .iter()
+            .map(|t| {
+                (
+                    t.title.clone(),
+                    t.category.clone(),
+                    t.element.clone(),
+                    t.flow.clone(),
+                    t.severity.clone(),
+                    t.description.clone(),
+                )
+            })
+            .collect()
+    };
+
+    let with_architecture = essence(&crate::stride::analyze(&full));
+    let without_architecture = essence(&crate::stride::analyze(&stripped));
+
+    // Guard against a vacuous pass: the fixture must actually produce threats,
+    // otherwise "equal outputs" would also hold for two empty vectors.
+    assert!(
+        !with_architecture.is_empty(),
+        "the architecture fixture must generate threats for this comparison to mean anything"
+    );
+    assert_eq!(
+        with_architecture, without_architecture,
+        "layers, groups, relationships, and tags must not affect STRIDE output"
+    );
+}

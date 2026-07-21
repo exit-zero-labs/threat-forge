@@ -1,0 +1,17 @@
+# ThreatForge Threat Model
+# Invalid: two layers share the id `data`.
+version: "1.0"
+metadata:
+  title: "Duplicate Layer ID"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+layers:
+  - id: data
+    name: "Data"
+  - id: data
+    name: "Data Copy"
+elements:
+  - id: app
+    type: process
+    name: "Application"
