@@ -1,0 +1,19 @@
+# ThreatForge Threat Model
+# Invalid: group-a and group-b are each other's parent, forming a nesting cycle.
+version: "1.0"
+metadata:
+  title: "Circular Group Nesting"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+groups:
+  - id: group-a
+    name: "Group A"
+    parent: group-b
+  - id: group-b
+    name: "Group B"
+    parent: group-a
+elements:
+  - id: app
+    type: process
+    name: "Application"

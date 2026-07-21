@@ -60,6 +60,13 @@ function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 			const idx = model.elements.findIndex((e) => e.id === action.id);
 			if (idx === -1) return null;
 			const updated = { ...model.elements[idx], ...action.updates };
+			// Check the resulting refs, matching update_data_flow below. The reader
+			// rejects dangling layer/group references, and the writer validates
+			// nothing — so an unchecked write here would save a file that can never
+			// be reopened. There is no add_layer/add_group action, so a valid ref
+			// can only name a section the user already created.
+			if (updated.layer && !model.layers?.some((l) => l.id === updated.layer)) return null;
+			if (updated.group && !model.groups?.some((g) => g.id === updated.group)) return null;
 			const elements = [...model.elements];
 			elements[idx] = updated;
 			return { ...model, elements };

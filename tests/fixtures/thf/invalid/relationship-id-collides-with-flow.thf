@@ -1,0 +1,25 @@
+# ThreatForge Threat Model
+# Invalid: relationship `flow-1` collides with a data flow in the shared edge ID space.
+version: "1.0"
+metadata:
+  title: "Relationship Flow ID Collision"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+elements:
+  - id: app
+    type: process
+    name: "Application"
+  - id: db
+    type: data_store
+    name: "Database"
+data_flows:
+  - id: flow-1
+    from: app
+    to: db
+    protocol: "PostgreSQL/TLS"
+relationships:
+  - id: flow-1
+    type: depends_on
+    from: app
+    to: db

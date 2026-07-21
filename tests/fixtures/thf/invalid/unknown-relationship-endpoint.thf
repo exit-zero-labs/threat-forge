@@ -1,0 +1,17 @@
+# ThreatForge Threat Model
+# Invalid: `rel-1.to` names an element that does not exist.
+version: "1.0"
+metadata:
+  title: "Unknown Relationship Endpoint"
+  author: "Sam Rivera"
+  created: 2026-01-04
+  modified: 2026-01-04
+elements:
+  - id: app
+    type: process
+    name: "Application"
+relationships:
+  - id: rel-1
+    type: depends_on
+    from: app
+    to: missing-service

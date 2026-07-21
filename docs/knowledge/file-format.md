@@ -14,18 +14,48 @@ The `.thf` file format is ThreatForge's primary differentiator. It is the produc
 All data lives in a single `.thf` YAML file:
 
 ```
-version → metadata → elements → data_flows → trust_boundaries → threats → diagrams
+version → metadata → layers → groups → elements → data_flows → relationships
+        → trust_boundaries → threats → diagrams
 ```
 
 | Section | Purpose |
 |---------|---------|
 | `version` | Schema version (currently `"1.0"`). Always first field. |
 | `metadata` | Title, author, dates, description, authoring info |
+| `layers` | Optional architecture layers; display order is array order |
+| `groups` | Optional architecture containers; may nest via `parent` |
 | `elements` | DFD nodes: processes, data stores, external entities, text annotations |
 | `data_flows` | Connections between elements with protocol and data info |
+| `relationships` | Optional non-data architecture edges (`deploys_to`, `depends_on`, …) |
 | `trust_boundaries` | Security boundary groups containing elements |
 | `threats` | STRIDE threats linked to elements/flows |
 | `diagrams` | Diagram definitions with viewport state |
+
+### Architecture sections and threat analysis
+
+The architecture sections are an overlay on the threat model, and four rules keep
+the two coherent:
+
+- **Membership is element-side.** An element opts into a layer or group through
+  `elements[].layer` / `elements[].group`; `trust_boundaries` remain the only
+  container-side membership (`contains`). Both references are validated on read.
+- **Relationship endpoints are element IDs only**, matching `data_flows`. A typed
+  edge to a group or layer is not representable today; supporting it would be an
+  additive schema change.
+- **Relationships are never STRIDE-analyzed.** They are non-data edges, and
+  running flow-targeted rules over them would manufacture tampering and
+  information-disclosure findings on edges that carry no data. Pinned by
+  `architecture_sections_do_not_change_stride_output` (Rust) and its
+  `stride-engine.test.ts` mirror.
+- **Threats attach to `element` or `flow` only.** A threat on a group or layer
+  would be ambiguous — all members, or the container? — so the schema does not
+  allow it.
+
+`metadata.threat_analysis_enabled` is tri-state and resolves as: `true`/`false`
+when present; when absent, a document is treated as threat-analysis-enabled iff
+it has any `threats`. Nothing gates on the field yet — the resolution helper
+ships with the workflow work in #58, and both language implementations must
+follow this rule.
 
 ### Layout Data
 
