@@ -14,19 +14,11 @@
  * fixture but missing from the TS interface — or reordered in either — fails here.
  */
 
-import yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
+import { parseThreatModelYaml, serializeThreatModelYaml } from "@/lib/thf-yaml";
 import architectureCanonicalFullRaw from "../../tests/fixtures/thf/architecture-canonical-full.thf?raw";
 import architectureOnlyRaw from "../../tests/fixtures/thf/architecture-only.thf?raw";
 import type { ThreatModel } from "./threat-model";
-
-/** The exact option object `BrowserFileAdapter.saveThreatModel` passes to `yaml.dump`. */
-const BROWSER_DUMP_OPTIONS = {
-	lineWidth: -1,
-	noRefs: true,
-	sortKeys: false,
-	quotingType: '"',
-} as const;
 
 /** Fixture contents with the leading `#` comment header removed, mirroring the Rust helper. */
 function fixtureBody(raw: string): string {
@@ -36,22 +28,11 @@ function fixtureBody(raw: string): string {
 	return lines.slice(start).join("");
 }
 
-/**
- * Recursively convert `Date` values to `YYYY-MM-DD` strings. `js-yaml` resolves an unquoted YAML
- * timestamp such as `2026-04-01` to a `Date`, but `Metadata.created` is typed `string`; the
- * emitter divergence is characterized in `thf-fixtures.test.ts` and normalized here so the
- * contract compares structure and values rather than parser quirks.
- */
-function normalizeDates(value: unknown): unknown {
-	if (value instanceof Date) return value.toISOString().slice(0, 10);
-	if (Array.isArray(value)) return value.map(normalizeDates);
-	if (value && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, inner]) => [key, normalizeDates(inner)]),
-		);
-	}
-	return value;
-}
+// This test originally loaded fixtures with raw js-yaml and needed a
+// Date-normalization helper, because the default schema resolved unquoted
+// dates to Date objects. It now goes through `thf-yaml` — the same schema the
+// browser adapter uses — where dates load as plain strings, so the contract
+// compares exactly what the shipping read path produces.
 
 /**
  * Ordered list of every key path in a value, descending into objects and arrays but treating
@@ -284,12 +265,12 @@ const maxFilledModel: ThreatModel = {
 
 describe("architecture schema contract", () => {
 	const body = fixtureBody(architectureCanonicalFullRaw);
-	const loaded = yaml.load(body);
+	const loaded = parseThreatModelYaml(body);
 
 	it("parses the canonical fixture to the TypeScript model", () => {
-		// Numbers are compared numerically (the fixture's `x: 100.0` parses to JS `100`); dates are
-		// normalized from `Date` back to `YYYY-MM-DD` strings.
-		expect(normalizeDates(loaded)).toEqual(maxFilledModel);
+		// Numbers compare numerically (the fixture's `x: 100.0` parses to JS `100`);
+		// dates load as plain strings under the thf-yaml schema.
+		expect(loaded).toEqual(maxFilledModel);
 	});
 
 	it("keeps the fixture and the TypeScript model in identical field order", () => {
@@ -299,13 +280,13 @@ describe("architecture schema contract", () => {
 	});
 
 	it("round-trips the TypeScript model through the browser writer", () => {
-		const reloaded = yaml.load(yaml.dump(maxFilledModel, BROWSER_DUMP_OPTIONS));
-		expect(normalizeDates(reloaded)).toEqual(maxFilledModel);
+		const reloaded = parseThreatModelYaml(serializeThreatModelYaml(maxFilledModel));
+		expect(reloaded).toEqual(maxFilledModel);
 	});
 
 	it("mirrors the architecture-only document shape", () => {
-		const model = yaml.load(fixtureBody(architectureOnlyRaw));
-		const asRecord = model as Record<string, unknown>;
+		const model = parseThreatModelYaml(fixtureBody(architectureOnlyRaw));
+		const asRecord = model as unknown as Record<string, unknown>;
 		const metadata = asRecord.metadata as Record<string, unknown>;
 		expect(metadata.threat_analysis_enabled).toBe(false);
 		expect(asRecord.threats).toEqual([]);
