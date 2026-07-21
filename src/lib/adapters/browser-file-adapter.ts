@@ -1,4 +1,4 @@
-import yaml from "js-yaml";
+import { parseThreatModelYaml, serializeThreatModelYaml } from "@/lib/thf-yaml";
 import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 import type { FileAdapter } from "./file-adapter";
 
@@ -43,21 +43,7 @@ export class BrowserFileAdapter implements FileAdapter {
 		if (!file) return null;
 
 		const text = await file.text();
-		const parsed = yaml.load(text) as ThreatModel;
-
-		// Ensure arrays exist even if YAML omits empty ones
-		parsed.elements ??= [];
-		parsed.data_flows ??= [];
-		parsed.trust_boundaries ??= [];
-		parsed.threats ??= [];
-		parsed.diagrams ??= [];
-
-		// Ensure technologies arrays exist on elements
-		for (const el of parsed.elements) {
-			el.technologies ??= [];
-		}
-
-		return { model: parsed, path: file.name };
+		return { model: parseThreatModelYaml(text), path: file.name };
 	}
 
 	async importThreatModel(): Promise<{ model: ThreatModel } | null> {
@@ -66,14 +52,7 @@ export class BrowserFileAdapter implements FileAdapter {
 	}
 
 	async saveThreatModel(model: ThreatModel, _path: string | null): Promise<string | null> {
-		const yamlString = yaml.dump(model, {
-			lineWidth: -1,
-			noRefs: true,
-			sortKeys: false,
-			quotingType: '"',
-		});
-
-		const blob = new Blob([yamlString], { type: "application/x-yaml" });
+		const blob = new Blob([serializeThreatModelYaml(model)], { type: "application/x-yaml" });
 		const filename = sanitizeFilename(model.metadata.title) || "model";
 		downloadBlob(blob, `${filename}.thf`);
 		return filename;

@@ -122,7 +122,16 @@ export function useFileOperations() {
 		}
 
 		const adapter = await getFileAdapter();
-		const result = await adapter.openThreatModel();
+		let result: { model: ThreatModel; path: string | null } | null;
+		try {
+			result = await adapter.openThreatModel();
+		} catch (err) {
+			// Both adapters reject documents they cannot read: the desktop reader on schema
+			// version and reference errors, the browser parser on malformed dates and shapes.
+			const msg = err instanceof Error ? err.message : String(err);
+			window.alert(`Open failed: ${msg}`);
+			return;
+		}
 		if (!result) return;
 
 		const { model: loaded, path } = result;
