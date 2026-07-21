@@ -11,7 +11,7 @@
  * files is a worse trade than a build-time import.
  */
 
-import yaml from "js-yaml";
+import { dump, load, YAMLException } from "js-yaml";
 import { describe, expect, it } from "vitest";
 import {
 	parseThreatModelYaml,
@@ -31,10 +31,10 @@ import minimalRaw from "../../tests/fixtures/thf/v1.0-minimal.thf?raw";
 import unknownFieldsRaw from "../../tests/fixtures/thf/v1.0-unknown-fields.thf?raw";
 
 /**
- * The options `serializeThreatModelYaml` passes to `yaml.dump`, imported so a divergence between
- * this test and the browser writer is a mismatch in one place rather than two copies to keep in
- * sync. The `schema` field — js-yaml's default with the YAML 1.1 timestamp type removed — is what
- * keeps `created`/`modified` from round-tripping into `Date` objects and back out as ISO stamps.
+ * The options `serializeThreatModelYaml` passes to `dump`, imported so a divergence between this
+ * test and the browser writer is a mismatch in one place rather than two copies to keep in sync.
+ * The `schema` field — js-yaml 5's YAML 1.1 schema with the timestamp type removed — is what keeps
+ * `created`/`modified` from round-tripping into `Date` objects and back out as ISO stamps.
  */
 const BROWSER_DUMP_OPTIONS = THF_YAML_DUMP_OPTIONS;
 
@@ -76,7 +76,7 @@ function asMapping(value: unknown, label: string): Record<string, unknown> {
 
 /** Load a fixture through the same schema the browser reader uses, then narrow it to a mapping. */
 function loadMapping(raw: string): Record<string, unknown> {
-	return asMapping(yaml.load(raw, { schema: THF_YAML_SCHEMA }), "fixture document");
+	return asMapping(load(raw, { schema: THF_YAML_SCHEMA }), "fixture document");
 }
 
 /** Top-level keys as they appear in the raw document, independent of the parser. */
@@ -105,7 +105,7 @@ describe("`.thf` fixture corpus — browser read path", () => {
 	});
 
 	it("rejects malformed YAML", () => {
-		expect(() => yaml.load(truncatedRaw)).toThrow(yaml.YAMLException);
+		expect(() => load(truncatedRaw)).toThrow(YAMLException);
 	});
 });
 
@@ -122,7 +122,7 @@ describe("`.thf` fixture corpus — browser write path", () => {
 		// `unknown_fields_fixture_parses_and_drops_the_unknown_data`. ADR-009's downgrade
 		// data-loss risk is therefore specific to the desktop writer.
 		const loaded = loadMapping(fixtureBody(unknownFieldsRaw));
-		const reloaded = loadMapping(yaml.dump(loaded, BROWSER_DUMP_OPTIONS));
+		const reloaded = loadMapping(dump(loaded, BROWSER_DUMP_OPTIONS));
 
 		expect(reloaded.unknown_future_section).toEqual(loaded.unknown_future_section);
 		expect(asMapping(reloaded.metadata, "metadata").unknown_future_flag).toBe(true);
