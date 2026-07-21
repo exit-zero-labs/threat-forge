@@ -189,4 +189,37 @@ describe("analyzeStride", () => {
 		// Same counts as before: 6 (service) + 3 (store) + 2 (actor) + 3 (flow) = 14
 		expect(threats).toHaveLength(14);
 	});
+
+	it("generates identical threats with and without architecture sections", () => {
+		// The charter property of the relationships section: architecture overlays
+		// never influence threat generation. Relationships are non-data edges, and
+		// running flow-targeted rules over them would manufacture tampering and
+		// information-disclosure findings on edges that carry no data. Mirrors the
+		// Rust test `architecture_sections_do_not_change_stride_output`.
+		const plain = sampleModel();
+		const architected: ThreatModel = {
+			...sampleModel(),
+			layers: [{ id: "presentation", name: "Presentation" }],
+			groups: [{ id: "frontend", name: "Frontend" }],
+			relationships: [
+				{ id: "rel-1", type: "deploys_to", from: "web-app", to: "db" },
+				{ id: "rel-2", type: "depends_on", from: "user", to: "web-app" },
+			],
+			elements: sampleModel().elements.map((el) => ({
+				...el,
+				layer: "presentation",
+				group: "frontend",
+				tags: ["pci"],
+			})),
+		};
+
+		// Threat ids are freshly generated per call, so compare everything but the id.
+		const essence = (model: ThreatModel) =>
+			analyzeStride(model).map(({ id: _id, ...rest }) => rest);
+
+		const withArchitecture = essence(architected);
+		// Guard against a vacuous pass: two empty arrays would also be "equal".
+		expect(withArchitecture.length).toBeGreaterThan(0);
+		expect(withArchitecture).toEqual(essence(plain));
+	});
 });

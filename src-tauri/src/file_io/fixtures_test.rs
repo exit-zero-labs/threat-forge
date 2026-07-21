@@ -1117,3 +1117,57 @@ fn appending_one_group_changes_only_that_groups_lines() {
         "appending a group adds exactly its own two lines"
     );
 }
+
+/// The charter property of the relationships section: architecture overlays must
+/// never influence threat generation. Relationships are non-data edges — folding
+/// them into flow-targeted STRIDE rules would manufacture tampering and
+/// information-disclosure findings on edges that carry no data. This pins the
+/// property so a future refactor cannot silently start iterating them.
+#[test]
+fn architecture_sections_do_not_change_stride_output() {
+    let full = read_threat_model(&fixture_path("architecture-canonical-full.thf"))
+        .expect("architecture fixture parses");
+
+    let mut stripped = full.clone();
+    stripped.layers.clear();
+    stripped.groups.clear();
+    stripped.relationships.clear();
+    stripped.metadata.threat_analysis_enabled = None;
+    for element in &mut stripped.elements {
+        element.layer = None;
+        element.group = None;
+        element.tags.clear();
+    }
+
+    // Threat ids are freshly generated on every analyze() call, so compare
+    // everything except the id.
+    let essence = |threats: &[crate::models::Threat]| -> Vec<_> {
+        threats
+            .iter()
+            .map(|t| {
+                (
+                    t.title.clone(),
+                    t.category.clone(),
+                    t.element.clone(),
+                    t.flow.clone(),
+                    t.severity.clone(),
+                    t.description.clone(),
+                )
+            })
+            .collect()
+    };
+
+    let with_architecture = essence(&crate::stride::analyze(&full));
+    let without_architecture = essence(&crate::stride::analyze(&stripped));
+
+    // Guard against a vacuous pass: the fixture must actually produce threats,
+    // otherwise "equal outputs" would also hold for two empty vectors.
+    assert!(
+        !with_architecture.is_empty(),
+        "the architecture fixture must generate threats for this comparison to mean anything"
+    );
+    assert_eq!(
+        with_architecture, without_architecture,
+        "layers, groups, relationships, and tags must not affect STRIDE output"
+    );
+}
