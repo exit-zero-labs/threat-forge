@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { getChatAdapter } from "@/lib/adapters/get-chat-adapter";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
+import type { AiProvider, LegacyChatMessage } from "@/lib/ai/protocol/messages";
 import { getDefaultModelId } from "@/lib/ai-models";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
@@ -10,12 +11,15 @@ import {
 } from "@/types/chat-session";
 import type { ThreatModel } from "@/types/threat-model";
 
-export type AiProvider = "anthropic" | "openai";
+// `AiProvider` now belongs to the protocol module; re-exported so the eight
+// existing importers keep their import path while the AI stack is rebuilt.
+export type { AiProvider };
 
-export interface ChatMessage {
-	role: "user" | "assistant";
-	content: string;
-}
+/**
+ * The string-only message shape sessions are still persisted in. Replaced by
+ * `ProtocolMessage` when the store consumes stream events (issue #61 step 10).
+ */
+export type ChatMessage = LegacyChatMessage;
 
 /** Module-level abort controller for the current stream. */
 let currentAbortController: AbortController | null = null;

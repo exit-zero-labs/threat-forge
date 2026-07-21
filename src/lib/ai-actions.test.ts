@@ -164,7 +164,7 @@ describe("update action field allowlist", () => {
 			expect(extractActions(text)).toHaveLength(0);
 		});
 
-		it(`still accepts ${action} carrying only allowlisted fields`, () => {
+		it(`still accepts ${action} carrying only writable fields`, () => {
 			const text = `\`\`\`actions
 [{ "action": "${action}", "id": "original", "updates": { "${legalField}": "Renamed" } }]
 \`\`\``;
@@ -195,12 +195,10 @@ describe("update action field allowlist", () => {
 \`\`\``;
 		const actions = extractActions(text);
 		expect(actions).toHaveLength(1);
-		expect((actions[0] as { id: string }).id).toBe("b");
+		expect(actions[0].action === "update_element" && actions[0].id).toBe("b");
 	});
 
-	it("rejects fields resolved through the prototype chain", () => {
-		// A plain-object allowlist would resolve `toString` to Object.prototype's
-		// method — a truthy value — and let the field through.
+	it("rejects keys that a prototype-walking check would let through", () => {
 		for (const key of ["__proto__", "toString", "constructor", "hasOwnProperty"]) {
 			const text = `\`\`\`actions
 [{ "action": "update_element", "id": "a", "updates": { "${key}": "x" } }]
@@ -211,9 +209,11 @@ describe("update action field allowlist", () => {
 });
 
 describe("update payloads keep every schema field writable", () => {
-	// Narrowing the allowlist to a "sensible" subset would silently withdraw
-	// working behavior. `stores` and `encryption` have no property-panel editor,
-	// so the assistant is the only in-app way to set them.
+	// `id` is the single excluded field. Narrowing the rest to a "sensible"
+	// subset would silently withdraw working behavior: the system prompt prints
+	// each element's `position` and `subtype` back to the model, and `stores` and
+	// `encryption` have no property-panel editor at all, so the assistant is the
+	// only in-app way to set them.
 	it("accepts every non-id Element field", () => {
 		const text = `\`\`\`actions
 [{ "action": "update_element", "id": "api-gw", "updates": {
@@ -226,7 +226,9 @@ describe("update payloads keep every schema field writable", () => {
 \`\`\``;
 		const actions = extractActions(text);
 		expect(actions).toHaveLength(1);
-		expect(Object.keys((actions[0] as { updates: object }).updates)).toHaveLength(16);
+		const [action] = actions;
+		if (action.action !== "update_element") throw new Error("expected update_element");
+		expect(Object.keys(action.updates)).toHaveLength(16);
 	});
 
 	it("accepts every non-id DataFlow field", () => {
@@ -238,7 +240,11 @@ describe("update payloads keep every schema field writable", () => {
   "stroke_color": "#000", "stroke_opacity": 0.8
 } }]
 \`\`\``;
-		expect(extractActions(text)).toHaveLength(1);
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		const [action] = actions;
+		if (action.action !== "update_data_flow") throw new Error("expected update_data_flow");
+		expect(Object.keys(action.updates)).toHaveLength(12);
 	});
 
 	it("accepts every non-id TrustBoundary field", () => {
@@ -249,11 +255,34 @@ describe("update payloads keep every schema field writable", () => {
   "fill_color": "#eee", "stroke_color": "#333", "fill_opacity": 0.2, "stroke_opacity": 1
 } }]
 \`\`\``;
-		expect(extractActions(text)).toHaveLength(1);
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		const [action] = actions;
+		if (action.action !== "update_trust_boundary") throw new Error("expected boundary update");
+		expect(Object.keys(action.updates)).toHaveLength(8);
+	});
+
+	it("accepts every non-id Threat field", () => {
+		const text = `\`\`\`actions
+[{ "action": "update_threat", "id": "t1", "updates": {
+  "title": "SQL Injection", "category": "Tampering", "element": "api-gw",
+  "flow": "f1", "severity": "high", "description": "Risk",
+  "mitigation": { "status": "mitigated", "description": "Added WAF" }
+} }]
+\`\`\``;
+		const actions = extractActions(text);
+		expect(actions).toHaveLength(1);
+		const [action] = actions;
+		if (action.action !== "update_threat") throw new Error("expected update_threat");
+		expect(Object.keys(action.updates)).toHaveLength(7);
 	});
 });
 
 describe("update payload value types", () => {
+	// A well-named field carrying the wrong type propagates into rendering and
+	// serialization: the executor spreads `updates` over a real entity, so
+	// `technologies: "text"` reaches a `.map` call in the canvas node and throws
+	// during render, with no error boundary to contain it.
 	const badValues: ReadonlyArray<[string, string, string]> = [
 		["update_element", "technologies", '"not-an-array"'],
 		["update_element", "technologies", "[1, 2]"],
@@ -265,6 +294,7 @@ describe("update payload value types", () => {
 		["update_data_flow", "flow_number", '"two"'],
 		["update_trust_boundary", "contains", "5"],
 		["update_trust_boundary", "size", '{ "width": 10 }'],
+		["update_threat", "category", '"Bogus"'],
 		["update_threat", "mitigation", '{ "status": "bogus", "description": "x" }'],
 		["update_threat", "mitigation", '"mitigated"'],
 		["update_threat", "severity", "5"],
@@ -279,17 +309,8 @@ describe("update payload value types", () => {
 		});
 	}
 
-	it("accepts a well-formed mitigation", () => {
-		const text = `\`\`\`actions
-[{ "action": "update_threat", "id": "t1", "updates": {
-  "mitigation": { "status": "mitigated", "description": "Added WAF" }
-} }]
-\`\`\``;
-		expect(extractActions(text)).toHaveLength(1);
-	});
-
 	it("rejects a non-string severity without discarding the rest of the block", () => {
-		// `severity` was previously passed to `.toLowerCase()`, which threw on a
+		// `severity` used to be passed to `.toLowerCase()`, which threw on a
 		// number. The throw escaped into extractActions' catch and silently
 		// discarded every remaining action in the same block.
 		const text = `\`\`\`actions
@@ -300,7 +321,33 @@ describe("update payload value types", () => {
 \`\`\``;
 		const actions = extractActions(text);
 		expect(actions).toHaveLength(1);
-		expect((actions[0] as { id: string }).id).toBe("e1");
+		expect(actions[0].action === "update_element" && actions[0].id).toBe("e1");
+	});
+});
+
+describe("add payloads reject invented fields", () => {
+	// Adds are validated against the same generated schemas as updates, so a key
+	// the executor would ignore no longer travels silently into an applied action.
+	it("rejects an add_element carrying an unknown element field", () => {
+		const text = `\`\`\`actions
+[{ "action": "add_element", "element": { "type": "process", "name": "Auth", "owner": "attacker" } }]
+\`\`\``;
+		expect(extractActions(text)).toHaveLength(0);
+	});
+
+	it("rejects an add_threat whose mitigation status is not a known status", () => {
+		const text = `\`\`\`actions
+[{ "action": "add_threat", "threat": { "title": "T", "category": "Spoofing", "severity": "high",
+   "description": "Risk", "mitigation": { "status": "handled", "description": "x" } } }]
+\`\`\``;
+		expect(extractActions(text)).toHaveLength(0);
+	});
+
+	it("rejects an empty id on a delete", () => {
+		const text = `\`\`\`actions
+[{ "action": "delete_element", "id": "" }]
+\`\`\``;
+		expect(extractActions(text)).toHaveLength(0);
 	});
 });
 
