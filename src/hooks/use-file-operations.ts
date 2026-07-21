@@ -4,10 +4,10 @@ import { generateHtmlReport } from "@/lib/export/export-html";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
-import { useHistoryStore } from "@/stores/history-store";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import type { ThreatModel } from "@/types/threat-model";
+import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 
 function todayString(): string {
 	return new Date().toISOString().split("T")[0];
@@ -89,7 +89,6 @@ export function useFileOperations() {
 	const filePath = useModelStore((s) => s.filePath);
 	const isDirty = useModelStore((s) => s.isDirty);
 	const setModel = useModelStore((s) => s.setModel);
-	const clearModel = useModelStore((s) => s.clearModel);
 
 	const newModel = useCallback(async () => {
 		if (isDirty) {
@@ -106,13 +105,14 @@ export function useFileOperations() {
 		if (identity) {
 			created.metadata.created_by = identity;
 		}
-		// No pending layout for new models — use default positions
-		useCanvasStore.getState().setPendingLayout(null);
-		setModel(created, null);
-		useHistoryStore.getState().clear();
+
+		const registry = useDocumentRegistry.getState();
+		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		// New models use default positions, so there is no pending layout to apply.
+		registry.createDocument({ model: created, filePath: null, pendingLayout: null });
 		useSettingsStore.getState().clearFileSettings();
-		// syncFromModel is called by the useEffect in DfdCanvas when model changes
-	}, [isDirty, setModel]);
+		// syncFromModel runs from the DfdCanvas effect once the new bundle is active.
+	}, [isDirty]);
 
 	const openModel = useCallback(async () => {
 		if (isDirty) {
@@ -127,23 +127,24 @@ export function useFileOperations() {
 
 		const { model: loaded, path } = result;
 
-		// Build layout from inline positions (new format) or try sidecar (old format)
+		// Build layout from inline positions (new format) or try sidecar (old format).
+		let pendingLayout: DiagramLayout | null;
 		const inlineLayout = buildLayoutFromModel(loaded);
 		if (inlineLayout) {
-			useCanvasStore.getState().setPendingLayout(inlineLayout);
+			pendingLayout = inlineLayout;
 		} else if (loaded.diagrams.length > 0 && loaded.diagrams[0].layout_file && path) {
 			// Fallback: try loading old sidecar layout file
-			const layout = await adapter.openLayout(path, loaded.diagrams[0].layout_file);
-			useCanvasStore.getState().setPendingLayout(layout);
+			pendingLayout = await adapter.openLayout(path, loaded.diagrams[0].layout_file);
 		} else {
-			useCanvasStore.getState().setPendingLayout(null);
+			pendingLayout = null;
 		}
 
-		setModel(loaded, path);
-		useHistoryStore.getState().clear();
+		const registry = useDocumentRegistry.getState();
+		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		registry.createDocument({ model: loaded, filePath: path, pendingLayout });
 		useSettingsStore.getState().loadFileSettings(loaded.metadata.settings);
-		// syncFromModel is called by the useEffect in DfdCanvas when model changes
-	}, [isDirty, setModel]);
+		// syncFromModel runs from the DfdCanvas effect once the new bundle is active.
+	}, [isDirty]);
 
 	const saveModel = useCallback(async () => {
 		if (!model) return;
@@ -193,12 +194,12 @@ export function useFileOperations() {
 			const discard = await adapter.confirmDiscard();
 			if (!discard) return;
 		}
-		clearModel();
-		useHistoryStore.getState().clear();
+		const registry = useDocumentRegistry.getState();
+		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		// With no active document the facades resolve to a fresh scratch bundle, so the canvas
+		// is empty by construction — no explicit syncFromModel needed.
 		useSettingsStore.getState().clearFileSettings();
-		// DfdCanvas unmounts when model is null, so useEffect won't fire — clear canvas directly
-		useCanvasStore.getState().syncFromModel();
-	}, [isDirty, clearModel]);
+	}, [isDirty]);
 
 	const importModel = useCallback(async () => {
 		if (isDirty) {
@@ -220,20 +221,16 @@ export function useFileOperations() {
 
 		const { model: imported } = result;
 
-		// Build layout from inline positions
-		const inlineLayout = buildLayoutFromModel(imported);
-		if (inlineLayout) {
-			useCanvasStore.getState().setPendingLayout(inlineLayout);
-		} else {
-			useCanvasStore.getState().setPendingLayout(null);
-		}
+		// Build layout from inline positions (imported models carry no sidecar reference).
+		const pendingLayout = buildLayoutFromModel(imported);
 
-		// Imported models have no file path — user must Save As to create a .thf file
-		setModel(imported, null);
-		useHistoryStore.getState().clear();
-		// TM7 imports have no ThreatForge file settings — clear to defaults
+		const registry = useDocumentRegistry.getState();
+		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		// Imported models have no file path — user must Save As to create a .thf file.
+		registry.createDocument({ model: imported, filePath: null, pendingLayout });
+		// TM7 imports have no ThreatForge file settings — clear to defaults.
 		useSettingsStore.getState().clearFileSettings();
-	}, [isDirty, setModel]);
+	}, [isDirty]);
 
 	const exportAsHtml = useCallback(async () => {
 		if (!model) return;
