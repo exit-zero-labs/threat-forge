@@ -4,6 +4,7 @@ import { isTauri } from "@/lib/platform";
 import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -20,10 +21,10 @@ async function openFileByPath(filePath: string) {
 		path: filePath,
 	});
 
-	const layout = buildLayoutFromModel(model);
-	if (layout) useCanvasStore.getState().setPendingLayout(layout);
-	useModelStore.getState().setModel(model, filePath);
-	useHistoryStore.getState().clear();
+	const pendingLayout = buildLayoutFromModel(model);
+	const registry = useDocumentRegistry.getState();
+	if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+	registry.createDocument({ model, filePath, pendingLayout });
 	useSettingsStore.getState().loadFileSettings(model.metadata.settings);
 }
 

@@ -16,8 +16,7 @@ import { buildLayoutFromModel } from "@/lib/model-layout-utils";
 import { openExternalUrl } from "@/lib/platform";
 import { loadTemplate, TEMPLATES, type TemplateInfo } from "@/lib/templates";
 import { TIPS } from "@/lib/tips";
-import { useCanvasStore } from "@/stores/canvas-store";
-import { useHistoryStore } from "@/stores/history-store";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -47,20 +46,16 @@ export function Canvas() {
 
 function EmptyCanvas() {
 	const { newModel, openModel } = useFileOperations();
-	const setModel = useModelStore((s) => s.setModel);
 
-	const openTemplate = useCallback(
-		(id: string) => {
-			const model = loadTemplate(id);
-			if (!model) return;
-			const layout = buildLayoutFromModel(model);
-			useCanvasStore.getState().setPendingLayout(layout);
-			setModel(model, null);
-			useHistoryStore.getState().clear();
-			useSettingsStore.getState().clearFileSettings();
-		},
-		[setModel],
-	);
+	const openTemplate = useCallback((id: string) => {
+		const model = loadTemplate(id);
+		if (!model) return;
+		const pendingLayout = buildLayoutFromModel(model);
+		const registry = useDocumentRegistry.getState();
+		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		registry.createDocument({ model, filePath: null, pendingLayout });
+		useSettingsStore.getState().clearFileSettings();
+	}, []);
 
 	return (
 		<div
