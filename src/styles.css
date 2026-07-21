@@ -173,6 +173,10 @@ html.light {
 
 	/* Show connection handles on node hover */
 	.react-flow__node:hover .react-flow__handle {
+		/* biome-ignore lint/complexity/noImportantStyles: ReactFlow ships this rule
+		 * unlayered, and unlayered declarations outrank anything in @layer base
+		 * regardless of specificity, so !important is the only way this override
+		 * wins. Removing it hides the connection handles on hover. See #134. */
 		opacity: 1 !important;
 	}
 

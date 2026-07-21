@@ -149,5 +149,5 @@ export function getSelfLoopHandlePair(): HandlePair {
 	};
 }
 
-export { POSITION_MAP, DEFAULT_NODE_WIDTH, DEFAULT_NODE_HEIGHT };
 export type { HandlePosition, NodeRect };
+export { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH, POSITION_MAP };
