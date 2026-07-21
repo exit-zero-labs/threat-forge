@@ -36,10 +36,25 @@ execution tracker.
 Every non-trivial issue receives P0/P1/P2 priority, XS–XL size, and exactly one autonomy
 label:
 
-- `agent-ready` — an agent can reach a verification-complete PR without earlier human action
-- `human-blocked` — a secret, account, provisioning step, or unresolved decision is needed
+- `Automatable` — an agent can reach a verification-complete PR without earlier human action
+- `HITL` — a secret, account, provisioning step, or unresolved decision is needed
 
 Final owner validation is required for both labels.
+
+Issues also carry a `size/XS`–`size/XL` label mirroring the project `Size` field, and one
+`model/haiku`, `model/sonnet`, or `model/opus` label naming the cheapest model that can do
+the work correctly. Anything touching cryptography, IPC, the `.thf` schema, or a trust
+boundary is `model/opus` regardless of size.
+
+### Milestones
+
+Milestones express scope, not schedule:
+
+- **`M1 • Minimum Polish Product (MPP)`** — shipped work; closed issues and merged PRs only.
+- **`M2 • General Release`** — the complete scoped feature set for general availability.
+- **`M3 • V-Next`** — beyond general release; community and nice-to-have work.
+
+New contributions that have not been scoped against the general-release cutoff go to `M3`.
 
 ### Planning by Size
 
