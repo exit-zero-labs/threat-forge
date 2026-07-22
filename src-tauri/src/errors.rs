@@ -54,7 +54,4 @@ pub enum ThreatForgeError {
 
     #[error("Key storage error: {message}")]
     KeyStorage { message: String },
-
-    #[error("AI request error: {message}")]
-    AiRequest { message: String },
 }
