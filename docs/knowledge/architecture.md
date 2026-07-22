@@ -266,6 +266,9 @@ Feature Branch → PR Created → GitHub Actions CI
     → Tagged Release? → Build Signed Binaries → GitHub Release → Auto-update
 ```
 
+Triage for a red run — including the macOS runner infrastructure auto-rerun — is in
+[docs/runbooks/diagnosing-ci-failures.md](../runbooks/diagnosing-ci-failures.md).
+
 ### Local CI
 
 ```bash

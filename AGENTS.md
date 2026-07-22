@@ -46,6 +46,8 @@ npm run ci:docker
 npm run ci:docker:build
 ```
 
+Triage a red CI check with `docs/runbooks/diagnosing-ci-failures.md` before rerunning it.
+
 ## One planning system
 
 GitHub Issues and
