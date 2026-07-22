@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 import { getFileAdapter } from "@/lib/adapters/get-file-adapter";
 import { generateHtmlReport } from "@/lib/export/export-html";
+import { captureCanvasIntoModel } from "@/lib/model-capture";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
-import type { DfdEdgeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
@@ -41,59 +41,9 @@ function syncActiveFileSettings(model: ThreatModel): void {
 	registry.setDocumentFileSettings(activeId, model.metadata.settings ?? null);
 }
 
-/** Write current canvas positions, boundary colors, and label offsets back into the model. */
-function captureCanvasIntoModel(model: ThreatModel): ThreatModel {
-	const { nodes, edges, viewport } = useCanvasStore.getState();
-
-	const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-	const edgeMap = new Map(edges.map((e) => [e.id, e]));
-
-	const elements = model.elements.map((el) => {
-		const node = nodeMap.get(el.id);
-		if (!node) return el;
-		return { ...el, position: { x: node.position.x, y: node.position.y } };
-	});
-
-	const trust_boundaries = model.trust_boundaries.map((b) => {
-		const node = nodeMap.get(b.id);
-		if (!node) return b;
-		const w = node.width ?? (node.style as Record<string, number> | undefined)?.width ?? 400;
-		const h = node.height ?? (node.style as Record<string, number> | undefined)?.height ?? 300;
-		return {
-			...b,
-			position: { x: node.position.x, y: node.position.y },
-			size: { width: w, height: h },
-			fill_color: node.data.boundaryFillColor ?? b.fill_color,
-			stroke_color: node.data.boundaryStrokeColor ?? b.stroke_color,
-			fill_opacity: node.data.boundaryFillOpacity ?? b.fill_opacity,
-			stroke_opacity: node.data.boundaryStrokeOpacity ?? b.stroke_opacity,
-		};
-	});
-
-	const data_flows = model.data_flows.map((f) => {
-		const edge = edgeMap.get(f.id);
-		const edgeData = edge?.data as DfdEdgeData | undefined;
-		if (!edge) return f;
-		const hasOffset = edgeData && (edgeData.labelOffsetX != null || edgeData.labelOffsetY != null);
-		return {
-			...f,
-			label_offset: hasOffset
-				? { x: edgeData.labelOffsetX ?? 0, y: edgeData.labelOffsetY ?? 0 }
-				: f.label_offset,
-			source_handle: edge.sourceHandle ?? f.source_handle,
-			target_handle: edge.targetHandle ?? f.target_handle,
-			stroke_color: edgeData?.strokeColor ?? f.stroke_color,
-			stroke_opacity: edgeData?.strokeOpacity ?? f.stroke_opacity,
-		};
-	});
-
-	const diagrams = model.diagrams.map((d) => ({
-		...d,
-		layout_file: undefined,
-		viewport: { ...viewport },
-	}));
-
-	return { ...model, elements, trust_boundaries, data_flows, diagrams };
+/** Capture the active document's live canvas geometry into a model about to be written. */
+function captureActiveCanvas(model: ThreatModel): ThreatModel {
+	return captureCanvasIntoModel(model, useCanvasStore.getState());
 }
 
 export function useFileOperations() {
@@ -171,7 +121,7 @@ export function useFileOperations() {
 		if (!model) return;
 
 		const identity = getAuthorIdentity();
-		const captured = captureCanvasIntoModel({
+		const captured = captureActiveCanvas({
 			...model,
 			metadata: {
 				...model.metadata,
@@ -193,7 +143,7 @@ export function useFileOperations() {
 		if (!model) return;
 
 		const identity = getAuthorIdentity();
-		const captured = captureCanvasIntoModel({
+		const captured = captureActiveCanvas({
 			...model,
 			metadata: {
 				...model.metadata,
@@ -258,7 +208,7 @@ export function useFileOperations() {
 	const exportAsHtml = useCallback(async () => {
 		if (!model) return;
 
-		const captured = captureCanvasIntoModel(model);
+		const captured = captureActiveCanvas(model);
 		const html = generateHtmlReport(captured);
 		const defaultName = sanitizeFilename(model.metadata.title) || "threat-model-report";
 

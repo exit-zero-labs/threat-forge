@@ -891,3 +891,129 @@ describe("AI session references on document switch", () => {
 		expect(useChatStore.getState().activeSessionId).toBe("sess-y");
 	});
 });
+
+/**
+ * `hydrateDocument` (plan step 6) is the one registry surface browser restore (`#56`) needs:
+ * rebuild a session under a *persisted* identity rather than minting a new one. These cases fail
+ * for an implementation that reuses `createDocument`, which always mints and always activates.
+ */
+describe("hydrateDocument (issue #56 restore seam)", () => {
+	const persisted = "doc-persisted-1" as DocumentId;
+
+	it("rebuilds a session under the persisted id and createdAt instead of minting new ones", () => {
+		const registry = useDocumentRegistry.getState();
+		registry.hydrateDocument({
+			id: persisted,
+			model: createTestModel("Restored"),
+			filePath: "/restored.thf",
+			pendingLayout: null,
+			createdAt: "2026-01-02T03:04:05.000Z",
+			activate: true,
+		});
+
+		const state = useDocumentRegistry.getState();
+		expect(state.openDocumentIds).toEqual([persisted]);
+		expect(state.documents[persisted].createdAt).toBe("2026-01-02T03:04:05.000Z");
+		expect(state.activeDocumentId).toBe(persisted);
+		expect(useModelStore.getState().model?.metadata.title).toBe("Restored");
+		expect(useModelStore.getState().filePath).toBe("/restored.thf");
+	});
+
+	it("seeds the pending layout and file settings exactly as createDocument does", () => {
+		const layout: DiagramLayout = {
+			diagram_id: "diagram-1",
+			viewport: { x: 5, y: 6, zoom: 2 },
+			nodes: [{ id: "comp-1", x: 11, y: 22 }],
+		};
+		const settings: FileSettings = { grid_size: 25 };
+
+		useDocumentRegistry.getState().hydrateDocument({
+			id: persisted,
+			model: createTestModel("Restored", settings),
+			filePath: null,
+			pendingLayout: layout,
+			createdAt: "2026-01-02T03:04:05.000Z",
+			activate: true,
+		});
+
+		expect(useCanvasStore.getState().pendingLayout).toEqual(layout);
+		expect(useDocumentRegistry.getState().documents[persisted].fileSettings).toEqual(settings);
+	});
+
+	it("leaves the active pointer alone when activate is false", () => {
+		const registry = useDocumentRegistry.getState();
+		const live = registry.createDocument({
+			model: createTestModel("Live"),
+			filePath: null,
+			pendingLayout: null,
+		});
+
+		registry.hydrateDocument({
+			id: persisted,
+			model: createTestModel("Background"),
+			filePath: null,
+			pendingLayout: null,
+			createdAt: "2026-01-02T03:04:05.000Z",
+			activate: false,
+		});
+
+		const state = useDocumentRegistry.getState();
+		expect(state.activeDocumentId).toBe(live);
+		expect(state.openDocumentIds).toEqual([live, persisted]);
+		// The active document's own stores are untouched by the background hydration.
+		expect(useModelStore.getState().model?.metadata.title).toBe("Live");
+	});
+
+	it("does not rebuild or overwrite an already-open document on a second hydrate", () => {
+		const registry = useDocumentRegistry.getState();
+		registry.hydrateDocument({
+			id: persisted,
+			model: createTestModel("Restored"),
+			filePath: null,
+			pendingLayout: null,
+			createdAt: "2026-01-02T03:04:05.000Z",
+			activate: true,
+		});
+		// The user edits the live document after it was restored.
+		useModelStore.getState().updateMetadata({ title: "Edited since restore" });
+		const bundle = useDocumentRegistry.getState().documents[persisted].stores;
+
+		registry.hydrateDocument({
+			id: persisted,
+			model: createTestModel("Stale copy from storage"),
+			filePath: null,
+			pendingLayout: null,
+			createdAt: "2026-01-02T03:04:05.000Z",
+			activate: true,
+		});
+
+		const state = useDocumentRegistry.getState();
+		expect(state.openDocumentIds).toEqual([persisted]);
+		expect(state.documents[persisted].stores).toBe(bundle);
+		// Stored text never overwrites unsaved in-memory work.
+		expect(useModelStore.getState().model?.metadata.title).toBe("Edited since restore");
+	});
+
+	it("does not disturb a sibling document's state", () => {
+		const registry = useDocumentRegistry.getState();
+		const live = registry.createDocument({
+			model: createTestModel("Live"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		useCanvasStore.getState().addElement("web_server", { x: 0, y: 0 });
+
+		registry.hydrateDocument({
+			id: persisted,
+			model: createTestModel("Restored"),
+			filePath: null,
+			pendingLayout: null,
+			createdAt: "2026-01-02T03:04:05.000Z",
+			activate: true,
+		});
+
+		const liveStores = useDocumentRegistry.getState().getDocumentStores(live);
+		expect(liveStores?.model.getState().model?.elements).toHaveLength(1);
+		expect(useModelStore.getState().model?.elements).toHaveLength(0);
+	});
+});

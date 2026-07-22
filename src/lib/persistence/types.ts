@@ -70,6 +70,12 @@ export interface WorkspaceManifestEntry {
 	filePath: string | null;
 	/** Persisted tab order. User reorder is `#54`; #56 only preserves the value. */
 	order: number;
+	/**
+	 * ISO timestamp of when the document was first opened. Restored onto the rebuilt
+	 * `DocumentSession` so a document keeps its creation time — and therefore its place in
+	 * creation order — across a persistence round trip (D4).
+	 */
+	createdAt: string;
 	/** ISO timestamp; advisory and reconciled against IndexedDB, never authoritative. */
 	updatedAt: string;
 }
@@ -107,6 +113,12 @@ export interface DocumentPersistenceState {
 	status: DocumentPersistenceStatus;
 	/** ISO timestamp of the last successful local persist, or null if never persisted. */
 	lastPersistedAt: string | null;
+	/**
+	 * Why an `'error'` or `'corrupt'` status happened, so the indicator can say "storage is
+	 * full" rather than a generic failure. Absent for every healthy status. It carries only the
+	 * machine-readable kind — never the underlying error's message.
+	 */
+	errorKind?: WorkspaceStorageErrorKind;
 }
 
 /**
