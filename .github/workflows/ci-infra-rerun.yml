@@ -13,11 +13,12 @@ on:
     workflows: ["CI"]
     types: [completed]
 
+# Read-only by default. Only the rerun job, which touches no untrusted data, is granted
+# `actions: write` — that scope also permits approving fork-PR runs and deleting run logs,
+# so the job that ingests fork-influenced job names, step names, and log text must not hold it.
 permissions:
-  # Reading job logs and calling `rerun-failed-jobs`. This scope is isolated to this workflow.
-  actions: write
-  # Checking out the classifier script.
   contents: read
+  actions: read
 
 jobs:
   classify:
@@ -27,8 +28,15 @@ jobs:
     # fault stays red and no retry loop is possible.
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.run_attempt == 1
+      github.event.workflow_run.run_attempt == 1 &&
+      github.event.workflow_run.path == '.github/workflows/ci.yml'
     runs-on: ubuntu-latest
+    # The `workflows:` trigger matches by name, and a fork pull request may add its own
+    # workflow named "CI". The `path` guard above pins the real one. This bound stops a
+    # hostile log from holding the job open against the six-hour default.
+    timeout-minutes: 10
+    outputs:
+      rerun: ${{ steps.classify.outputs.rerun }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,8 +73,12 @@ jobs:
             esac
 
             # A log that cannot be fetched stays empty, and an empty log classifies as genuine.
+            # The tail bound keeps a hostile multi-hundred-megabyte log from being held in
+            # several copies across jq, the JSONL file, and Node; every signature this
+            # classifier matches appears near the end of a failing log anyway.
             : > "${work}/${job_id}.log"
-            gh api "/repos/${REPO}/actions/jobs/${job_id}/logs" > "${work}/${job_id}.log" || true
+            gh api "/repos/${REPO}/actions/jobs/${job_id}/logs" 2>/dev/null \
+              | tail -c 4000000 > "${work}/${job_id}.log" || true
 
             # Only the numeric job id crosses the shell boundary. Job and step names, which come
             # from the workflow file of the run that failed, stay inside JSON the whole way.
@@ -92,8 +104,18 @@ jobs:
           printf '::notice title=CI infra rerun::%s\n' "$(jq -r '.notice' "${work}/decision.json")"
           printf 'rerun=%s\n' "$(jq -r '.rerun' "${work}/decision.json")" >> "${GITHUB_OUTPUT}"
 
+  rerun:
+    name: Rerun the failed jobs once
+    needs: classify
+    if: needs.classify.outputs.rerun == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The only job that needs write, and the only one that touches no untrusted data:
+    # it reads an integer and posts to a fixed endpoint for one known run id.
+    permissions:
+      actions: write
+    steps:
       - name: Rerun the failed jobs once
-        if: steps.classify.outputs.rerun == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

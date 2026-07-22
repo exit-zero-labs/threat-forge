@@ -181,6 +181,47 @@ describe("classifyFailure leaves genuine failures red", () => {
 			signature: null,
 		});
 	});
+
+	// The scenario this veto exists for: cargo's global cache is restored from actions/cache
+	// with restore-keys, so a corrupted cache database emits `disk I/O error` as a warning on
+	// every macOS run until the cache is evicted. Without the veto, every genuine break during
+	// that window would be classified as infrastructure and rerun. Scoping by failing step
+	// cannot help, because a real compile break fails in the same step as the warning.
+	it("stays red when a real compile error accompanies an infrastructure warning", () => {
+		const both = [
+			"warning: failed to save last-use data",
+			"Caused by:",
+			"  Error code 1034: disk I/O error",
+			"error[E0432]: unresolved import `rand::RngCore`",
+			"error: could not compile `threat-forge` (lib) due to 1 previous error",
+		].join("\n");
+
+		expect(classifyFailure(macosBuild(both, "Build Tauri app"))).toEqual({
+			rerun: false,
+			signature: null,
+		});
+	});
+
+	it("stays red when a failing test accompanies an infrastructure warning", () => {
+		const both = ["  Error code 1034: disk I/O error", "test result: FAILED. 1 failed"].join("\n");
+
+		expect(classifyFailure(macosBuild(both, "Build Tauri app"))).toEqual({
+			rerun: false,
+			signature: null,
+		});
+	});
+
+	it("stays red when a type error accompanies an infrastructure warning", () => {
+		const both = [
+			"EILSEQ: illegal byte sequence",
+			"src/app.ts(9,1): error TS2304: Cannot find name",
+		].join("\n");
+
+		expect(classifyFailure(macosBuild(both, "Build web app"))).toEqual({
+			rerun: false,
+			signature: null,
+		});
+	});
 });
 
 describe("classifyFailure defaults to a genuine failure when the input is unusable", () => {
@@ -309,12 +350,18 @@ describe("formatDecision records the decision for a human reviewer", () => {
 		expect(notice).toContain("stays red for human review");
 	});
 
-	it("reports a run with no failed jobs instead of rendering an empty table", () => {
+	it("says the job list was unreadable rather than asserting the run was clean", () => {
+		// This workflow only runs because a run concluded `failure`, so an empty list is far
+		// more likely an unreadable jobs response than a genuinely clean run. Claiming the
+		// latter would put something false in the audit trail.
 		const { summary, notice } = formatDecision({ decision: classifyRun([]), runUrl });
 
-		expect(summary).toContain("no failed jobs");
+		expect(summary).toContain("No failed jobs could be read");
+		expect(summary).toContain("rather than that the run was clean");
 		expect(summary).not.toContain("| Failed job |");
-		expect(notice).toBe("No rerun: the run reported no failed jobs to classify.");
+		expect(notice).toBe(
+			"No rerun: no failed jobs could be read for this run, so nothing was classified.",
+		);
 	});
 
 	it("neutralises job names that could break out of the summary or emit a workflow command", () => {

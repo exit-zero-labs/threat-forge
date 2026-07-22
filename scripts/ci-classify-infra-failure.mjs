@@ -67,6 +67,33 @@ export const INFRA_SIGNATURES = [
 	{ literal: "disk I/O error" },
 ];
 
+/**
+ * Literal log strings that prove the build itself broke, which veto every infra signature.
+ *
+ * The infra signatures are necessarily loose: cargo emits `disk I/O error` from global-cache
+ * housekeeping as a *warning*, and the cargo home is restored from `actions/cache` with
+ * `restore-keys`, so a corrupted cached cache database can produce that warning on every
+ * macOS run until the cache is evicted. Without a veto, any genuine failure during that
+ * window would be classified as infrastructure and rerun. Scoping by failing step does not
+ * help, because a real compile break fails in the same step the warning appears in.
+ *
+ * Each entry is text that only a real code fault produces, so a log carrying one is never
+ * rerun no matter what else it contains. Verified against run 29848071247, a genuine clippy
+ * and rustc break on this repository.
+ */
+export const GENUINE_FAILURE_MARKERS = [
+	// rustc and clippy diagnostics: `error[E0432]: unresolved import`, and the summary line
+	// `error: could not compile \`threat-forge\` (lib) due to 3 previous errors`.
+	"error[E",
+	"error: could not compile",
+	// Clippy under `-D warnings` promotes a lint to this exact summary.
+	"error: aborting due to",
+	// A failing cargo test run.
+	"test result: FAILED",
+	// tsc, which the web build runs before Vite.
+	"error TS",
+];
+
 function asText(value) {
 	return typeof value === "string" ? value : "";
 }
@@ -84,6 +111,13 @@ export function classifyFailure({ jobName, stepName, logText } = {}) {
 
 	const log = asText(logText);
 	const failingStep = asText(stepName);
+
+	// Checked before the infra signatures, never after: a log carrying proof that the code
+	// broke stays red even when a runner fault is also present, because rerunning it would
+	// mask a real break behind a genuine but incidental infrastructure warning.
+	if (GENUINE_FAILURE_MARKERS.some((marker) => log.includes(marker))) {
+		return { rerun: false, signature: null };
+	}
 
 	for (const signature of INFRA_SIGNATURES) {
 		if (signature.requiresFailingStep && !failingStep.includes(signature.requiresFailingStep)) {
@@ -170,7 +204,13 @@ export function formatDecision({ decision, runUrl }) {
 	];
 
 	if (failedJobCount === 0) {
-		lines.push("The run reported no failed jobs, so there is nothing to classify.");
+		// This workflow only runs because a run concluded `failure`, so an empty list is more
+		// likely an unreadable jobs response than a genuinely clean run. Saying "no failed
+		// jobs" flatly would assert something false about the run in the audit trail.
+		lines.push(
+			"No failed jobs could be read for this run, so nothing was classified and nothing was rerun. " +
+				"The run concluded as a failure, so this usually means the jobs list could not be retrieved rather than that the run was clean.",
+		);
 	} else {
 		lines.push(
 			"| Failed job | Failing step | Classification | Matched signature |",
@@ -193,7 +233,7 @@ export function formatDecision({ decision, runUrl }) {
 	if (decision.rerun) {
 		notice = `Rerunning ${failedJobCount} failed job(s) once as a macOS infrastructure flake. Matched: ${matchedSignatures.join("; ")}.`;
 	} else if (failedJobCount === 0) {
-		notice = "No rerun: the run reported no failed jobs to classify.";
+		notice = "No rerun: no failed jobs could be read for this run, so nothing was classified.";
 	} else {
 		notice = `No rerun: ${failedJobCount} failed job(s) did not all classify as macOS infrastructure. The run stays red for human review.`;
 	}
