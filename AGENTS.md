@@ -134,9 +134,21 @@ following actions each require explicit user authorization:
 - approve, merge, close, or release
 - deploy, roll back, or delete a production service
 
-Permission configuration is not authorization. Never use an owner bypass to skip required
-checks, review, signed commits, thread resolution, or the squash-only merge policy. Never
-force-push or use `--no-verify`.
+Permission configuration is not authorization. Never force-push or use `--no-verify`, and
+never merge without the required status checks passing.
+
+`main` requires a code-owner approving review, which an agent working under the owner's
+account cannot satisfy. When the owner has explicitly authorized an autonomous run, the
+owner may direct the agent to merge verification-complete work with `gh pr merge --squash
+--admin`, which bypasses that review requirement and nothing else. That authorization is
+per-run and must be stated by the owner; it is never inferred from repository permissions.
+Under it the following still hold without exception:
+
+- every required status check passes before the merge, never bypassed or disabled
+- merges stay squash-only, preserving linear history
+- the preflight review lanes run to convergence first, and the PR records their findings
+- owner validation is deferred, not waived — the merged PR remains the record the owner
+  reviews, and anything a reviewer could not verify is called out in the PR body
 
 ## Engineering workflow
 

@@ -127,8 +127,13 @@ Examples:
 7. List owner validation steps separately from automated verification.
 
 Commit, push, PR creation, approval, merge, and release each require explicit authorization.
-Tool permissions or repository ownership do not imply authorization. Owners do not bypass
-required checks, review, signed commits, thread resolution, or squash-only merging.
+Tool permissions or repository ownership do not imply authorization. Required status checks
+and squash-only merging are never bypassed.
+
+Contributor pull requests always require a code-owner review. During an explicitly
+authorized autonomous agent run, the owner may direct the agent to merge its own
+verification-complete pull requests with `--admin`, which waives only that review
+requirement; see `AGENTS.md` for the conditions that still apply.
 
 ## What to Contribute
 
