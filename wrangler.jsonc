@@ -1,19 +1,36 @@
+/** @format */
+
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "threat-forge-web",
-	"compatibility_date": "2026-07-20",
-	"assets": {
-		"directory": "./dist",
-		"not_found_handling": "single-page-application"
-	},
-	"routes": [
-		{
-			"pattern": "threatforge.dev",
-			"custom_domain": true
-		},
-		{
-			"pattern": "www.threatforge.dev",
-			"custom_domain": true
-		}
-	]
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "threat-forge-web",
+  "compatibility_date": "2026-07-20",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+  },
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "routes": [
+    {
+      "pattern": "threatforge.dev",
+      "custom_domain": true,
+    },
+    {
+      "pattern": "www.threatforge.dev",
+      "custom_domain": true,
+    },
+  ],
 }
