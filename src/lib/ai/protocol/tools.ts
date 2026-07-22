@@ -50,6 +50,18 @@ export interface ToolDescriptor {
 	readonly description: string;
 }
 
+/**
+ * A tool as advertised to a provider: identity plus the generated input schema.
+ *
+ * The provider mappers (`src/lib/ai/providers/`) consume this instead of
+ * `ToolDefinition` so a heterogeneous tool list can be advertised without the
+ * generic input shape, which only `parseInput` callers need. Every
+ * `ToolDefinition` satisfies it.
+ */
+export interface AdvertisedTool extends ToolDescriptor {
+	jsonSchema(): ToolInputJsonSchema;
+}
+
 export interface ToolDefinition<Shape extends z.ZodRawShape> extends ToolDescriptor {
 	/**
 	 * Exposed so related tools can be combined — the legacy action registry

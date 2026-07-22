@@ -82,7 +82,22 @@ export interface MessageStopEvent {
 	stopReason: StopReason;
 }
 
-/** The turn failed. Terminal. */
+/**
+ * A failure was detected. The terminality rule is exact: a `malformed_stream`
+ * error emitted by a mapper is a non-terminal notice scoped to the one piece
+ * of the stream it reports — an undecodable frame, an orphan argument
+ * fragment, or a dropped tool call — and the mapper keeps mapping the frames
+ * that follow. An error with any other code reports the turn itself and is
+ * terminal; provider-reported failures (`http_status`, `rate_limited`) end
+ * the turn because the provider closes the stream after sending them. A
+ * client must not treat a `malformed_stream` notice as the end of the turn
+ * (issue #61 step 6).
+ *
+ * A *thrown* `malformed_stream` `ProtocolException` — the SSE decoder's
+ * buffer-cap breach is one — is terminal on that channel and must not be
+ * re-emitted as a stream notice: the non-terminal reading above applies only
+ * to events a mapper emitted.
+ */
 export interface ErrorEvent {
 	type: "error";
 	error: ProtocolError;
