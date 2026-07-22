@@ -48,6 +48,38 @@ export interface ProtocolError {
 	providerDetail?: string;
 }
 
+/** Longest provider-supplied detail retained after redaction. */
+const PROVIDER_DETAIL_MAX_LENGTH = 200;
+
+/**
+ * Provider key tokens (`sk-...`, `sk-ant-...`, `sk-proj-...`). An OpenAI 401
+ * body echoes the submitted key back in its `message` field, so provider text
+ * must be assumed to contain key material until proven otherwise. The match is
+ * case-insensitive: real keys are lowercase, but a proxy or log formatter
+ * between here and the provider may not preserve casing.
+ */
+const KEY_TOKEN_PATTERN = /\bsk-[A-Za-z0-9_-]+/gi;
+
+/**
+ * Make provider-supplied text safe to carry as `providerDetail`.
+ *
+ * Key-shaped tokens are masked before truncation so a cut cannot leave a
+ * recognizable key prefix behind, and the result is length-capped so a provider
+ * cannot flood the UI or persisted error state. The desktop relay (issue #61
+ * step 8) must apply the same rule, in the same mask-then-truncate order, in
+ * Rust before frames cross the IPC boundary.
+ */
+export function redactProviderDetail(detail: string): string {
+	const masked = detail.replace(KEY_TOKEN_PATTERN, "[redacted-key]");
+	if (masked.length <= PROVIDER_DETAIL_MAX_LENGTH) return masked;
+	let end = PROVIDER_DETAIL_MAX_LENGTH;
+	const lastKeptCode = masked.charCodeAt(end - 1);
+	// Never cut inside a surrogate pair: the detail is documented as safe to
+	// persist and serialize, and a lone high surrogate is neither.
+	if (lastKeptCode >= 0xd800 && lastKeptCode <= 0xdbff) end -= 1;
+	return `${masked.slice(0, end)}…`;
+}
+
 /**
  * A thrown carrier for a {@link ProtocolError}.
  *
