@@ -148,7 +148,8 @@ jobs:
             librsvg2-dev \
             patchelf \
             libdbus-1-dev \
-            libssl-dev
+            libssl-dev \
+            xdg-utils
 
       - name: Install Azure Trusted Signing dlib
         if: runner.os == 'Windows'

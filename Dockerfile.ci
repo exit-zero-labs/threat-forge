@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     patchelf \
     libdbus-1-dev \
     libssl-dev \
+    xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # 2. Node 22 via NodeSource
