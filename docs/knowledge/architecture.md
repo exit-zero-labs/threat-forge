@@ -145,6 +145,68 @@ wiping a document's state on switch. Case 10 lives in
   to `DocumentId`. The session-binding effect and its `ai-chat-tab` effect-override limitation are
   carried by the session-ownership PR (`#127`).
 
+## Browser workspace persistence
+
+Browser-only. On the desktop the filesystem stays the source of truth: `getWorkspaceStorage()`
+resolves `NoopWorkspaceStorage`, `useWorkspaceRestore` returns early on `isTauri()`, and
+`persistenceAvailable` stays false, so no IndexedDB code path is reachable and no local-persistence
+indicator renders. See [`docs/plans/56-indexeddb-persistence.md`](../plans/56-indexeddb-persistence.md).
+
+**Two projections, one authority.** The localStorage manifest under `threatforge-workspace` is a
+fast-render projection — `{ schemaVersion, documents: [{ id, title, filePath, order, createdAt,
+updatedAt }], activeDocumentId, preferences }` — restored synchronously by `workspace-store` so the
+shell paints without touching IndexedDB. The IndexedDB database `threatforge-workspace` is
+authoritative for content:
+
+| Store | keyPath | Value | Index |
+|-------|---------|-------|-------|
+| `documents` | `id` | `{ id, currentRevisionId, updatedAt }` — pointer only, no body | — |
+| `revisions` | `revisionId` (`${id}#${seq}`) | `{ revisionId, documentId, thf, seq, createdAt }` | `by_document` on `[documentId, seq]` |
+| `meta` | `key` | schema markers and migration bookkeeping | — |
+
+Bodies are the exact text of `serializeThreatModelYaml`, so every stored revision is itself a
+portable `.thf` file. Retention is a bounded ring of `MAX_REVISIONS_PER_DOCUMENT` full snapshots,
+never deltas. No `.thf` schema change is involved and a `DocumentId` never enters a `.thf`.
+
+**Crash safety.** `writeDocumentBody` puts the new revision, flips `documents.currentRevisionId`,
+and prunes the ring inside one `readwrite` transaction. IndexedDB commits that atomically, so a
+reader can never see a pointer aimed at a missing or half-written revision. Schema changes run as
+ordered migrations inside the single `versionchange` transaction; one that throws aborts the upgrade
+and leaves the database at its prior version. The database is never deleted to clear an error.
+
+**Restore without blocking first paint.** `useWorkspaceRestore` runs after mount: it reconciles the
+manifest against `listDocuments()` (manifest entries with no record are dropped; records with no
+manifest entry become `recoverableDocumentIds`), then reads **only** the active document's body and
+calls `hydrateDocument`. Inactive documents stay manifest descriptors until `hydrateDocumentById`
+loads one on demand.
+
+**Autosave.** `useWorkspacePersistence` subscribes to the active document's own model and canvas
+stores and writes on a `WORKSPACE_AUTOSAVE_DEBOUNCE_MS` debounce, flushing on `visibilitychange`
+and `pagehide`. It captures geometry through `captureCanvasIntoModel` against that document's canvas
+store, never clears `isDirty` (which tracks the on-disk file, not the local copy), and is a separate
+concern from the file autosave in `use-autosave.ts`.
+
+**Failures are visible, never destructive.** Quota, private mode, migration failure, and corruption
+each map to a typed `WorkspaceStorageError` kind, a per-document persistence state or an
+availability reason, and one coalesced status-bar indicator — one report per failure run, not one
+per write. The in-memory document is always left editable and exportable.
+
+**No credential ever reaches either store.** The layer writes only `.thf` text and the id/order/
+title/preferences manifest, imports no keychain adapter, and uses a namespace disjoint from
+`tf-api-key-`. `src/lib/persistence/no-key-leakage.test.ts` proves this by enumerating every stored
+record after a real autosave cycle.
+
+### Handoff seams
+
+- **`#55` (recovery and export):** stored revisions are export-ready `.thf` text. The states to
+  render are `DocumentPersistenceState.status` (`error` / `corrupt`), `errorKind`,
+  `unavailableReason`, and `recoverableDocumentIds`. `#56` never deletes; `deleteDocument` exists
+  for a user-confirmed `#55` action.
+- **`#54` (tab UX):** render tabs from the manifest (`documents`, `order`, `activeDocumentId`) and
+  call `hydrateDocumentById(id)` when the user activates an un-hydrated tab.
+- **`#63` (AI conversation persistence):** chat content is not stored here. Reuse `DocumentId` as
+  the key and the same versioned-migration discipline rather than adding a second database.
+
 ## Project Structure
 
 ```

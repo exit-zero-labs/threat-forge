@@ -20,6 +20,19 @@ export interface CreateDocumentInput {
 	pendingLayout: DiagramLayout | null;
 }
 
+/**
+ * Everything needed to rebuild a session for a document that already has an identity — a
+ * document restored from browser workspace storage (`#56`).
+ */
+export interface HydrateDocumentInput extends CreateDocumentInput {
+	/** The persisted identity to rebuild under. No new id is minted. */
+	id: DocumentId;
+	/** The persisted creation timestamp, so ordering survives a persistence round trip. */
+	createdAt: string;
+	/** Whether to make this document active. Restore hydrates siblings without activating them. */
+	activate: boolean;
+}
+
 interface DocumentRegistryState {
 	/** All open documents, keyed by their stable identity. */
 	documents: Record<DocumentId, DocumentSession>;
@@ -33,6 +46,12 @@ interface DocumentRegistryState {
 	 * seeded and wired in isolation; nothing is copied from any other document.
 	 */
 	createDocument: (input: CreateDocumentInput) => DocumentId;
+	/**
+	 * Rebuild a session under a document's *persisted* identity and creation time, activating it
+	 * only when asked. Re-hydrating an already-open document does not rebuild its bundle: the
+	 * live document is authoritative, so stored text never overwrites unsaved in-memory work.
+	 */
+	hydrateDocument: (input: HydrateDocumentInput) => void;
 	/** Point the store facades at a document's own bundle and mark it active. No-op if unknown. */
 	activateDocument: (id: DocumentId) => void;
 	/**
@@ -85,6 +104,38 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 
 		get().activateDocument(id);
 		return id;
+	},
+
+	hydrateDocument: ({ id, model, filePath, pendingLayout, createdAt, activate }) => {
+		if (get().documents[id]) {
+			// Already hydrated. The live bundle wins over stored text, so nothing is re-seeded;
+			// the caller's activation request is still honored because activating an existing
+			// session is exactly what "make this restored document current" means.
+			if (activate) get().activateDocument(id);
+			return;
+		}
+
+		const stores = createDocumentStores();
+
+		// Seeded identically to `createDocument`, so a restored document is indistinguishable
+		// from a freshly opened one apart from keeping its persisted identity and creation time.
+		stores.model.getState().setModel(model, filePath);
+		stores.canvas.setState({ pendingLayout });
+
+		const session: DocumentSession = {
+			id,
+			createdAt,
+			stores,
+			fileSettings: model.metadata.settings ?? null,
+			activeChatSessionId: null,
+		};
+
+		set((state) => ({
+			documents: { ...state.documents, [id]: session },
+			openDocumentIds: [...state.openDocumentIds, id],
+		}));
+
+		if (activate) get().activateDocument(id);
 	},
 
 	activateDocument: (id) => {
