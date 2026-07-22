@@ -1,0 +1,116 @@
+name: CI infra rerun
+
+# Reruns a failed `CI` run at most once, and only when every failed job is the macOS build job
+# failing on a known GitHub-hosted runner infrastructure fault. A genuine build or test break
+# is never rerun; see `scripts/ci-classify-infra-failure.mjs` for the evidence-backed allowlist.
+#
+# `workflow_run` executes this workflow from the default branch in the base-repository context,
+# so it never runs pull-request code. It reads job logs, matches fixed strings, and calls one
+# REST endpoint. Log text is never echoed anywhere.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  # Reading job logs and calling `rerun-failed-jobs`. This scope is isolated to this workflow.
+  actions: write
+  # Checking out the classifier script.
+  contents: read
+
+jobs:
+  classify:
+    name: Classify macOS build failure
+    # The `run_attempt == 1` guard is the hard bound on retries: the rerun triggered below
+    # produces attempt #2, whose completion event this condition then rejects. A persistent
+    # fault stays red and no retry loop is possible.
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Pinned to the default branch so a pull request can never supply its own classifier.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+
+      - name: Classify the failed jobs
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP}/ci-infra-rerun"
+          mkdir -p "${work}"
+
+          gh api --paginate "/repos/${REPO}/actions/runs/${RUN_ID}/attempts/1/jobs?per_page=100" \
+            | jq -s '{ jobs: (map(.jobs) | add // []) }' > "${work}/jobs.json"
+
+          jq -r '.jobs[] | select(.conclusion == "failure") | .id' "${work}/jobs.json" \
+            > "${work}/failed-ids.txt"
+
+          : > "${work}/entries.jsonl"
+          while read -r job_id; do
+            case "${job_id}" in
+              '' | *[!0-9]*) continue ;;
+            esac
+
+            # A log that cannot be fetched stays empty, and an empty log classifies as genuine.
+            : > "${work}/${job_id}.log"
+            gh api "/repos/${REPO}/actions/jobs/${job_id}/logs" > "${work}/${job_id}.log" || true
+
+            # Only the numeric job id crosses the shell boundary. Job and step names, which come
+            # from the workflow file of the run that failed, stay inside JSON the whole way.
+            jq -c --argjson jobId "${job_id}" --rawfile logText "${work}/${job_id}.log" '
+              .jobs[]
+              | select(.id == $jobId)
+              | {
+                  jobName: .name,
+                  stepName: ([.steps[]? | select(.conclusion == "failure") | .name] | first // ""),
+                  logText: $logText
+                }
+            ' "${work}/jobs.json" >> "${work}/entries.jsonl"
+          done < "${work}/failed-ids.txt"
+
+          jq -n --arg runUrl "${RUN_URL}" --slurpfile failedJobs "${work}/entries.jsonl" \
+            '{ runUrl: $runUrl, failedJobs: $failedJobs }' > "${work}/payload.json"
+
+          node scripts/ci-classify-infra-failure.mjs \
+            < "${work}/payload.json" > "${work}/decision.json"
+
+          # Both outcomes are published, so the mechanism is never silent.
+          jq -r '.summary' "${work}/decision.json" >> "${GITHUB_STEP_SUMMARY}"
+          printf '::notice title=CI infra rerun::%s\n' "$(jq -r '.notice' "${work}/decision.json")"
+          printf 'rerun=%s\n' "$(jq -r '.rerun' "${work}/decision.json")" >> "${GITHUB_OUTPUT}"
+
+      - name: Rerun the failed jobs once
+        if: steps.classify.outputs.rerun == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+
+          # Re-read the attempt count immediately before acting. A maintainer can rerun the run
+          # by hand between its completion and this job starting, and the event payload would
+          # still say attempt 1.
+          attempt="$(gh api "/repos/${REPO}/actions/runs/${RUN_ID}" --jq '.run_attempt')"
+          if [ "${attempt}" != "1" ]; then
+            printf '::notice title=CI infra rerun::Run is already on attempt %s; not rerunning.\n' \
+              "${attempt}"
+            printf '\nThe run had already moved to attempt %s, so no automatic rerun was triggered.\n' \
+              "${attempt}" >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          gh api --method POST "/repos/${REPO}/actions/runs/${RUN_ID}/rerun-failed-jobs"
