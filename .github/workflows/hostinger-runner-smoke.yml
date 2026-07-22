@@ -1,0 +1,62 @@
+name: Hostinger runner smoke
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Validate hostinger-vps-01
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    timeout-minutes: 10
+    steps:
+      - name: Validate runner and Docker
+        env:
+          EXPECTED_RUNNER_NAME: hostinger-vps-01
+          REPORTED_RUNNER_NAME: ${{ runner.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          host_user="$(id -un)"
+          host_uid="$(id -u)"
+
+          if [[ "$REPORTED_RUNNER_NAME" != "$EXPECTED_RUNNER_NAME" ]]; then
+            printf 'Unexpected runner: %s\n' "$REPORTED_RUNNER_NAME" >&2
+            exit 1
+          fi
+
+          if [[ "$host_user" != "actions-runner" || "$host_uid" -eq 0 ]]; then
+            printf 'Unexpected host identity: user=%s uid=%s\n' "$host_user" "$host_uid" >&2
+            exit 1
+          fi
+
+          docker info >/dev/null
+
+          proof_dir="$(mktemp -d "$RUNNER_TEMP/hostinger-runner-smoke.XXXXXX")"
+          proof_file="$proof_dir/proof.txt"
+          docker run --rm \
+            --mount "type=bind,src=$proof_dir,dst=/proof" \
+            alpine:3.22 \
+            sh -eu -c \
+            'printf "release=%s\n" "$(cat /etc/alpine-release)" > /proof/proof.txt'
+
+          if [[ ! -s "$proof_file" ]]; then
+            printf 'Container did not create the proof file\n' >&2
+            exit 1
+          fi
+
+          grep -Eq '^release=3[.]22([.]|$)' "$proof_file"
+
+          printf 'runner=%s user=%s uid=%s\n' "$REPORTED_RUNNER_NAME" "$host_user" "$host_uid"
+          printf 'uname: '
+          uname -srmo
+          printf 'memory:\n'
+          awk '/^(MemTotal|MemAvailable):/ { print }' /proc/meminfo
+          printf 'disk:\n'
+          df -h "$RUNNER_TEMP"
+          docker version --format 'Docker client={{.Client.Version}} server={{.Server.Version}}'
+          printf 'proof:\n'
+          cat "$proof_file"
