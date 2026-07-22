@@ -15,7 +15,7 @@ permissions:
 jobs:
   validate:
     name: Validate
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: ubuntu-latest
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
@@ -101,7 +101,7 @@ jobs:
             args: "--target x86_64-apple-darwin"
           - platform: windows-latest
             args: ""
-    runs-on: ${{ matrix.settings.platform == 'ubuntu-latest' && fromJSON('["self-hosted","Linux","X64","hostinger"]') || matrix.settings.platform }}
+    runs-on: ${{ matrix.settings.platform }}
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
@@ -148,8 +148,7 @@ jobs:
             librsvg2-dev \
             patchelf \
             libdbus-1-dev \
-            libssl-dev \
-            xdg-utils
+            libssl-dev
 
       - name: Install Azure Trusted Signing dlib
         if: runner.os == 'Windows'
