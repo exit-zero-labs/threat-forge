@@ -171,7 +171,23 @@ html.light {
 		width: 100%;
 	}
 
-	/* Show connection handles on node hover */
+	/*
+	 * Show connection handles on node hover.
+	 *
+	 * Do NOT remove the !important here, and do NOT move this rule out of @layer base.
+	 * Biome 2.5.5's noImportantStyles warns on it (a warning, not a gate failure), and
+	 * both of its obvious "fixes" break handle visibility. Tracked in #134.
+	 *
+	 * Handles are hidden by this repo's own Tailwind utility, not by ReactFlow — see
+	 * HANDLE_STYLE in src/components/canvas/nodes/shared-handles.tsx, whose `!opacity-0`
+	 * emits `opacity: 0 !important` into @layer utilities. ReactFlow itself declares no
+	 * opacity on handles at all. Among !important declarations the cascade reverses layer
+	 * order, so this rule wins only because it is both !important and in the earlier
+	 * layer: dropping !important loses to the utility, and moving this rule unlayered
+	 * also loses, because unlayered !important ranks below any layered !important.
+	 * The cascade-correct fix is to stop emitting `opacity: 0 !important` in
+	 * shared-handles.tsx, which is what #134 should do.
+	 */
 	.react-flow__node:hover .react-flow__handle {
 		opacity: 1 !important;
 	}

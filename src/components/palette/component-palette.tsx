@@ -225,7 +225,7 @@ function GenericPaletteItem({
 
 				const target = document.elementFromPoint(e.clientX, e.clientY);
 				const canvas = document.querySelector(".react-flow");
-				if (!canvas || !canvas.contains(target)) return;
+				if (!canvas?.contains(target)) return;
 
 				const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
 
@@ -282,7 +282,7 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 
 				const target = document.elementFromPoint(e.clientX, e.clientY);
 				const canvas = document.querySelector(".react-flow");
-				if (!canvas || !canvas.contains(target)) return;
+				if (!canvas?.contains(target)) return;
 
 				const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
 				useCanvasStore
