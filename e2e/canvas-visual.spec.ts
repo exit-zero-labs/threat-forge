@@ -1,8 +1,11 @@
 import { type Page } from "@playwright/test";
-import { addPaletteItem, createModel, expect, test } from "./fixtures";
+import { addPaletteItem, createModel, expect, test, waitForCanvasReady } from "./fixtures";
 
 /** Add a trust boundary from the palette (doesn't use node-* testid like elements) */
 async function addTrustBoundary(page: Page) {
+	// Same readiness gate as addPaletteItem: this helper also double-clicks the palette, so it
+	// must not run against a mid-mount canvas (#111).
+	await waitForCanvasReady(page);
 	const item = page.getByTestId("palette-item-trust-boundary");
 	await item.waitFor({ state: "visible" });
 	await item.dblclick();

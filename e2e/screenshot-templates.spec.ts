@@ -3,6 +3,7 @@
  * Usage: npx playwright test e2e/screenshot-templates.spec.ts
  */
 import { test } from "@playwright/test";
+import { suppressFirstRunOverlays } from "./fixtures";
 
 const TEMPLATES = [
 	"ecommerce-platform",
@@ -13,26 +14,12 @@ const TEMPLATES = [
 	"healthcare-system",
 ];
 
-/** Suppress all onboarding dialogs by pre-setting localStorage */
-async function suppressOnboarding(page: import("@playwright/test").Page) {
-	await page.addInitScript(() => {
-		// Mark What's New as seen — must match CURRENT_VERSION exactly ("1.0.0")
-		localStorage.setItem("threatforge-last-seen-version", "1.0.0");
-		// Mark all onboarding guides as completed (flat format, not Zustand persist)
-		localStorage.setItem(
-			"threatforge-onboarding",
-			JSON.stringify({
-				completedGuideIds: [
-					"welcome",
-					"dfd-basics",
-					"stride-analysis",
-					"ai-assistant",
-				],
-				dismissedGuideIds: [],
-			}),
-		);
-	});
-}
+/**
+ * Suppress all first-run overlays. Shared with the fixture in ./fixtures so the guide-id list
+ * has a single home; this spec imports `test` from @playwright/test directly (it is a
+ * screenshot utility, not a fixture-based spec), so it must call the helper explicitly.
+ */
+const suppressOnboarding = suppressFirstRunOverlays;
 
 test("screenshot empty state", async ({ page }) => {
 	await suppressOnboarding(page);
