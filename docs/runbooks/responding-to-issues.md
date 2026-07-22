@@ -65,6 +65,10 @@ drift repair pass. Both discover live Project field IDs rather than relying on s
 
 ## Fixing a Bug
 
+For a red CI check rather than a reported bug, start from
+[Diagnosing CI Failures](diagnosing-ci-failures.md) — it distinguishes a runner
+infrastructure fault from a real break.
+
 1. **Reproduce** the bug locally
 2. **Create a branch**: `git checkout -b fix/issue-description`
 3. **Write a failing test** that captures the bug
