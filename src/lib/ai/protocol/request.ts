@@ -9,8 +9,28 @@
 
 import { type CapabilityResolution, resolveCapabilities } from "@/lib/ai-models";
 import { ProtocolException } from "./errors";
-import type { AiProvider } from "./messages";
-import type { ToolDescriptor } from "./tools";
+import type { AiProvider, ProtocolMessage } from "./messages";
+import type { AdvertisedTool, ToolDescriptor } from "./tools";
+
+/**
+ * Everything a provider mapper needs to build one streaming chat request.
+ *
+ * Provider-neutral by construction: the Anthropic and OpenAI request builders
+ * (`src/lib/ai/providers/`) each translate this one shape into their wire
+ * format, so nothing else in the stack assembles a provider-specific body. The
+ * system prompt is a separate field because the providers place it differently
+ * (a top-level `system` field versus a `system` message).
+ */
+export interface ProviderChatRequest {
+	modelId: string;
+	/** The composed system prompt for this turn. */
+	system: string;
+	messages: readonly ProtocolMessage[];
+	/** Tools advertised this turn. Empty means no tool fields are sent at all. */
+	tools: readonly AdvertisedTool[];
+	/** Cap on the model's answer, the same tokens the budgeter reserves. */
+	maxOutputTokens: number;
+}
 
 /** The parts of a chat request preflight needs to judge it. */
 export interface PreflightRequest {
