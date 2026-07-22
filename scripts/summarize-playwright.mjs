@@ -15,14 +15,15 @@
 // The report shape is @playwright/test's `JSONReport` (node_modules/playwright/types/
 // testReporter.d.ts). Fields read here: `stats.duration`; `suites[].specs[].tests[].status`
 // ("expected" | "unexpected" | "flaky" | "skipped"); `results[].status` (to separate a
-// timeout from an assertion failure); `results.length` (attempts); and each spec's
-// `title`, `file`, and `line`.
+// timeout from an assertion failure); `results.length` (attempts); each spec's `title`,
+// `file`, and `line`; and top-level `errors`, which is the only signal that a run died
+// before any test could report.
 
 import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_REPORT_PATH = "playwright-report/results.json";
+const DEFAULT_REPORT_PATH = "test-results/results.json";
 const HEADING = "## Playwright E2E";
 
 /**
@@ -46,6 +47,10 @@ const HEADING = "## Playwright E2E";
  * @property {number} timedOut
  * @property {number} flaky
  * @property {number} skipped
+ * @property {number} other Statuses this script does not know, so counts stay additive
+ *   if a Playwright upgrade widens the union.
+ * @property {number} runErrors Failures that killed the run before any test could report,
+ *   such as a `webServer` that never started or a spec that failed to import.
  * @property {number | null} durationMs
  * @property {TestOutcome[]} flakyTests
  * @property {TestOutcome[]} failedTests Includes timed-out tests.
@@ -133,6 +138,8 @@ export const summarizeReport = (report) => {
 		timedOut: 0,
 		flaky: 0,
 		skipped: 0,
+		other: 0,
+		runErrors: 0,
 		durationMs: null,
 		flakyTests: [],
 		failedTests: [],
@@ -146,6 +153,11 @@ export const summarizeReport = (report) => {
 	if (typeof stats.duration === "number" && Number.isFinite(stats.duration)) {
 		summary.durationMs = stats.duration;
 	}
+
+	// A run that dies before any test executes reports zero tests and a non-empty
+	// `errors`. Counting these is what stops a red job from summarizing as
+	// "No tests were reported."
+	summary.runErrors = toArray(report.errors).length;
 
 	for (const fileSuite of toArray(report.suites)) {
 		if (!isRecord(fileSuite)) {
@@ -167,6 +179,11 @@ export const summarizeReport = (report) => {
 					summary.failed += 1;
 				}
 				summary.failedTests.push(outcome);
+			} else {
+				// A status this script does not know. Counting it keeps the buckets
+				// additive if a Playwright upgrade widens the union, rather than
+				// silently under-reporting the total.
+				summary.other += 1;
 			}
 		}
 	}
@@ -216,16 +233,32 @@ const formatCounts = (summary) => {
 		[summary.timedOut, "timed out"],
 		[summary.flaky, "flaky"],
 		[summary.skipped, "skipped"],
+		[summary.other, "other"],
 	]
 		.filter(([count]) => count > 0)
 		.map(([count, label]) => `${count} ${label}`);
 
 	if (parts.length === 0) {
-		return "No tests were reported.";
+		return summary.runErrors > 0 ? "No tests ran." : "No tests were reported.";
 	}
 
 	const duration = summary.durationMs === null ? "" : ` in ${formatDuration(summary.durationMs)}`;
 	return `${parts.join(", ")}${duration}.`;
+};
+
+/**
+ * The run-level error line. Without it a run that died before any test executed —
+ * a `webServer` that never started, a spec that failed to import — summarizes as
+ * "No tests were reported" on a red job, which is the blind spot this whole
+ * summary exists to close. The messages themselves stay in the HTML report:
+ * they are multi-line stack traces that would swamp the summary.
+ *
+ * @param {number} runErrors
+ * @returns {string}
+ */
+const formatRunErrors = (runErrors) => {
+	const noun = runErrors === 1 ? "error" : "errors";
+	return `⚠️ ${runErrors} run-level ${noun} before any test could report — see the uploaded HTML report.`;
 };
 
 /**
@@ -237,6 +270,10 @@ const formatCounts = (summary) => {
  */
 export const renderSummary = (summary) => {
 	const sections = [HEADING, formatCounts(summary)];
+
+	if (summary.runErrors > 0) {
+		sections.push(formatRunErrors(summary.runErrors));
+	}
 
 	if (summary.flakyTests.length > 0) {
 		sections.push(
@@ -287,12 +324,26 @@ const main = () => {
 		return;
 	}
 
-	let markdown;
+	// Only reading and parsing are guarded: a fault inside summarizeReport or
+	// renderSummary is this script's bug, and reporting it as an unusable report
+	// would blame the file for a code fault.
+	let report;
 	try {
-		markdown = renderSummary(summarizeReport(JSON.parse(readFileSync(reportPath, "utf8"))));
+		report = JSON.parse(readFileSync(reportPath, "utf8"));
 	} catch (error) {
-		markdown = renderUnavailable(reportPath, error);
+		writeSummary(renderUnavailable(reportPath, error));
+		return;
 	}
+
+	writeSummary(renderSummary(summarizeReport(report)));
+};
+
+/**
+ * @param {string} markdown
+ * @returns {void}
+ */
+const writeSummary = (markdown) => {
+	const summaryPath = process.env.GITHUB_STEP_SUMMARY;
 
 	try {
 		if (summaryPath) {

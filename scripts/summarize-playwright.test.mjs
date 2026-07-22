@@ -1,3 +1,7 @@
+// @vitest-environment node
+//
+// This is a Node script, not a DOM module. Pinning the environment keeps the
+// scripts lane independent of the app's jsdom setup.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,10 +36,10 @@ const spec = (title, file, line, status, attempts) => ({
  * @param {number} duration
  * @param {unknown[]} suites
  */
-const report = (duration, suites) => ({
+const report = (duration, suites, errors = []) => ({
 	config: { rootDir: "/repo/e2e" },
 	suites,
-	errors: [],
+	errors,
 	stats: { startTime: "2026-07-21T10:00:00.000Z", duration },
 });
 
@@ -184,9 +188,52 @@ describe("summarizeReport", () => {
 			failed: 0,
 		});
 	});
+
+	it("counts run-level errors that killed the run before any test reported", () => {
+		// A webServer that never starts, or a spec that fails to import, produces
+		// exactly this shape: zero suites and a non-empty errors array.
+		const died = report(
+			1200,
+			[],
+			[{ message: "Process from config.webServer was not able to start. Exit code: 3" }],
+		);
+		expect(summarizeReport(died)).toMatchObject({ passed: 0, failed: 0, runErrors: 1 });
+	});
+
+	it("counts an unknown status so the buckets stay additive", () => {
+		const widened = report(500, [
+			{
+				title: "future.spec.ts",
+				file: "future.spec.ts",
+				specs: [spec("uses a future status", "future.spec.ts", 3, "quarantined", ["passed"])],
+			},
+		]);
+		expect(summarizeReport(widened)).toMatchObject({ passed: 0, other: 1 });
+	});
 });
 
 describe("renderSummary", () => {
+	it("names run-level errors instead of claiming no tests were reported", () => {
+		const died = report(
+			1200,
+			[],
+			[
+				{ message: "Process from config.webServer was not able to start. Exit code: 3" },
+				{ message: "Error: Cannot find module './missing'" },
+			],
+		);
+		const rendered = render(died);
+		// The old wording read as "nothing happened, nothing to see" on a red job.
+		expect(rendered).not.toContain("No tests were reported.");
+		expect(rendered).toContain("No tests ran.");
+		expect(rendered).toContain("2 run-level errors before any test could report");
+	});
+
+	it("uses the singular for one run-level error", () => {
+		const died = report(900, [], [{ message: "boom" }]);
+		expect(render(died)).toContain("1 run-level error before any test could report");
+	});
+
 	it("renders a single counts line when nothing needs attention", () => {
 		expect(render(allPassReport)).toBe(
 			["## Playwright E2E", "", "2 passed, 2 skipped in 1m 23s.", ""].join("\n"),
