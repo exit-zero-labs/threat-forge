@@ -5,7 +5,11 @@ use std::sync::Mutex;
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
-use rand::RngCore;
+// `Rng` is rand 0.10's name for the byte-source trait that 0.9 called
+// `RngCore`; the old `Rng` extension trait is now `RngExt`. `fill_bytes` keeps
+// its 0.9 semantics, including panicking only if the OS entropy source fails
+// while reseeding `ThreadRng`, which `TryRng` does not avoid either.
+use rand::Rng;
 
 use crate::ai::types::AiProvider;
 use crate::errors::ThreatForgeError;
