@@ -17,7 +17,8 @@ permissions:
 jobs:
   lockfile:
     name: Lockfile
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
@@ -40,7 +41,8 @@ jobs:
   lint:
     name: Lint
     needs: [lockfile]
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
@@ -97,7 +99,8 @@ jobs:
   test:
     name: Test
     needs: [lockfile]
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
@@ -146,7 +149,8 @@ jobs:
   e2e:
     name: E2E Tests
     needs: [test]
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, hostinger]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -176,7 +180,8 @@ jobs:
   build:
     name: Build (${{ matrix.platform }})
     needs: [lint, test]
-    runs-on: ${{ matrix.platform }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ matrix.platform == 'ubuntu-latest' && fromJSON('["self-hosted","Linux","X64","hostinger"]') || matrix.platform }}
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     strategy:
