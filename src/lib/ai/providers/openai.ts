@@ -181,6 +181,19 @@ export function buildOpenAiRequestBody(request: ProviderChatRequest): OpenAiRequ
 	return body;
 }
 
+/**
+ * Headers for a direct browser call to the Chat Completions API.
+ *
+ * Browser-only. On desktop the equivalent set is built by `auth_headers` in
+ * `src-tauri/src/ai/providers.rs` so that the key never enters the webview.
+ */
+export function buildOpenAiBrowserHeaders(apiKey: string): Record<string, string> {
+	return {
+		"Content-Type": "application/json",
+		Authorization: `Bearer ${apiKey}`,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Stream mapping
 // ---------------------------------------------------------------------------
