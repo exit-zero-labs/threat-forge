@@ -42,7 +42,7 @@ The following are in scope for security reports:
 
 ## Out of Scope
 
-- Vulnerabilities in the user's own LLM API provider (OpenAI, Anthropic, Ollama)
+- Vulnerabilities in the user's own LLM API provider (Anthropic, OpenAI)
 - Social engineering attacks
 - Issues requiring physical access to the user's machine
 - Bugs that require the user to deliberately misconfigure the application
@@ -51,13 +51,13 @@ The following are in scope for security reports:
 
 ThreatForge follows these security principles:
 
-- **API keys** are AES-256-GCM encrypted at rest in the app data directory, never stored in plaintext
+- **API keys** use AES-256-GCM encrypted storage on desktop; the browser stores keys in `localStorage` with an explicit in-app warning. Keys are never written to threat model files
 - **AI API calls** go directly from the user's machine with the user's key -- no proxy server
-- **LLM output** is treated as untrusted input and sanitized before rendering
-- **File operations** are scoped via Tauri's path resolver to prevent directory traversal
-- **YAML deserialization** uses strict serde validation with schema version checking; unknown fields are tolerated for forward compatibility
+- **LLM output** is treated as untrusted input; the Markdown renderer escapes raw HTML by default
+- **Native file I/O** is handled by Rust commands; path traversal and arbitrary file access remain explicitly in scope for security reports
+- **YAML deserialization** uses typed serde validation with explicit schema version checking; unknown fields are tolerated for forward compatibility
 - **Content Security Policy** is strict by default -- no inline scripts, no remote code loading
-- **Auto-updates** use Tauri's built-in signature verification via GitHub Releases
+- **Auto-update signature verification** is planned through the Tauri updater; signing and end-to-end update verification remain [roadmap Phase 0](docs/plans/roadmap.md#phase-0--operational-foundation) gates
 
 ## Supported Versions
 

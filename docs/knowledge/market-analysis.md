@@ -23,7 +23,7 @@
 | AI coding acceleration | AI-generated code increases volume needing security review | Strong tailwind — more code = more need for threat models |
 | Enterprise consolidation | ThreatModeler acquired IriusRisk for $100M+ (Jan 2026) | Tailwind — creates gap in mid-market/indie space |
 | OWASP TM-BOM standard | CycloneDX threat model bill of materials schema emerging | Tailwind — first-mover opportunity for format adoption |
-| 78% hiring gap | Organizations struggle to hire threat modeling staff | Tailwind — AI-assisted tools fill expertise gap |
+| Security staffing gap | Organizations struggle to hire threat modeling staff | Tailwind — AI-assisted tools can help extend specialist capacity |
 | Shift-left movement | Security moving earlier in SDLC | Tailwind — developers (not just security pros) need accessible tools |
 
 ## Competitive Landscape
@@ -31,13 +31,12 @@
 | Dimension | ThreatForge | Microsoft TMT | OWASP Threat Dragon | ThreatModeler/IriusRisk | draw.io + Stencils | STRIDE-GPT |
 |-----------|------------|---------------|--------------------|-----------------------|-------------------|------------|
 | **Pricing** | Free (OSS) | Free | Free (OSS) | Enterprise ($$$) | Free | Free (OSS) |
-| **Platform** | Win/Mac/Linux | Windows only | Web + Desktop (Electron) | SaaS | Web | Web |
+| **Platform** | Browser/Win/Mac/Linux | Windows only | Web + Desktop (Electron) | SaaS | Web | Web |
 | **Modern UI** | Yes | No (2016 WinForms) | Functional, dated | Yes (SaaS) | Generic | Basic |
 | **AI Features** | Integrated chat pane with model selector, sessions, markdown, stop generating | None | None | Jeff AI | None | Core feature |
 | **Git-friendly files** | YAML, human-readable | Binary .tm7 | JSON (verbose) | Proprietary SaaS | N/A | Markdown only |
 | **STRIDE support** | Yes | Yes | Yes | Yes | No (manual) | Yes |
-| **GitHub Stars** | New | N/A (closed) | ~1,300 | N/A (commercial) | N/A | ~600 |
-| **Offline capable** | Full offline (AI optional) | Yes | Needs server | No (SaaS) | Yes | No (needs API) |
+| **Offline capable** | Core modeling works offline; AI requires a provider | Yes | Needs server | No (SaaS) | Yes | No (needs API) |
 
 ## White Space
 
@@ -61,6 +60,6 @@ As an open-source project, traditional moats don't apply. Community defensibilit
 - Mordor Intelligence, "Threat Modeling Tools Market Size, Share, 2025-2030 Outlook"
 - Fortune, "ThreatModeler acquires IriusRisk for over $100 million" (January 2026)
 - OWASP Foundation, "OWASP Threat Dragon" — github.com/OWASP/threat-dragon
-- GitHub Topics, "threat-modeling" — 1,700+ star curated list
+- GitHub Topics, "threat-modeling"
 - ThreatModeler, "ThreatModeler vs. Microsoft Threat Modeling Tool" (December 2025)
 - OWASP, "Threat Modeling Methodology v2.0" (May 2025)

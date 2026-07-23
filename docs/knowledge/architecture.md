@@ -1,9 +1,14 @@
 # ThreatForge — Architecture
 
-## System Architecture
+## System architecture
+
+The React frontend is shared by the browser and desktop builds. Runtime factories select
+browser or Tauri adapters for file access, STRIDE analysis, AI chat, and key storage. The
+desktop runtime adds the Rust backend and Tauri IPC shown below; the browser uses browser
+adapters and the persistence path described in "Browser workspace persistence."
 
 ```
-ThreatForge Desktop App (Tauri v2)
+ThreatForge desktop runtime (Tauri v2)
 ├── Frontend (React 19 + TypeScript)
 │   ├── UI Components (React + Tailwind CSS 4 + shadcn/ui)
 │   ├── Diagramming Canvas (ReactFlow / xyflow)
@@ -13,27 +18,30 @@ ThreatForge Desktop App (Tauri v2)
 │
 ├── Backend (Rust)
 │   ├── File I/O (Read/Write YAML — serde + serde_yaml)
-│   ├── Schema Validation (strict serde deserialization)
+│   ├── Schema Validation (typed deserialization + explicit version checks)
 │   ├── STRIDE Engine (threat rule engine)
 │   ├── Importers (TM7 XML → ThreatModel conversion)
 │   ├── Secure Key Storage (AES-256-GCM encrypted file)
-│   ├── Auto-Updater (Tauri plugin)
-│   └── Opt-in Telemetry
+│   └── Auto-Updater (Tauri plugin)
 │
-└── IPC: Tauri IPC (JSON-RPC) between frontend and backend
+└── IPC: Tauri IPC between frontend and Rust commands
 ```
 
 **External connections:**
-- AI Chat Pane → External LLM API (OpenAI / Anthropic / Ollama) via HTTPS with user's API key
+- AI Chat Pane → External LLM API (OpenAI / Anthropic) via HTTPS with user's API key
 - File I/O → Local filesystem (`.thf` files)
-- Auto-Updater → GitHub Releases (signature-verified)
+- Auto-Updater → GitHub Releases (desktop; can verify signed update metadata once signing is provisioned)
 
-## Technology Stack
+In the browser, AI requests also go directly to the configured provider. Browser keys use
+local browser storage with an explicit UI warning; desktop keys use the encrypted Rust
+storage path. Browser file operations use import/download adapters instead of Tauri IPC.
+
+## Technology stack
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| App Framework | Tauri v2 (Rust) | ~10MB binary vs 100MB+ Electron; native webview; security sandbox |
-| Frontend | React 19 + TypeScript 5.x | Largest contributor pool; strong typing |
+| Desktop framework | Tauri v2 (Rust) | Smaller footprint than Electron; native webview; security sandbox |
+| Frontend | React 19 + TypeScript 7.x | Largest contributor pool; strong typing |
 | Styling | Tailwind CSS 4 + shadcn/ui | Lightweight, dark mode, customizable |
 | Canvas | ReactFlow (xyflow) | MIT, React-native, performant, active dev |
 | State | Zustand | Minimal boilerplate, TypeScript-first |
@@ -49,13 +57,13 @@ ThreatForge Desktop App (Tauri v2)
 
 | ADR | Decision | Rationale | Key Tradeoff |
 |-----|----------|-----------|-------------|
-| **ADR-001** | Tauri v2 over Electron | ~10MB binary; Rust backend for security/perf; native OS webview | Smaller ecosystem than Electron |
+| **ADR-001** | Tauri v2 over Electron | Smaller binary footprint; Rust backend for security/perf; native OS webview | Smaller ecosystem than Electron |
 | **ADR-002** | ReactFlow for diagramming | MIT license; React-native; excellent performance; active dev | Required custom work for DFD conventions |
-| **ADR-003** | Custom YAML file format | Human-readable; git-diffable; familiar to developers | YAML indentation gotchas; mitigated by strict schema validation |
+| **ADR-003** | Custom YAML file format | Human-readable; git-diffable; familiar to developers | YAML indentation gotchas; mitigated by typed validation and explicit version checks |
 | **ADR-004** | Zustand for state | Minimal boilerplate; great TypeScript support; performant | Less middleware than Redux; not needed at this scale |
 | **ADR-005** | BYOK AI (user-provided keys) | Zero cost to project; no rate limiting; user controls data | Requires user to have API key; AI is optional |
 | **ADR-006** | Inline layout data | Positions stored inline on each element in the `.thf` file; single-file portability | Slightly larger diffs when repositioning; but eliminates sidecar file complexity |
-| **ADR-007** | AES-256-GCM encrypted file storage for API keys | Cross-platform without OS-specific keychain quirks; secure at rest | Managed by app, not OS keychain |
+| **ADR-007** | AES-256-GCM encrypted file storage for desktop API keys | Cross-platform app-managed encryption without OS-specific keychain integration | The encryption key is app-managed and co-located, so it does not protect against same-user local compromise |
 | **ADR-008** | Tailwind + shadcn/ui | Lightweight, customizable, excellent dark mode, growing Tauri adoption | More manual composition than MUI |
 | **ADR-009** | Additive schema growth keeps `version: "1.0"` | Additive optional fields break nothing, so bumping would make every already-shipped build refuse to open every new file; `validate_version` stays exact-match and fail-closed. Full argument in [`file-format.md`](file-format.md#schema-versioning-policy) | An older desktop build that opens and saves a newer document silently discards the sections it does not know |
 | **ADR-010** | Per-document state lives in swapped store bundles, not copied checkpoints | Each open document owns real model/canvas/history store instances; activation repoints the store facades at that document's bundle. Nothing is copied on switch, so no field can be forgotten and leak across documents, and every future document field is per-document by construction. Full rationale in [`docs/plans/53-document-registry.md`](../plans/53-document-registry.md) | `activateDocument` has no production caller until the tab UI (`#54`) renders more than one document at a time |
@@ -246,25 +254,28 @@ threat-forge/
 └── public/                     # Static assets
 ```
 
-## Infrastructure & DevOps
+## Infrastructure and DevOps
 
-| Environment | Purpose | Infrastructure | Cost |
-|-------------|---------|---------------|------|
-| Local | Developer workstation | `npm run tauri dev` (hot reload) | $0 |
-| CI | Automated builds + tests | GitHub Actions matrix (ubuntu, macos, windows) | $0 (public repo) |
-| Release | Signed binaries | GitHub Releases | $0 |
-| Website | Docs + browser app (threatforge.dev) | Cloudflare Workers Static Assets | $0 |
+| Environment | Purpose | Infrastructure | Status |
+|-------------|---------|----------------|--------|
+| Local | Developer workstation | `npm run tauri dev` or `npm run dev:web` | Current |
+| CI | Automated builds + tests | GitHub Actions matrix (ubuntu, macos, windows) plus web checks | Current |
+| Release | Desktop artifacts and updates | GitHub Releases + release workflow | Signing and updater verification remain tracked in [roadmap Phase 0](../plans/roadmap.md#phase-0--operational-foundation) |
+| Website | Site + browser app (`threatforge.dev`) | Cloudflare Workers Static Assets | Current |
 
-### CI Pipeline
+### CI pipeline
 
 ```
 Feature Branch → PR Created → GitHub Actions CI
   → Lint (Biome + Clippy)
   → Test (Vitest + cargo test)
-  → Build (All 3 Platforms)
+  → Build (web + desktop platform matrix)
   → PR Review → Merge to main
-    → Tagged Release? → Build Signed Binaries → GitHub Release → Auto-update
 ```
+
+Release signing, notarization, and updater verification remain planned gates rather than
+properties inferred from a green pull-request build. See the
+[release-signing runbook](../runbooks/configuring-release-signing.md).
 
 Triage for a red run — including the macOS runner infrastructure auto-rerun — is in
 [docs/runbooks/diagnosing-ci-failures.md](../runbooks/diagnosing-ci-failures.md).
@@ -277,16 +288,17 @@ npm run ci:docker        # Docker lint + test (clean environment)
 npm run ci:docker:build  # Docker lint + test + Tauri build
 ```
 
-## Security Architecture
+## Security architecture
 
 | Layer | Approach |
 |-------|---------|
-| API Key Storage | AES-256-GCM encrypted file in app data directory |
+| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: local storage with an explicit UI warning. |
 | AI API Calls | Direct from user's machine with user's key; HTTPS only |
-| File Integrity | Schema validation on read via strict serde deserialization |
-| Auto-Update | Signed releases via Tauri updater with signature verification |
-| Supply Chain | Dependabot + cargo-audit in CI; minimal dependencies |
+| File Integrity | Explicit version checks and typed deserialization; unknown fields remain tolerated for forward compatibility |
+| Auto-Update | Tauri updater can verify signed update metadata once signing is provisioned; rollout and end-to-end verification remain roadmap gates |
+| Supply Chain | Dependabot plus lockfile, dependency-review, and GitHub CodeQL default-setup checks |
 | CSP | Strict Content Security Policy; no inline scripts, no remote code |
-| Input Sanitization | Rust-side for file ops; React-side for UI; LLM output treated as untrusted |
+| Native File I/O | Rust commands handle reads and writes; export writes restrict extensions, while path confinement remains an active security review surface |
+| Input Validation | React escapes rendered content by default; LLM output remains untrusted |
 
 See [SECURITY.md](../../SECURITY.md) for the full security policy and vulnerability reporting.
