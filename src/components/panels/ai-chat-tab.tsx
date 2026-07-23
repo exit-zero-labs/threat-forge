@@ -15,9 +15,11 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { extractLegacyActions, extractLegacyThreats } from "@/lib/ai/legacy/fenced-actions";
+import { flattenText } from "@/lib/ai/protocol/messages";
 import { executeActions, executeSingleAction } from "@/lib/ai-action-executor";
-import { type AiAction, describeAction, extractActions } from "@/lib/ai-actions";
-import { extractThreats, suggestionToThreat } from "@/lib/ai-utils";
+import { type AiAction, describeAction } from "@/lib/ai-actions";
+import { suggestionToThreat } from "@/lib/ai-utils";
 import { cn } from "@/lib/utils";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
@@ -269,6 +271,10 @@ function MessageBubble({
 	isStreaming: boolean;
 }) {
 	const isUser = message.role === "user";
+	// Messages carry block content now; the bubble renders the accumulated text.
+	// The assistant's fenced ` ```actions `/` ```threats ` blocks live inside this
+	// text and are parsed only through the legacy boundary in `AssistantContent`.
+	const displayText = flattenText(message);
 
 	return (
 		<div className={cn("flex gap-2", isUser ? "flex-row-reverse" : "flex-row")}>
@@ -291,9 +297,9 @@ function MessageBubble({
 				)}
 			>
 				{isUser ? (
-					<p className="whitespace-pre-wrap">{message.content}</p>
+					<p className="whitespace-pre-wrap">{displayText}</p>
 				) : (
-					<AssistantContent content={message.content} isStreaming={isStreaming} isLast={isLast} />
+					<AssistantContent content={displayText} isStreaming={isStreaming} isLast={isLast} />
 				)}
 			</div>
 		</div>
@@ -342,8 +348,10 @@ function AssistantContent({
 	const addThreat = useModelStore((s) => s.addThreat);
 	const [acceptedIds, setAcceptedIds] = useState<Set<number>>(new Set());
 
-	const threats = isLast && !isStreaming ? extractThreats(content) : [];
-	const actions = isLast && !isStreaming ? extractActions(content) : [];
+	// `content` is the assistant turn's accumulated text; fenced parsing is the
+	// legacy boundary's job and only runs there (issue #64 removes it).
+	const threats = isLast && !isStreaming ? extractLegacyThreats(content) : [];
+	const actions = isLast && !isStreaming ? extractLegacyActions(content) : [];
 
 	const handleAccept = useCallback(
 		(index: number, threat: Threat) => {

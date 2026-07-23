@@ -1,20 +1,31 @@
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
+import { flattenText } from "@/lib/ai/protocol/messages";
 import { useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
 import type { ThreatModel } from "@/types/threat-model";
 import { AiChatTab } from "./ai-chat-tab";
 
-// A controllable fake chat adapter. The abort test configures a stream that never resolves.
-const chatAdapter = vi.hoisted(() => ({ sendMessage: vi.fn() }));
+// The store drives the protocol client over a platform transport. The client is
+// captured so a test can push stream events and hold the turn open; the
+// transport is an inert stand-in the mocked client never touches.
+const streamConversationMock = vi.hoisted(() => vi.fn());
+// Whether the mocked keychain reports a stored key; a test flips it to reach the
+// chat view instead of the empty state.
+const keychain = vi.hoisted(() => ({ hasKey: false }));
 
-vi.mock("@/lib/adapters/get-chat-adapter", () => ({
-	getChatAdapter: () => Promise.resolve(chatAdapter),
+vi.mock("@/lib/ai/protocol/client", () => ({
+	streamConversation: streamConversationMock,
+}));
+
+vi.mock("@/lib/adapters/get-chat-transport", () => ({
+	getChatTransport: () => Promise.resolve({ open: vi.fn() }),
 }));
 
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
-	getKeychainAdapter: () => Promise.resolve({ hasKey: async () => false }),
+	getKeychainAdapter: () => Promise.resolve({ hasKey: async () => keychain.hasKey }),
 }));
 
 function makeModel(title: string): ThreatModel {
@@ -37,6 +48,10 @@ function makeModel(title: string): ThreatModel {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	localStorage.clear();
+	keychain.hasKey = false;
+	// jsdom does not implement scrollIntoView, which the message list calls on update.
+	Element.prototype.scrollIntoView = vi.fn();
 	useDocumentRegistry.setState({
 		documents: {},
 		openDocumentIds: [],
@@ -89,17 +104,12 @@ describe("AiChatTab session binding", () => {
 });
 
 describe("AiChatTab stream cancellation on document switch", () => {
-	it("aborts an in-flight AI stream on switch, leaving isStreaming false and dropping later chunks", async () => {
-		let capturedOnChunk: ((text: string) => void) | undefined;
-		chatAdapter.sendMessage.mockImplementation(
-			(
-				_provider: unknown,
-				_messages: unknown,
-				_model: unknown,
-				callbacks: { onChunk: (text: string) => void },
-			) => {
-				capturedOnChunk = callbacks.onChunk;
-				// Never resolves: the stream stays in-flight until it is aborted.
+	it("aborts an in-flight AI stream on switch, leaving isStreaming false and dropping later events", async () => {
+		let capturedOnEvent: StreamConversationHandlers["onEvent"] | undefined;
+		streamConversationMock.mockImplementation(
+			(_request: unknown, _transport: unknown, handlers: StreamConversationHandlers) => {
+				capturedOnEvent = handlers.onEvent;
+				// Never resolves: the turn stays in-flight until it is aborted.
 				return new Promise<void>(() => {});
 			},
 		);
@@ -127,14 +137,22 @@ describe("AiChatTab stream cancellation on document switch", () => {
 
 		await act(async () => {
 			void useChatStore.getState().sendMessage("hello", makeModel("A"));
-			// Let sendMessage reach the adapter call and register the abort controller.
+			// Let sendMessage resolve the transport and reach the client call.
+			await Promise.resolve();
 			await Promise.resolve();
 			await Promise.resolve();
 		});
 
 		expect(useChatStore.getState().isStreaming).toBe(true);
-		expect(capturedOnChunk).toBeDefined();
-		const transcriptBefore = useChatStore.getState().messages;
+		expect(capturedOnEvent).toBeDefined();
+
+		// A delta before the stop appends to the assistant turn.
+		act(() => {
+			capturedOnEvent?.({ type: "text_delta", text: "streamed" });
+		});
+		expect(useChatStore.getState().messages.some((m) => flattenText(m).includes("streamed"))).toBe(
+			true,
+		);
 
 		// Switching documents cancels the in-flight stream.
 		act(() => {
@@ -142,13 +160,54 @@ describe("AiChatTab stream cancellation on document switch", () => {
 		});
 		expect(useChatStore.getState().isStreaming).toBe(false);
 
-		// A chunk that arrives after the abort must not append to the transcript.
+		const transcriptAfterSwitch = useChatStore.getState().messages;
+
+		// An event that arrives after the abort must not append to the transcript.
 		act(() => {
-			capturedOnChunk?.("leaked text");
+			capturedOnEvent?.({ type: "text_delta", text: "leaked text" });
 		});
-		expect(useChatStore.getState().messages).toEqual(transcriptBefore);
-		expect(useChatStore.getState().messages.some((m) => m.content.includes("leaked text"))).toBe(
-			false,
-		);
+		expect(useChatStore.getState().messages).toEqual(transcriptAfterSwitch);
+		expect(
+			useChatStore.getState().messages.some((m) => flattenText(m).includes("leaked text")),
+		).toBe(false);
+	});
+});
+
+describe("AiChatTab fenced action rendering", () => {
+	it("renders an action preview for a fenced ```actions response while the flag is on", async () => {
+		keychain.hasKey = true;
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(a);
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+
+		// A completed assistant turn whose text carries a fenced ` ```actions ` block —
+		// exactly what the accumulated `text_delta` output looks like today.
+		const fenced = [
+			"Here is a change.",
+			"```actions",
+			'[{ "action": "delete_element", "id": "old-service" }]',
+			"```",
+		].join("\n");
+
+		await act(async () => {
+			useChatStore.setState({
+				messages: [{ role: "assistant", content: [{ type: "text", text: fenced }] }],
+				isStreaming: false,
+			});
+		});
+
+		// The fenced block is parsed through the legacy boundary and rendered as an
+		// applicable action, while the fence itself is stripped from the shown text.
+		expect(screen.getByText("Suggested changes (1):")).toBeInTheDocument();
+		expect(screen.getByText("Delete element: old-service")).toBeInTheDocument();
+		expect(screen.queryByText(/```actions/)).not.toBeInTheDocument();
 	});
 });

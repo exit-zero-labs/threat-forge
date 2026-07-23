@@ -1,14 +1,19 @@
 import { create } from "zustand";
-import { getChatAdapter } from "@/lib/adapters/get-chat-adapter";
+import { getChatTransport } from "@/lib/adapters/get-chat-transport";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
 import { capMessageHistory } from "@/lib/ai/protocol/budget";
+import { streamConversation } from "@/lib/ai/protocol/client";
+import type { StopReason, StreamEvent, TokenUsage } from "@/lib/ai/protocol/events";
 import {
 	type AiProvider,
+	type ContentBlock,
 	flattenText,
-	type LegacyChatMessage,
+	type ProtocolMessage,
+	type ProtocolRole,
 	upgradeLegacyMessage,
 } from "@/lib/ai/protocol/messages";
 import { getDefaultModelId } from "@/lib/ai-models";
+import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
 	type ChatSession,
@@ -22,13 +27,49 @@ import type { ThreatModel } from "@/types/threat-model";
 export type { AiProvider };
 
 /**
- * The string-only message shape sessions are still persisted in. Replaced by
- * `ProtocolMessage` when the store consumes stream events (issue #61 step 10).
+ * A conversation turn as the store holds it in memory.
+ *
+ * Content is a block list, not a string, so a streamed assistant turn can carry
+ * text and tool calls in one message (issue #61 step 10); `usage` and
+ * `stopReason` record what the provider reported for the turn. Sessions are
+ * still persisted in the pre-protocol `{ role, content: string }` shape — see
+ * `saveSessionsToStorage`/`loadSessionsFromStorage` — so existing `localStorage`
+ * data stays readable and `#63` owns the eventual storage move.
  */
-export type ChatMessage = LegacyChatMessage;
+export interface ChatMessage extends ProtocolMessage {
+	/** Token accounting the provider reported for this turn, when it did. */
+	usage?: TokenUsage;
+	/** Why the model stopped, when the turn ended normally. */
+	stopReason?: StopReason;
+}
+
+/** Cap on the model's answer per turn; also the tokens budgeting reserves. */
+const MAX_OUTPUT_TOKENS = 4096;
 
 /** Module-level abort controller for the current stream. */
 let currentAbortController: AbortController | null = null;
+
+/**
+ * The string-content shape sessions are persisted in.
+ *
+ * Block content is flattened to a string on save and read back through
+ * `upgradeLegacyMessage` on load, so the on-disk format is byte-identical to the
+ * pre-protocol one and older sessions keep opening. Tool-call blocks do not
+ * survive this round trip, which is harmless while the tool list is empty; `#63`
+ * replaces `localStorage` with a store that preserves them.
+ */
+interface PersistedChatMessage {
+	role: ProtocolRole;
+	content: string;
+}
+
+interface PersistedChatSession {
+	id: string;
+	title: string;
+	messages: PersistedChatMessage[];
+	createdAt: string;
+	updatedAt: string;
+}
 
 function generateSessionId(): string {
 	return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -45,13 +86,21 @@ function getStorageKey(filePath: string | null): string {
 	return `threatforge-chat-sessions:${filePath}`;
 }
 
+/** Read a persisted session's string-content messages back into block content. */
+function upgradePersistedSession(session: PersistedChatSession): ChatSession {
+	return {
+		...session,
+		messages: Array.isArray(session.messages) ? session.messages.map(upgradeLegacyMessage) : [],
+	};
+}
+
 function loadSessionsFromStorage(key: string): ChatSession[] {
 	try {
 		const raw = localStorage.getItem(key);
 		if (!raw) return [];
-		const parsed = JSON.parse(raw) as ChatSession[];
+		const parsed = JSON.parse(raw) as PersistedChatSession[];
 		if (!Array.isArray(parsed)) return [];
-		return parsed;
+		return parsed.map(upgradePersistedSession);
 	} catch {
 		return [];
 	}
@@ -59,10 +108,69 @@ function loadSessionsFromStorage(key: string): ChatSession[] {
 
 function saveSessionsToStorage(key: string, sessions: ChatSession[]): void {
 	try {
-		localStorage.setItem(key, JSON.stringify(sessions));
+		// Flatten block content to the persisted string shape so the on-disk format
+		// is unchanged and stays readable by older builds and by `#63`.
+		const persisted: PersistedChatSession[] = sessions.map((session) => ({
+			...session,
+			messages: session.messages.map((message) => ({
+				role: message.role,
+				content: flattenText(message),
+			})),
+		}));
+		localStorage.setItem(key, JSON.stringify(persisted));
 	} catch {
 		// localStorage full or unavailable — silently ignore
 	}
+}
+
+/** Append text to the last assistant turn's trailing text block, or start one. */
+function appendAssistantText(messages: ChatMessage[], text: string): ChatMessage[] {
+	const next = [...messages];
+	const lastIndex = next.length - 1;
+	const last = next[lastIndex];
+	if (last?.role !== "assistant") return next;
+
+	const content = [...last.content];
+	const trailing = content[content.length - 1];
+	if (trailing && trailing.type === "text") {
+		content[content.length - 1] = { ...trailing, text: trailing.text + text };
+	} else {
+		content.push({ type: "text", text });
+	}
+	next[lastIndex] = { ...last, content };
+	return next;
+}
+
+/** Append a content block to the last assistant turn. */
+function appendAssistantBlock(messages: ChatMessage[], block: ContentBlock): ChatMessage[] {
+	const next = [...messages];
+	const lastIndex = next.length - 1;
+	const last = next[lastIndex];
+	if (last?.role !== "assistant") return next;
+
+	next[lastIndex] = { ...last, content: [...last.content, block] };
+	return next;
+}
+
+/** Record turn-level metadata (usage, stop reason) on the last assistant turn. */
+function recordOnAssistant(
+	messages: ChatMessage[],
+	patch: Pick<ChatMessage, "usage"> | Pick<ChatMessage, "stopReason">,
+): ChatMessage[] {
+	const next = [...messages];
+	const lastIndex = next.length - 1;
+	const last = next[lastIndex];
+	if (last?.role !== "assistant") return next;
+
+	next[lastIndex] = { ...last, ...patch };
+	return next;
+}
+
+/** True when an assistant turn carries no text and no tool call. */
+function isEmptyAssistantTurn(message: ChatMessage): boolean {
+	return (
+		flattenText(message) === "" && !message.content.some((block) => block.type === "tool_call")
+	);
 }
 
 interface ChatState {
@@ -250,12 +358,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		const { provider, messages, isStreaming, activeSessionId, sessionKey } = get();
 		if (isStreaming || !activeSessionId || !sessionKey) return;
 
-		const userMessage: ChatMessage = { role: "user", content };
-		const updatedMessages = [...messages, userMessage];
-		const assistantMessage: ChatMessage = { role: "assistant", content: "" };
+		const userMessage: ChatMessage = { role: "user", content: [{ type: "text", text: content }] };
+		// History sent to the provider: everything through the new user turn. The
+		// empty assistant turn below is the local placeholder the stream fills in.
+		const conversation: ChatMessage[] = [...messages, userMessage];
+		const assistantMessage: ChatMessage = { role: "assistant", content: [] };
 
 		set({
-			messages: [...updatedMessages, assistantMessage],
+			messages: [...conversation, assistantMessage],
 			isStreaming: true,
 			error: null,
 		});
@@ -268,81 +378,108 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		const settings = useSettingsStore.getState().settings;
 		const modelId = provider === "anthropic" ? settings.aiModelAnthropic : settings.aiModelOpenai;
 		const resolvedModelId = modelId || getDefaultModelId(provider);
+		// No native tools yet (issue #64); the empty list keeps the model on the
+		// fenced ` ```actions ` path this build still understands.
+		const systemPrompt = buildSystemPrompt(model, { tools: [] });
+
+		/** Fold one stream event into store state. */
+		const applyEvent = (event: StreamEvent): void => {
+			// A late event from a stream the user already stopped must not append to
+			// the transcript or clear the retained partial text.
+			if (abortController.signal.aborted) return;
+
+			switch (event.type) {
+				case "text_delta":
+					set((state) => ({ messages: appendAssistantText(state.messages, event.text) }));
+					return;
+				case "tool_call_complete":
+					set((state) => ({
+						messages: appendAssistantBlock(state.messages, {
+							type: "tool_call",
+							id: event.id,
+							name: event.name,
+							input: event.input,
+						}),
+					}));
+					return;
+				case "usage":
+					set((state) => ({ messages: recordOnAssistant(state.messages, { usage: event.usage }) }));
+					return;
+				case "message_stop":
+					set((state) => ({
+						messages: recordOnAssistant(state.messages, { stopReason: event.stopReason }),
+					}));
+					return;
+				case "error":
+					// `ProtocolError.message` is authored by ThreatForge and safe to
+					// render; provider text never reaches here (see `./errors.ts`).
+					set({ error: event.error.message });
+					return;
+				default:
+					// `message_start`, `tool_call_start`, and `tool_call_input_delta` are
+					// progress-only; `aborted` keeps the partial turn and, by not touching
+					// `error`, leaves the banner clear.
+					return;
+			}
+		};
 
 		try {
-			const adapter = await getChatAdapter();
-			await adapter.sendMessage(
-				provider,
-				updatedMessages,
-				model,
+			const transport = await getChatTransport();
+			await streamConversation(
 				{
-					onChunk: (text) => {
-						if (abortController.signal.aborted) return;
-						set((state) => {
-							const msgs = [...state.messages];
-							const last = msgs[msgs.length - 1];
-							if (last && last.role === "assistant") {
-								msgs[msgs.length - 1] = { ...last, content: last.content + text };
-							}
-							return { messages: msgs };
-						});
-					},
-					onDone: () => {
-						// Stream completed — handled by finally block
-					},
-					onError: (error) => {
-						if (!abortController.signal.aborted) {
-							set({ error });
-						}
-					},
+					provider,
+					modelId: resolvedModelId,
+					system: systemPrompt,
+					messages: conversation,
+					tools: [],
+					maxOutputTokens: MAX_OUTPUT_TOKENS,
 				},
-				resolvedModelId,
+				transport,
+				{ onEvent: applyEvent },
 				abortController.signal,
 			);
 		} catch (err) {
-			// Don't set error if we aborted
-			if (abortController.signal.aborted) {
-				// Keep partial response
-			} else {
+			// `streamConversation` resolves for every expected protocol failure (they
+			// arrive as `error` events applied above), so this only catches an
+			// unexpected throw — for example the transport module failing to load.
+			if (!abortController.signal.aborted) {
 				const errorMessage = err instanceof Error ? err.message : String(err);
 				set({ error: errorMessage });
+			}
+		} finally {
+			currentAbortController = null;
+			const wasAborted = abortController.signal.aborted;
+			set({ isStreaming: false });
 
-				// Remove the empty assistant message on error
+			// An error that produced no output leaves a blank assistant bubble; drop
+			// it. A cancellation keeps whatever text arrived, and a mid-stream error
+			// keeps its partial text.
+			if (!wasAborted && get().error !== null) {
 				set((state) => {
 					const msgs = [...state.messages];
 					const last = msgs[msgs.length - 1];
-					if (last && last.role === "assistant" && last.content === "") {
+					if (last && last.role === "assistant" && isEmptyAssistantTurn(last)) {
 						msgs.pop();
 					}
 					return { messages: msgs };
 				});
 			}
-		} finally {
-			currentAbortController = null;
-			set({ isStreaming: false });
 
-			// Persist messages to session
-			const finalState = get();
-			const finalMessages = finalState.messages;
-
-			// Enforce max messages per session at tool-group granularity, so a saved
+			// Persist messages to session, capped at tool-group granularity so a saved
 			// session can never split a tool_call from the tool_result answering it.
-			// Messages are still string-content here (protocol event consumption is
-			// issue #61 step 10), so the upgrade/flatten round-trip is lossless today
-			// and already group-safe once messages carry tool blocks.
+			const finalState = get();
 			const cappedMessages: ChatMessage[] = capMessageHistory(
-				finalMessages.map(upgradeLegacyMessage),
+				finalState.messages,
 				MAX_MESSAGES_PER_SESSION,
-			).map((message) => ({ role: message.role, content: flattenText(message) }));
+			);
 
 			// Update session title from first user message if still default
 			const updatedSessions = finalState.sessions.map((s) => {
 				if (s.id !== activeSessionId) return s;
+				const firstUser = cappedMessages.find((m) => m.role === "user");
 				const title =
 					s.title === "New Chat" && cappedMessages.length > 0
-						? generateSessionTitle(
-								cappedMessages.find((m) => m.role === "user")?.content ?? "New Chat",
-							)
+						? generateSessionTitle(firstUser ? flattenText(firstUser) : "New Chat")
 						: s.title;
 				return {
 					...s,

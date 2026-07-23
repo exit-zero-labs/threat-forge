@@ -12,8 +12,7 @@ import { ProtocolException } from "@/lib/ai/protocol/errors";
 import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import { buildOpenAiRequestBody } from "@/lib/ai/providers/openai";
 import type { SseFrame } from "@/lib/ai/providers/sse";
-import type { ThreatModel } from "@/types/threat-model";
-import { BrowserChatAdapter, BrowserChatTransport } from "./browser-chat-adapter";
+import { BrowserChatTransport } from "./browser-chat-adapter";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import type { ProviderStreamRequest, TransportCallbacks } from "./chat-adapter";
 import { PROVIDER_ENDPOINTS } from "./provider-endpoints";
@@ -115,24 +114,6 @@ function redirectingProvider(location: string): Array<{ url: string; headers: st
 		return fetch(location, init);
 	});
 	return delivered;
-}
-
-function emptyModel(): ThreatModel {
-	return {
-		version: "1.0",
-		metadata: {
-			title: "Redirect Test Model",
-			author: "Test Author",
-			created: "2026-01-01",
-			modified: "2026-01-01",
-			description: "",
-		},
-		elements: [],
-		data_flows: [],
-		trust_boundaries: [],
-		threats: [],
-		diagrams: [],
-	};
 }
 
 function fetchArgs(): { url: string; init: RequestInit } {
@@ -254,36 +235,6 @@ describe("BrowserChatTransport request building", () => {
 		await expect(
 			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
 		).rejects.toMatchObject({ error: { code: "no_api_key" } });
-	});
-});
-
-/**
- * The deprecated string-only path still ships in the browser build, and it
- * POSTs the same key to the same endpoints, so it needs the same redirect
- * refusal until issue #61 step 10 deletes it.
- */
-describe("BrowserChatAdapter redirect handling", () => {
-	it.each([
-		["anthropic", "sk-ant-test-browser-key"],
-		["openai", "sk-openai-test-browser-key"],
-	] as const)("does not re-send the %s key to a redirect target", async (provider, key) => {
-		const attacker = "https://evil.example/v1/redirected";
-		const delivered = redirectingProvider(attacker);
-		const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
-
-		await expect(
-			new BrowserChatAdapter().sendMessage(
-				provider,
-				[{ role: "user", content: "hello" }],
-				emptyModel(),
-				callbacks,
-				"model-id",
-			),
-		).rejects.toBeInstanceOf(TypeError);
-
-		expect(delivered.map((request) => request.url)).toEqual([PROVIDER_ENDPOINTS[provider].url]);
-		expect(delivered[0]?.headers).toContain(key);
-		expect(delivered.filter((request) => request.url === attacker)).toEqual([]);
 	});
 });
 
