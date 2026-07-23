@@ -227,12 +227,21 @@ export async function streamConversation(
 	};
 	const { streamRequest, mapper } = buildProviderStream(request.provider, providerRequest);
 
+	// Whether the mapper produced a terminal event before the stream closed. A
+	// normal `done` close after a `message_stop` (or after a provider error the
+	// mapper already reported) is complete; a `done` close with neither is a
+	// truncated response, which must not pass as a silent success (see `onClose`).
+	let sawTerminalEvent = false;
+
 	const callbacks: TransportCallbacks = {
 		onFrame: (frame) => {
 			// Mappers are total (they report undecodable frames as `malformed_stream`
 			// events rather than throwing), so only the consumer dispatch below can
 			// throw, and only it is isolated.
 			for (const event of mapper.mapFrame(frame)) {
+				if (event.type === "message_stop" || event.type === "error") {
+					sawTerminalEvent = true;
+				}
 				dispatch(event);
 			}
 		},
@@ -240,11 +249,24 @@ export async function streamConversation(
 		onTransportError: (failure) =>
 			dispatch({ type: "error", error: transportFailureToProtocolError(failure) }),
 		onClose: (reason) => {
-			// A normal close needs no event: the mapper already emitted `message_stop`
-			// if the provider sent one. Only cancellation has no in-band frame, so the
-			// client is what turns it into the terminal `aborted` event.
+			// Cancellation has no in-band frame, so the client is what turns it into
+			// the terminal `aborted` event.
 			if (reason === "cancelled") {
 				dispatch({ type: "aborted" });
+				return;
+			}
+			// A `done` close means the provider closed the body. If the mapper never
+			// reported a terminal event, the stream ended before it was complete: a
+			// truncated answer that renders as a finished one is a success-shaped
+			// failure, so it surfaces as `malformed_stream` rather than nothing.
+			if (!sawTerminalEvent) {
+				dispatch({
+					type: "error",
+					error: {
+						code: "malformed_stream",
+						message: "The AI response ended before it was complete. Please try again.",
+					},
+				});
 			}
 		},
 	};
