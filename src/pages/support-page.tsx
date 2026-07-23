@@ -12,7 +12,7 @@ const FAQ_ITEMS = [
 	{
 		question: "Do I need an API key for AI features?",
 		answer:
-			"Yes — AI features use a Bring Your Own Key (BYOK) model. You provide your own OpenAI, Anthropic, or Ollama API key. AI features are entirely optional; the app is fully functional without them.",
+			"Yes — AI features use a Bring Your Own Key (BYOK) model. You provide your own OpenAI or Anthropic API key. AI features are entirely optional; the app is fully functional without them.",
 	},
 	{
 		question: "What file format does Threat Forge use?",

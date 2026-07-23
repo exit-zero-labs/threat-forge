@@ -23,8 +23,10 @@ export function PrivacyPage() {
 						<p>
 							Threat Forge uses a Bring Your Own Key (BYOK) model for AI features. When you use
 							AI-powered threat analysis or chat, your API key and prompts are sent directly from
-							your machine to your chosen provider (OpenAI, Anthropic, or Ollama). Your API keys are
-							encrypted at rest using AES-256-GCM and are never transmitted to Exit Zero Labs.
+							your machine to your chosen provider (OpenAI or Anthropic). On the desktop app, your
+							API keys are encrypted at rest using AES-256-GCM; in the web app, they are stored in
+							your browser&apos;s localStorage. In both cases, your keys are never transmitted to
+							Exit Zero Labs.
 						</p>
 						<p>
 							AI features are entirely optional. The application is fully functional without them.

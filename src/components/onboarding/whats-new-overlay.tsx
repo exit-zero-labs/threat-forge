@@ -27,7 +27,7 @@ const CHANGELOG: ChangelogEntry[] = [
 		changes: [
 			"Component library with 44 pre-built technology components + text annotations",
 			"STRIDE threat analysis engine with auto-generated threats",
-			"AI chat pane with BYOK support (OpenAI, Anthropic, Ollama)",
+			"AI chat pane with BYOK support (OpenAI, Anthropic)",
 			"Human-readable YAML file format — git-diffable",
 			"Undo/redo with 20-action history",
 			"Copy, cut, paste, and multi-select on canvas",

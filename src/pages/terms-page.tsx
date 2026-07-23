@@ -38,8 +38,8 @@ export function TermsPage() {
 					<Section title="AI Disclaimer">
 						<p>
 							AI-generated threat suggestions, mitigations, and analysis are produced by third-party
-							language models (OpenAI, Anthropic, Ollama) using your own API key. These outputs are
-							not professional security advice and should be reviewed by qualified security
+							language models (OpenAI, Anthropic) using your own API key. These outputs are not
+							professional security advice and should be reviewed by qualified security
 							professionals before being relied upon.
 						</p>
 					</Section>
