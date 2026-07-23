@@ -106,14 +106,21 @@ counted. The estimate is deliberately dependency-free and conservative; a reques
 that fits locally can still overflow at the provider, which surfaces as a
 `context_overflow` error from the stream rather than silent truncation.
 
-## Provider mappers and the shared decoder
+## Byte framing and the shared mappers
 
-`src/lib/ai/providers/sse.ts` is the one byte-level SSE decoder. It accepts
-arbitrary chunk boundaries — mid-line, mid-JSON, mid-multi-byte-UTF-8 — and emits
-complete `{ event, data }` frames, holding a trailing partial line until a later
-chunk finishes it. It fails closed (`malformed_stream`) on an unterminated line
-that exceeds a fixed buffer cap, the one failure shape no downstream guard could
-otherwise observe.
+Byte-level SSE framing exists once per platform, deliberately mirrored rather than
+shared. `src/lib/ai/providers/sse.ts` frames the browser `fetch` body: it accepts
+arbitrary chunk boundaries — mid-line, mid-JSON, mid-multi-byte-UTF-8 — emits
+complete `{ event, data }` frames, holds a trailing partial line until a later
+chunk finishes it, and fails closed (`malformed_stream`) on an unterminated line
+over a fixed buffer cap, the one failure shape no downstream guard could otherwise
+observe. On desktop the Rust relay does its own byte framing in `SseFrameSplitter`
+(`src-tauri/src/ai/providers.rs`), which mirrors `src/lib/ai/providers/sse.ts` —
+the same buffered-line
+cap, the same default event name, the same fail-closed behavior — and relays
+already-framed `{ event, data }` pairs, so the TypeScript byte decoder never runs
+on that path. What is genuinely single and shared is the layer above: the
+frame→`StreamEvent` mapper pair.
 
 `src/lib/ai/providers/anthropic.ts` and `src/lib/ai/providers/openai.ts` are the
 only modules that may mention a provider's wire shapes. Each builds its request
@@ -148,11 +155,13 @@ provider and relay SSE frames back, and neither knows a provider's event protoco
 The reason the key stays in Rust is separation of concerns, not decoding: the only
 thing Rust must own is the credential and the endpoint/auth headers built from it
 (`endpoint_for`, `auth_headers`, `validate_body`, and `redact_provider_detail` in
-`src-tauri/src/ai/providers.rs`). Rust relays raw SSE frames to the webview and the
-same TypeScript decoder maps them, so there is one decoder rather than two kept in
-agreement. Desktop already received raw provider error text before this design, so
-no secret crosses a boundary it did not already cross — but it makes redaction
-mandatory, in Rust, before frames leave the process. The desktop key boundary is a
+`src-tauri/src/ai/providers.rs`). Rust frames the SSE bytes itself (`SseFrameSplitter`,
+above) and relays already-framed `{ event, data }` pairs to the webview, where the
+same shared mapper pair turns them into `StreamEvent`s — so the implementation kept
+single across platforms is the mapper, while byte framing is two mirrored,
+fail-closed twins. Desktop already received raw provider error text before this
+design, so no secret crosses a boundary it did not already cross — but it makes
+redaction mandatory, in Rust, before frames leave the process. The desktop key boundary is a
 compile-time property: the shared `KeychainAdapter` interface does not declare
 `getKey`, so desktop code cannot ask for a key.
 
@@ -188,9 +197,11 @@ Two constraints bound it:
 
 The default policy (`DEFAULT_RETRY_POLICY`) is three attempts with exponential
 backoff capped at ten seconds. A provider `retry-after` hint is honored when
-present and is never shortened below the computed backoff. The backoff has no
-jitter, so the schedule is deterministic and testable; the sleep is injectable so
-tests advance without real time.
+present and is never shortened below the computed backoff, but it is first clamped
+to an absolute ceiling (ten minutes) inside `retryDelayMs` itself — so a hostile or
+misconfigured provider cannot park a retry indefinitely even if a transport failed
+to clamp the hint. The backoff has no jitter, so the schedule is deterministic and
+testable; the sleep is injectable so tests advance without real time.
 
 ## Error taxonomy and redaction
 
@@ -270,7 +281,7 @@ Every test file colocates with the implementation it exercises.
 | Tool schema generation and validation | `src/lib/ai/protocol/tools.ts`, `src/lib/ai/schemas/actions.ts` | `src/lib/ai/protocol/tools.test.ts`, `src/lib/ai/schemas/actions.test.ts`, `src/lib/ai-actions.test.ts` |
 | Preflight and capabilities | `src/lib/ai/protocol/request.ts`, `src/lib/ai-models.ts` | `src/lib/ai/protocol/request.test.ts` |
 | Budgeting | `src/lib/ai/protocol/budget.ts` | `src/lib/ai/protocol/budget.test.ts` |
-| SSE decoder and mappers | `src/lib/ai/providers/sse.ts`, `src/lib/ai/providers/anthropic.ts`, `src/lib/ai/providers/openai.ts`, `src/lib/ai/providers/mapper-events.ts` | `src/lib/ai/providers/sse.test.ts`, `src/lib/ai/providers/anthropic.test.ts`, `src/lib/ai/providers/openai.test.ts` |
+| Byte framing (mirrored twins) and the shared mappers | `src/lib/ai/providers/sse.ts`, `SseFrameSplitter` in `src-tauri/src/ai/providers.rs`, `src/lib/ai/providers/anthropic.ts`, `src/lib/ai/providers/openai.ts`, `src/lib/ai/providers/mapper-events.ts` | `src/lib/ai/providers/sse.test.ts`, `src/lib/ai/providers/anthropic.test.ts`, `src/lib/ai/providers/openai.test.ts`, `cargo test --manifest-path src-tauri/Cargo.toml ai::` |
 | Transports and the key boundary | `src/lib/adapters/browser-chat-adapter.ts`, `src/lib/adapters/tauri-chat-adapter.ts`, `src/lib/adapters/chat-adapter.ts` | `src/lib/adapters/browser-chat-adapter.test.ts`, `src/lib/adapters/tauri-chat-adapter.test.ts`, `src/lib/adapters/provider-endpoints.test.ts` |
 | Rust relay and redaction | `src-tauri/src/ai/providers.rs`, `src-tauri/src/commands/ai_commands.rs` | `cargo test --manifest-path src-tauri/Cargo.toml ai::` |
 | Retry policy | `src/lib/ai/protocol/retry.ts` | `src/lib/ai/protocol/contract.test.ts` |

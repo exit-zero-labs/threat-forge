@@ -159,6 +159,36 @@ export const EXPECTED_INVALID_JSON_EVENTS: StreamEvent[] = [
 ];
 
 /**
+ * A `malformed_stream` notice followed by a close with no `message_stop`. The
+ * notice is non-terminal, so the truncation must still be reported: the client
+ * emits a second, terminal `malformed_stream` for the cut-off turn. This is the
+ * discriminator that a non-terminal notice does not suppress truncation.
+ */
+export const ANTHROPIC_NOTICE_THEN_TRUNCATED_STREAM: SseFrame[] = [
+	frame("message_start", { message: { model: FIXTURE_MODEL } }),
+	{ event: "content_block_delta", data: '{"index":0,"delta":{"type":"text_de' },
+];
+
+export const EXPECTED_NOTICE_THEN_TRUNCATED_EVENTS: StreamEvent[] = [
+	{ type: "message_start", model: FIXTURE_MODEL },
+	{
+		type: "error",
+		error: {
+			code: "malformed_stream",
+			message: 'The Anthropic stream sent a "content_block_delta" event that could not be decoded.',
+			providerDetail: '{"index":0,"delta":{"type":"text_de',
+		},
+	},
+	{
+		type: "error",
+		error: {
+			code: "malformed_stream",
+			message: "The AI response ended before it was complete. Please try again.",
+		},
+	},
+];
+
+/**
  * An unknown top-level event type (`content_block_flourish`) and a `ping`, both
  * of which Anthropic documents clients must tolerate: they map to nothing, and
  * the surrounding real events map normally.
@@ -277,14 +307,15 @@ export const EXPECTED_INSTREAM_RATE_LIMIT_EVENTS: StreamEvent[] = [
 ];
 
 /**
- * A real Anthropic 429 error body: an HTTP response, not a stream. The submitted
- * key can be echoed back, so the transport must redact it before it becomes
- * `providerDetail`.
+ * An Anthropic 429 error body: an HTTP response, not a stream. Provider bodies are
+ * assumed to carry key material until proven otherwise (a hostile or misconfigured
+ * proxy can inject one), so the embedded `sk-ant-…RL429SECRET` token exercises the
+ * transport's unconditional redaction before the body becomes `providerDetail`.
  */
 export const ANTHROPIC_429_BODY = JSON.stringify({
 	type: "error",
 	error: {
 		type: "rate_limit_error",
-		message: "Number of request tokens has exceeded your rate limit",
+		message: "Rate limit exceeded for key sk-ant-live-RL429SECRET; retry later",
 	},
 });

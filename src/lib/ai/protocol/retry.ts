@@ -78,21 +78,31 @@ export function isRetriableTransportReason(reason: TransportFailureReason): bool
 }
 
 /**
+ * Absolute ceiling on a honored `retry-after`, so a hostile or misconfigured
+ * provider cannot park a retry indefinitely. The transport already clamps the
+ * hint, but this chokepoint does not rely on that un-enforced cross-module
+ * invariant — it caps the value itself before honoring it.
+ */
+const MAX_RETRY_AFTER_MS = 10 * 60 * 1000;
+
+/**
  * How long to wait before the retry that follows a given `attempt` (1-based: the
  * wait after the first attempt is computed with `attempt === 1`).
  *
  * A provider `retry-after` hint is honored when present — it is the provider's
- * explicit instruction and has already been clamped to a sane ceiling by the
- * transport — and is never shortened below the computed backoff. Absent a hint,
- * the wait is deterministic exponential backoff with no jitter, so a test can
- * assert the exact schedule.
+ * explicit instruction — but only after being clamped to {@link MAX_RETRY_AFTER_MS},
+ * and it is never shortened below the computed backoff. It may still exceed the
+ * policy's `maxDelayMs`, since ignoring a legitimate hint would just earn another
+ * `429`. Absent a hint, the wait is deterministic exponential backoff with no
+ * jitter, so a test can assert the exact schedule.
  */
 export function retryDelayMs(attempt: number, policy: RetryPolicy, retryAfterMs?: number): number {
 	const backoff = Math.min(policy.baseDelayMs * 2 ** (attempt - 1), policy.maxDelayMs);
 	if (retryAfterMs === undefined) return backoff;
-	// Respect the provider's wait even when it exceeds `maxDelayMs`; ignoring it
-	// would just earn another `429`. But never wait less than our own backoff.
-	return Math.max(retryAfterMs, backoff);
+	const boundedRetryAfter = Math.min(retryAfterMs, MAX_RETRY_AFTER_MS);
+	// Respect the provider's (bounded) wait even when it exceeds `maxDelayMs`; but
+	// never wait less than our own backoff.
+	return Math.max(boundedRetryAfter, backoff);
 }
 
 /**

@@ -239,7 +239,14 @@ export async function streamConversation(
 			// events rather than throwing), so only the consumer dispatch below can
 			// throw, and only it is isolated.
 			for (const event of mapper.mapFrame(frame)) {
-				if (event.type === "message_stop" || event.type === "error") {
+				// A `malformed_stream` error is a non-terminal notice scoped to one bad
+				// frame (see `events.ts`); the turn continues, so it must not count as
+				// the terminal event. Only a `message_stop` or a terminal provider error
+				// ends the turn.
+				if (
+					event.type === "message_stop" ||
+					(event.type === "error" && event.error.code !== "malformed_stream")
+				) {
 					sawTerminalEvent = true;
 				}
 				dispatch(event);

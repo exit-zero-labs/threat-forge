@@ -259,10 +259,14 @@ export const EXPECTED_OPENAI_INSTREAM_RATE_LIMIT_EVENTS: StreamEvent[] = [
 	},
 ];
 
-/** A real OpenAI 429 error body: an HTTP response, not a stream. */
+/**
+ * An OpenAI 429 error body: an HTTP response, not a stream. The embedded
+ * `sk-proj-…RL429SECRET` token exercises the transport's unconditional redaction
+ * of provider text before it becomes `providerDetail`.
+ */
 export const OPENAI_429_BODY = JSON.stringify({
 	error: {
-		message: "Rate limit reached for requests. Contact us if you keep hitting limits.",
+		message: "Rate limit reached for key sk-proj-RL429SECRET; contact us if this persists",
 		type: "requests",
 		code: "rate_limit_exceeded",
 	},

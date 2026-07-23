@@ -24,9 +24,11 @@ import type { StreamEvent } from "@/lib/ai/protocol/events";
 import type { AiProvider, ProtocolMessage } from "@/lib/ai/protocol/messages";
 import type { SseFrame } from "@/lib/ai/providers/sse";
 import {
+	ANTHROPIC_429_BODY,
 	ANTHROPIC_BAD_TOOL_ARGS_STREAM,
 	ANTHROPIC_INSTREAM_RATE_LIMIT_STREAM,
 	ANTHROPIC_INVALID_JSON_STREAM,
+	ANTHROPIC_NOTICE_THEN_TRUNCATED_STREAM,
 	ANTHROPIC_ORPHAN_TOOL_INPUT_STREAM,
 	ANTHROPIC_TEXT_STREAM,
 	ANTHROPIC_TOOL_STREAM,
@@ -35,6 +37,7 @@ import {
 	EXPECTED_BAD_TOOL_ARGS_EVENTS,
 	EXPECTED_INSTREAM_RATE_LIMIT_EVENTS,
 	EXPECTED_INVALID_JSON_EVENTS,
+	EXPECTED_NOTICE_THEN_TRUNCATED_EVENTS,
 	EXPECTED_ORPHAN_TOOL_INPUT_EVENTS,
 	EXPECTED_TEXT_EVENTS,
 	EXPECTED_TOOL_EVENTS,
@@ -53,6 +56,7 @@ import {
 	EXPECTED_OPENAI_INSTREAM_RATE_LIMIT_EVENTS,
 	EXPECTED_OPENAI_INVALID_JSON_EVENTS,
 	EXPECTED_OPENAI_ORPHAN_FRAGMENT_EVENTS,
+	OPENAI_429_BODY,
 	OPENAI_BAD_TOOL_ARGS_STREAM,
 	OPENAI_INSTREAM_RATE_LIMIT_STREAM,
 	OPENAI_INVALID_JSON_STREAM,
@@ -309,6 +313,21 @@ describe("truncated stream — ends without a terminal event", () => {
 		});
 		expect(events).not.toContainEqual(expect.objectContaining({ type: "message_stop" }));
 	});
+
+	it.each([["browser", runBrowser] as const, ["desktop", runTauri] as const])(
+		"still reports truncation after a non-terminal malformed_stream notice on %s",
+		async (_t, run) => {
+			// A malformed_stream notice is non-terminal (see events.ts). A close with no
+			// message_stop after one is still a truncation, so the turn ends with a second,
+			// terminal malformed_stream — the notice must not suppress it.
+			const events = await run("anthropic", ANTHROPIC_NOTICE_THEN_TRUNCATED_STREAM);
+			expect(events).toEqual(EXPECTED_NOTICE_THEN_TRUNCATED_EVENTS);
+			expect(events[events.length - 1]).toEqual({
+				type: "error",
+				error: { code: "malformed_stream", message: expect.stringContaining("ended before") },
+			});
+		},
+	);
 });
 
 describe("malformed events are reported without aborting the turn", () => {
@@ -432,40 +451,36 @@ describe("in-stream rate limit (a provider error event, after text)", () => {
 });
 
 describe("HTTP rate limit (a 429 response) carries a retry hint and redacted detail", () => {
-	const RATE_LIMIT_BODY_WITH_KEY = JSON.stringify({
-		type: "error",
-		error: {
-			type: "rate_limit_error",
-			message: "Slow down; key sk-ant-live-SECRET99 is over its limit",
+	it.each([["anthropic", ANTHROPIC_429_BODY] as const, ["openai", OPENAI_429_BODY] as const])(
+		"forwards retryAfterMs into the retry schedule and redacts the %s detail",
+		async (provider, body) => {
+			// Every attempt is a 429 with a 1-second retry-after, so the turn exhausts
+			// its retries and the final rate_limited error is what the consumer sees.
+			vi.mocked(fetch).mockImplementation(async () =>
+				fakeErrorResponse(body, { status: 429, headers: { "retry-after": "1" } }),
+			);
+			const { waits, delay } = recordingDelay();
+			const { events, onEvent } = collect();
+
+			await streamConversation(
+				request(provider),
+				createRetryingTransport(new BrowserChatTransport(), RETRY_POLICY, { delay }),
+				{ onEvent },
+			);
+
+			// The provider's 1-second hint is honored on each retry, never shortened.
+			expect(waits).toEqual([1000, 1000]);
+			expect(fetch).toHaveBeenCalledTimes(3);
+			expect(events).toHaveLength(1);
+			const failure = events[0];
+			if (failure.type !== "error") throw new Error("expected a rate_limited error");
+			expect(failure.error.code).toBe("rate_limited");
+			// The canonical 429 fixture bodies embed a key token; it must be redacted.
+			expect(failure.error.providerDetail).toContain("[redacted-key]");
+			expect(failure.error.providerDetail).not.toContain("RL429SECRET");
+			expect(failure.error.providerDetail).not.toMatch(/sk-(ant|proj)/);
 		},
-	});
-
-	it("forwards retryAfterMs into the retry schedule and redacts the surfaced detail", async () => {
-		// Every attempt is a 429 with a 1-second retry-after, so the turn exhausts
-		// its retries and the final rate_limited error is what the consumer sees.
-		vi.mocked(fetch).mockImplementation(async () =>
-			fakeErrorResponse(RATE_LIMIT_BODY_WITH_KEY, { status: 429, headers: { "retry-after": "1" } }),
-		);
-		const { waits, delay } = recordingDelay();
-		const { events, onEvent } = collect();
-
-		await streamConversation(
-			request("anthropic"),
-			createRetryingTransport(new BrowserChatTransport(), RETRY_POLICY, { delay }),
-			{ onEvent },
-		);
-
-		// The provider's 1-second hint is honored on each retry, never shortened.
-		expect(waits).toEqual([1000, 1000]);
-		expect(fetch).toHaveBeenCalledTimes(3);
-		expect(events).toHaveLength(1);
-		const failure = events[0];
-		if (failure.type !== "error") throw new Error("expected a rate_limited error");
-		expect(failure.error.code).toBe("rate_limited");
-		expect(failure.error.providerDetail).toContain("[redacted-key]");
-		expect(failure.error.providerDetail).not.toContain("SECRET99");
-		expect(failure.error.providerDetail).not.toContain("sk-ant");
-	});
+	);
 });
 
 describe("cancellation is a terminal aborted, with no events afterward", () => {
@@ -567,9 +582,14 @@ describe("retry policy predicates and schedule", () => {
 		expect(retryDelayMs(9, tight, 60_000)).toBe(60_000);
 	});
 
+	it("caps an absurd retry-after so a provider cannot park a retry indefinitely", () => {
+		// The chokepoint is self-sufficient: even if a transport failed to clamp the
+		// hint, retryDelayMs bounds it to ten minutes rather than honoring it whole.
+		expect(retryDelayMs(1, RETRY_POLICY, 999_999_999)).toBe(10 * 60 * 1000);
+	});
+
 	it("ships a conservative default policy", () => {
 		expect(DEFAULT_RETRY_POLICY.maxAttempts).toBe(3);
-		expect(DEFAULT_RETRY_POLICY.maxAttempts).toBeGreaterThan(1);
 	});
 });
 
