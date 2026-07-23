@@ -11,7 +11,7 @@ import {
 	setTag,
 	YAML11_SCHEMA,
 } from "js-yaml";
-import type { ThreatModel } from "@/types/threat-model";
+import type { Threat, ThreatModel } from "@/types/threat-model";
 
 /** The YAML 1.1 type that resolves an unquoted `2026-03-15` scalar to a JavaScript `Date`. */
 const TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp";
@@ -115,6 +115,16 @@ export function parseThreatModelYaml(text: string): ThreatModel {
 /** Serialize a `ThreatModel` to `.thf` text the desktop reader accepts. */
 export function serializeThreatModelYaml(model: ThreatModel): string {
 	return dump(model, THF_YAML_DUMP_OPTIONS);
+}
+
+/**
+ * Serialize a single `Threat` as a one-item `.thf` YAML sequence — the same shape it takes
+ * inside a document's `threats:` section, ready to paste into an issue, PR, or doc. Reuses the
+ * document dump options so escaping, enum casing, and nested `mitigation` match the canonical
+ * writer exactly rather than a hand-built subset.
+ */
+export function serializeThreatYaml(threat: Threat): string {
+	return dump([threat], THF_YAML_DUMP_OPTIONS);
 }
 
 function assertThreatModelShape(value: unknown): asserts value is ThreatModel {

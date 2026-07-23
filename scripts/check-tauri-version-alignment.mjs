@@ -7,12 +7,14 @@ const packageLock = JSON.parse(readFileSync("package-lock.json", "utf8"));
 
 const versionPairs = [
 	["@tauri-apps/api", "tauri"],
+	["@tauri-apps/plugin-clipboard-manager", "tauri-plugin-clipboard-manager"],
 	["@tauri-apps/plugin-dialog", "tauri-plugin-dialog"],
 	["@tauri-apps/plugin-opener", "tauri-plugin-opener"],
 ];
 
 const directNpmPackages = [
 	"@tauri-apps/api",
+	"@tauri-apps/plugin-clipboard-manager",
 	"@tauri-apps/plugin-dialog",
 	"@tauri-apps/plugin-opener",
 	"@tauri-apps/cli",

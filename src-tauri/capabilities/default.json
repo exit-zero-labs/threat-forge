@@ -9,6 +9,7 @@
     "core:window:allow-destroy",
     "opener:default",
     "dialog:default",
+    "clipboard-manager:allow-write-text",
     "updater:default"
   ]
 }

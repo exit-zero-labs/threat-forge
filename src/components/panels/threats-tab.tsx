@@ -2,13 +2,17 @@ import {
 	AlertTriangle,
 	ChevronDown,
 	ChevronRight,
+	Copy,
 	Loader2,
 	Shield,
 	Trash2,
 	Zap,
 } from "lucide-react";
 import { useState } from "react";
+import { CanvasContextMenu, type ContextMenuItem } from "@/components/canvas/canvas-context-menu";
 import { getComponentByType } from "@/lib/component-library";
+import { copyTextToClipboard } from "@/lib/platform";
+import { serializeThreatYaml } from "@/lib/thf-yaml";
 import { cn } from "@/lib/utils";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -147,15 +151,36 @@ function ThreatCard({
 	const setSelectedElement = useModelStore((s) => s.setSelectedElement);
 	const setRightPanelTab = useUiStore((s) => s.setRightPanelTab);
 	const model = useModelStore((s) => s.model);
+	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
 	const linkedElement = model?.elements.find((e) => e.id === threat.element);
 
+	const handleCopyAsYaml = async () => {
+		try {
+			await copyTextToClipboard(serializeThreatYaml(threat));
+		} catch {
+			window.alert("Copy failed. Check clipboard permissions and try again.");
+		}
+	};
+
+	const contextMenuItems: ContextMenuItem[] = [
+		{ label: "Copy as YAML", icon: Copy, onClick: () => void handleCopyAsYaml() },
+	];
+
 	return (
 		<div
+			data-testid="threat-card"
 			className={cn(
 				"rounded-md border text-xs transition-colors",
 				isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-accent",
 			)}
+			onContextMenu={(event) => {
+				if (event.target instanceof Element && event.target.closest("input, textarea, select")) {
+					return;
+				}
+				event.preventDefault();
+				setContextMenu({ x: event.clientX, y: event.clientY });
+			}}
 		>
 			{/* Header - clickable to expand/collapse */}
 			<button type="button" onClick={onSelect} className="flex w-full items-start gap-2 p-2">
@@ -192,6 +217,15 @@ function ThreatCard({
 
 			{/* Expanded detail editor */}
 			{isSelected && <ThreatEditor threat={threat} />}
+
+			{contextMenu && (
+				<CanvasContextMenu
+					x={contextMenu.x}
+					y={contextMenu.y}
+					items={contextMenuItems}
+					onClose={() => setContextMenu(null)}
+				/>
+			)}
 		</div>
 	);
 }
