@@ -9,25 +9,30 @@
 # script-src 'self' (with default-src 'self'): no inline or third-party script can
 # execute except the pinned analytics beacon, so an injected payload has no
 # foothold to read localStorage in the first place. connect-src is the
-# defense-in-depth second layer — it names only the hosts the app legitimately
-# talks to, none of them attacker-controlled:
+# defense-in-depth backstop — it is kept as narrow as the app's real network
+# surface allows, because a wide allowlist is an exfiltration drop if the primary
+# defense is ever bypassed:
 #
 #   api.anthropic.com, api.openai.com  the key-bearing provider endpoints; these
 #       must match the endpoint table (enforced by provider-endpoints.test.ts).
 #   cloudflareinsights.com  the Cloudflare Web Analytics beacon report endpoint
 #       (src/components/cloudflare-analytics.tsx, web build only), paired with the
-#       static.cloudflareinsights.com script origin. Carries no key.
-#   api.github.com  the read-only latest-release metadata the downloads page shows
-#       (src/hooks/use-latest-release.ts). Carries no key.
+#       static.cloudflareinsights.com script origin. It is a write-only RUM sink an
+#       attacker cannot read back, so it is a poor exfiltration drop; kept because
+#       analytics needs it.
 #
-# If web analytics or the downloads release lookup is ever removed, drop its
-# origin(s) here too. See issue #156 for the full rationale.
+# api.github.com is deliberately NOT allowlisted, even though the downloads page
+# reads the latest release from it: it is a write-capable multi-tenant API that a
+# post-XSS script could POST the key to (an attacker's own gist) and read back, so
+# it is the one origin worth removing from the backstop. The downloads page
+# degrades to a static GitHub-releases link when the lookup is blocked; issue #172
+# tracks proxying that lookup through the app origin to restore the live widget.
 #
 # style-src 'unsafe-inline' is required for the app's runtime-injected styles
 # (ReactFlow, shadcn), matching the desktop CSP; inline styles cannot read the key.
 # object-src / base-uri / form-action / frame-ancestors close the plugin, base-tag,
 # form-hijack, and clickjacking vectors that default-src does not cover on its own.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://cloudflareinsights.com https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

@@ -27,11 +27,12 @@ const RUST_ENDPOINT_CONSTANT = /pub const (\w+_API_URL): &str = "([^"]+)";/g;
 
 /**
  * Origins the web CSP (`public/_headers`) allows for connect-src that carry no
- * key — the analytics beacon and the read-only GitHub release lookup — so they
- * are excluded when the web `connect-src` is compared against the key-bearing
- * endpoint table. See the rationale in `public/_headers`.
+ * key — currently only the write-only analytics beacon — so they are excluded
+ * when the web `connect-src` is compared against the key-bearing endpoint table.
+ * See the rationale in `public/_headers`. Adding an origin here is a security
+ * change: it asserts the origin is not a usable exfiltration drop for the key.
  */
-const WEB_NON_KEY_ORIGINS = new Set(["https://cloudflareinsights.com", "https://api.github.com"]);
+const WEB_NON_KEY_ORIGINS = new Set(["https://cloudflareinsights.com"]);
 
 const tauriConfigSchema = z.object({
 	app: z.object({ security: z.object({ csp: z.string() }) }),
