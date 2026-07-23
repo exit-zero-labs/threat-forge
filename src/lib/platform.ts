@@ -24,3 +24,27 @@ export async function openExternalUrl(url: string): Promise<void> {
 		window.open(url, "_blank", "noopener,noreferrer");
 	}
 }
+
+/**
+ * Copy text to the system clipboard.
+ *
+ * Desktop builds use Tauri's clipboard plugin because browser clipboard support varies across
+ * embedded webviews. Browser builds use the standard Clipboard API. Both paths fail with the same
+ * user-safe error rather than exposing raw platform details.
+ */
+export async function copyTextToClipboard(text: string): Promise<void> {
+	try {
+		if (isTauri()) {
+			const { writeTextToTauriClipboard } = await import("./adapters/tauri-clipboard-adapter");
+			await writeTextToTauriClipboard(text);
+			return;
+		}
+
+		if (!navigator.clipboard?.writeText) {
+			throw new Error("Clipboard API unavailable");
+		}
+		await navigator.clipboard.writeText(text);
+	} catch {
+		throw new Error("Unable to copy text to the clipboard.");
+	}
+}

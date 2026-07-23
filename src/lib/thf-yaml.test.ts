@@ -1,9 +1,10 @@
 import { load, YAML11_SCHEMA } from "js-yaml";
 import { describe, expect, it } from "vitest";
-import type { ThreatModel } from "@/types/threat-model";
+import type { Threat, ThreatModel } from "@/types/threat-model";
 import {
 	parseThreatModelYaml,
 	serializeThreatModelYaml,
+	serializeThreatYaml,
 	THF_YAML_DUMP_SCHEMA,
 	THF_YAML_SCHEMA,
 } from "./thf-yaml";
@@ -181,5 +182,70 @@ describe("serializeThreatModelYaml", () => {
 		const reparsed = parseThreatModelYaml(serializeThreatModelYaml(model));
 		expect(reparsed.metadata.created).toBe("2026-06-01");
 		expect(reparsed.metadata.modified).toBe("2026-06-02");
+	});
+});
+
+describe("serializeThreatYaml", () => {
+	it("renders a threat with nested mitigation as a one-item YAML sequence", () => {
+		const threat: Threat = {
+			id: "threat-1",
+			title: "SQL Injection on payment queries",
+			category: "Tampering",
+			element: "api-gateway",
+			severity: "high",
+			description: "Unsanitized input reaches the payment query builder.",
+			mitigation: {
+				status: "mitigated",
+				description: "Parameterized queries via ORM",
+			},
+		};
+
+		const yaml = serializeThreatYaml(threat);
+
+		// Renders as a sequence item, matching the shape a `.thf` `threats:` section uses.
+		expect(yaml.startsWith("- id: threat-1\n")).toBe(true);
+		expect(yaml).toContain("title: SQL Injection on payment queries\n");
+		expect(yaml).toContain("category: Tampering\n");
+		expect(yaml).toContain("element: api-gateway\n");
+		expect(yaml).toContain("severity: high\n");
+		expect(yaml).toContain("mitigation:\n");
+		expect(yaml).toContain("status: mitigated\n");
+		expect(yaml).toContain("description: Parameterized queries via ORM\n");
+
+		// The dumped text parses back to a single-entry sequence equal to the source threat —
+		// proving the canonical dump options are reused rather than a hand-built subset.
+		const reparsed = load(yaml, { schema: THF_YAML_SCHEMA });
+		expect(reparsed).toEqual([threat]);
+	});
+
+	it("escapes YAML-sensitive text the same way the full-document writer does", () => {
+		const threat: Threat = {
+			id: "threat-2",
+			title: 'Title with "quotes", a: colon, and\na newline',
+			category: "Spoofing",
+			severity: "low",
+			description: "desc",
+		};
+
+		const yaml = serializeThreatYaml(threat);
+		const reparsed = load(yaml, { schema: THF_YAML_SCHEMA });
+
+		expect(reparsed).toEqual([threat]);
+	});
+
+	it("omits unset optional fields rather than emitting them as null", () => {
+		const threat: Threat = {
+			id: "threat-3",
+			title: "No element or mitigation yet",
+			category: "Denial of Service",
+			severity: "medium",
+			description: "",
+		};
+
+		const yaml = serializeThreatYaml(threat);
+
+		expect(yaml).not.toContain("element:");
+		expect(yaml).not.toContain("flow:");
+		expect(yaml).not.toContain("mitigation:");
 	});
 });
