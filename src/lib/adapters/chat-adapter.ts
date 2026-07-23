@@ -1,3 +1,4 @@
+import { ProtocolException } from "@/lib/ai/protocol/errors";
 import type { AnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import type { OpenAiRequestBody } from "@/lib/ai/providers/openai";
 import type { SseFrame } from "@/lib/ai/providers/sse";
@@ -135,4 +136,22 @@ export interface ChatTransport {
 		callbacks: TransportCallbacks,
 		signal?: AbortSignal,
 	): Promise<void>;
+}
+
+/**
+ * The refusal both transports raise when the selected provider has no stored
+ * credential.
+ *
+ * It lives here rather than in either transport because the code is what
+ * consumers branch on — a settings prompt is the only useful response, and a
+ * retry never is — and the two platforms discover the same condition in
+ * different places: the browser reads `localStorage` before fetching, while
+ * desktop learns it from the relay's refusal, since only Rust can see the
+ * encrypted store.
+ */
+export function missingApiKeyError(provider: AiProvider): ProtocolException {
+	return new ProtocolException({
+		code: "no_api_key",
+		message: `No API key configured for ${provider}. Open AI Settings to add one.`,
+	});
 }

@@ -5,12 +5,13 @@ import { ProtocolException } from "@/lib/ai/protocol/errors";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import type { AiProvider, ChatMessage } from "@/stores/chat-store";
 import type { ThreatModel } from "@/types/threat-model";
-import type {
-	ChatAdapter,
-	ChatStreamCallbacks,
-	ChatTransport,
-	ProviderStreamRequest,
-	TransportCallbacks,
+import {
+	type ChatAdapter,
+	type ChatStreamCallbacks,
+	type ChatTransport,
+	missingApiKeyError,
+	type ProviderStreamRequest,
+	type TransportCallbacks,
 } from "./chat-adapter";
 
 /** Emitted once per SSE frame the Rust relay split out of the provider stream. */
@@ -18,15 +19,22 @@ const STREAM_FRAME_EVENT = "ai:stream-frame";
 /** Emitted exactly once per accepted stream, carrying its terminal outcome. */
 const STREAM_CLOSED_EVENT = "ai:stream-closed";
 
+// Wire contracts for the two relay events, mirroring `StreamFramePayload` and
+// `StreamClosedPayload` in `src-tauri/src/ai/types.rs`.
+//
+// Tauri event payloads arrive as `unknown`, so they are narrowed here rather
+// than asserted: a payload that does not match this shape means the Rust and
+// TypeScript sides of the IPC contract have diverged, which the transport
+// reports instead of decoding a stream whose frames it may be dropping.
+
 /**
- * Wire contracts for the two relay events, mirroring `StreamFramePayload` and
- * `StreamClosedPayload` in `src-tauri/src/ai/types.rs`.
- *
- * Tauri event payloads arrive as `unknown`, so they are narrowed here rather
- * than asserted: a payload that does not match this shape means the Rust and
- * TypeScript sides of the IPC contract have diverged, which the transport
- * reports instead of decoding a stream whose frames it may be dropping.
+ * The one field every relay event carries, checked before the rest of the
+ * payload. Which stream an event belongs to has to be decided first: a payload
+ * that names another stream is none of this subscriber's business, whatever
+ * else is wrong with it.
  */
+const relayEventAddressSchema = z.object({ streamId: z.string() });
+
 const streamFramePayloadSchema = z.object({
 	streamId: z.string(),
 	event: z.string(),
@@ -61,6 +69,19 @@ const RELAY_CONTRACT_VIOLATION =
 
 /** Reported when `start_ai_stream` was rejected without an error string. */
 const RELAY_START_FAILED = "The desktop AI relay refused to start the request.";
+
+/**
+ * The exact refusal `start_ai_stream` returns when no key is stored, as
+ * authored by `RelayError::NoApiKey` in `src-tauri/src/ai/providers.rs`.
+ *
+ * The relay reports every up-front refusal as one `Err` string, and this is the
+ * only one a user can act on, so it is recognized here and raised with the same
+ * `no_api_key` code the browser transport raises for the same condition —
+ * otherwise a consumer branching on that code would silently miss desktop.
+ * `./tauri-chat-adapter.test.ts` reads the Rust source to catch drift.
+ */
+const RELAY_NO_API_KEY_REFUSAL =
+	"no API key is configured for this provider — add one in AI Settings";
 
 interface Deferred {
 	promise: Promise<void>;
@@ -111,17 +132,27 @@ export class TauriChatTransport implements ChatTransport {
 		const settle = (deliver: () => void): void => {
 			if (settled) return;
 			settled = true;
-			deliver();
-			terminal.resolve();
+			// A callback that throws must not strand the stream: without the
+			// `finally`, `open()` would never resolve and neither subscription would
+			// ever be torn down, so one bad consumer would leak a listener pair per
+			// stream for the life of the window. The throw still propagates to the
+			// event dispatcher; the `finally` only guarantees the stream settles.
+			try {
+				deliver();
+			} finally {
+				terminal.resolve();
+			}
 		};
 
 		/**
-		 * Fail this stream on a relay event that does not match the IPC contract.
+		 * Fail this stream on a relay event that is addressed to it but does not
+		 * match the IPC contract, or whose stream id is missing or not a string.
 		 *
-		 * Such an event carries no usable stream id, so it cannot be attributed and
-		 * cannot be filtered out. Failing closed is the safe reading: the
-		 * alternative is to drop it, and a dropped frame produces a truncated answer
-		 * that is indistinguishable from a complete one.
+		 * Failing closed is the safe reading: the alternative is to drop the event,
+		 * and a dropped frame produces a truncated answer that is
+		 * indistinguishable from a complete one. An event with no usable id cannot
+		 * be attributed to anyone, so every live stream fails on it rather than
+		 * risk being the one it belonged to.
 		 */
 		const failOnContractViolation = (): void => {
 			settle(() => {
@@ -132,6 +163,22 @@ export class TauriChatTransport implements ChatTransport {
 					reason: "malformedStream",
 				});
 			});
+		};
+
+		/**
+		 * Whether a relay event is this stream's to decode.
+		 *
+		 * An event whose `streamId` is missing or not a string cannot be ruled out
+		 * as this stream's, so it fails this stream closed rather than being
+		 * dropped as somebody else's.
+		 */
+		const addressedToThisStream = (payload: unknown): boolean => {
+			const address = relayEventAddressSchema.safeParse(payload);
+			if (!address.success) {
+				failOnContractViolation();
+				return false;
+			}
+			return address.data.streamId === streamId;
 		};
 
 		const onAbort = (): void => {
@@ -153,15 +200,16 @@ export class TauriChatTransport implements ChatTransport {
 			unlisteners.push(
 				await listen<unknown>(STREAM_FRAME_EVENT, (event) => {
 					if (settled) return;
+					// Several streams can be live at once, and every one of them sees
+					// every relay event, so addressing is settled before anything else:
+					// otherwise a malformed frame naming *another* stream would fail
+					// every subscriber at once.
+					if (!addressedToThisStream(event.payload)) return;
 					const payload = streamFramePayloadSchema.safeParse(event.payload);
 					if (!payload.success) {
 						failOnContractViolation();
 						return;
 					}
-					// Several streams can be live at once, and every one of them sees
-					// every relay event: anything not addressed to this stream is not
-					// this stream's to decode.
-					if (payload.data.streamId !== streamId) return;
 					callbacks.onFrame({ event: payload.data.event, data: payload.data.data });
 				}),
 			);
@@ -169,12 +217,12 @@ export class TauriChatTransport implements ChatTransport {
 			unlisteners.push(
 				await listen<unknown>(STREAM_CLOSED_EVENT, (event) => {
 					if (settled) return;
+					if (!addressedToThisStream(event.payload)) return;
 					const payload = streamClosedPayloadSchema.safeParse(event.payload);
 					if (!payload.success) {
 						failOnContractViolation();
 						return;
 					}
-					if (payload.data.streamId !== streamId) return;
 					const outcome = payload.data.outcome;
 					settle(() => {
 						switch (outcome.kind) {
@@ -229,11 +277,17 @@ export class TauriChatTransport implements ChatTransport {
 			await terminal.promise;
 
 			if (startRejected) {
+				if (startError === RELAY_NO_API_KEY_REFUSAL) {
+					throw missingApiKeyError(request.provider);
+				}
 				throw new ProtocolException({
 					code: "transport",
-					// Every `Err` this command returns is a sentence authored in Rust —
-					// an invalid body, a missing stored key, a duplicate stream id — so
-					// it is safe to show and more useful than a generic failure.
+					// `start_ai_stream` refuses with a `RelayError` sentence authored in
+					// Rust — an invalid body, an unsendable key, a duplicate stream id —
+					// and never with a raw internal error, so showing it is safe. A
+					// rejection can also come from Tauri's own IPC layer when a command
+					// or argument does not exist, which is a build defect rather than a
+					// secret, and still more useful on screen than a generic failure.
 					message: typeof startError === "string" ? startError : RELAY_START_FAILED,
 				});
 			}

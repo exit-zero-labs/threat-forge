@@ -20,6 +20,7 @@
  * to be widened past the two official endpoints.
  */
 
+import { ProtocolException } from "@/lib/ai/protocol/errors";
 import type { AiProvider } from "@/lib/ai/protocol/messages";
 import { buildAnthropicBrowserHeaders } from "@/lib/ai/providers/anthropic";
 import { buildOpenAiBrowserHeaders } from "@/lib/ai/providers/openai";
@@ -33,15 +34,42 @@ export interface ProviderEndpoint {
 	buildHeaders: (apiKey: string) => Record<string, string>;
 }
 
-export const PROVIDER_ENDPOINTS: Record<AiProvider, ProviderEndpoint> = {
-	anthropic: {
-		url: "https://api.anthropic.com/v1/messages",
-		label: "Anthropic",
-		buildHeaders: buildAnthropicBrowserHeaders,
-	},
-	openai: {
-		url: "https://api.openai.com/v1/chat/completions",
-		label: "OpenAI",
-		buildHeaders: buildOpenAiBrowserHeaders,
-	},
-};
+/**
+ * Frozen at both levels: this table is the browser build's sole authority on
+ * where a keyed request may go, and an unfrozen entry would let any module that
+ * can reach it redirect the user's key to another host without touching this
+ * file, the Rust constants, or the CSP allowlist.
+ */
+export const PROVIDER_ENDPOINTS: Readonly<Record<AiProvider, Readonly<ProviderEndpoint>>> =
+	Object.freeze({
+		anthropic: Object.freeze({
+			url: "https://api.anthropic.com/v1/messages",
+			label: "Anthropic",
+			buildHeaders: buildAnthropicBrowserHeaders,
+		}),
+		openai: Object.freeze({
+			url: "https://api.openai.com/v1/chat/completions",
+			label: "OpenAI",
+			buildHeaders: buildOpenAiBrowserHeaders,
+		}),
+	});
+
+/**
+ * Resolve the endpoint for a provider.
+ *
+ * The lookup is guarded with `Object.hasOwn` rather than indexed directly. The
+ * argument is typed, but it arrives inside a request object a caller built, and
+ * a bare index resolves inherited `Object.prototype` members: a provider of
+ * `"constructor"` or `"toString"` would yield a truthy non-endpoint whose `url`
+ * is `undefined` and whose `buildHeaders` is not a function, turning a wrong
+ * provider name into a `fetch` to a relative URL instead of a refusal.
+ */
+export function providerEndpoint(provider: AiProvider): ProviderEndpoint {
+	if (!Object.hasOwn(PROVIDER_ENDPOINTS, provider)) {
+		throw new ProtocolException({
+			code: "transport",
+			message: "ThreatForge has no endpoint configured for the selected AI provider.",
+		});
+	}
+	return PROVIDER_ENDPOINTS[provider];
+}

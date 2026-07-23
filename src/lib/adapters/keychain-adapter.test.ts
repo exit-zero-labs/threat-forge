@@ -60,10 +60,19 @@ describe("the browser keychain adapter", () => {
 		expect(await new BrowserKeychainAdapter().getKey("anthropic")).toBeNull();
 	});
 
-	it("satisfies the shared interface without widening it", () => {
+	it("does not widen the shared interface, even though this class reads keys", async () => {
+		await new BrowserKeychainAdapter().setKey("openai", "sk-browser-test-key");
 		const shared: KeychainAdapter = new BrowserKeychainAdapter();
-		expect("getKey" in shared).toBe(true);
-		// Reaching the key requires the concrete browser class, not the interface.
-		expect(new BrowserKeychainAdapter().getKey).toBeTypeOf("function");
+
+		// The compile assertion, as in the desktop case above: the browser adapter
+		// has a working `getKey`, but reaching it through `KeychainAdapter` must
+		// stay a type error, or the same interface would hand desktop callers a
+		// method Rust deliberately does not implement.
+		// @ts-expect-error `getKey` is not part of `KeychainAdapter`.
+		const readThroughTheInterface = (): Promise<string | null> => shared.getKey("openai");
+
+		// And the directive is guarding a real call rather than a name that never
+		// resolves — which is what would make the assertion above vacuous.
+		await expect(readThroughTheInterface()).resolves.toBe("sk-browser-test-key");
 	});
 });

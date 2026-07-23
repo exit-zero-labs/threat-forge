@@ -1,6 +1,7 @@
 use crate::ai::keychain::KeyStorage;
-use crate::ai::providers::{self, AiStreamRegistry};
+use crate::ai::providers::{self, AiStreamRegistry, RelayError};
 use crate::ai::types::AiProvider;
+use crate::errors::ThreatForgeError;
 use tauri::{AppHandle, State};
 
 /// Store an API key securely for a given provider
@@ -30,6 +31,20 @@ pub fn delete_api_key(storage: State<'_, KeyStorage>, provider: AiProvider) -> R
     storage.delete_key(&provider).map_err(|e| e.to_string())
 }
 
+/// Map a key-storage failure to the refusal `start_ai_stream` returns.
+///
+/// `ThreatForgeError`'s `Display` is internal: it names the provider's storage
+/// key, a poisoned lock's payload, or a filesystem path, none of which may
+/// reach the webview. Only two things are worth telling a user apart here —
+/// "you have not added a key" and "the key could not be read" — and the first
+/// is what the frontend turns into the `no_api_key` protocol code.
+fn key_refusal(error: &ThreatForgeError) -> RelayError {
+    match error {
+        ThreatForgeError::NoApiKey { .. } => RelayError::NoApiKey,
+        _ => RelayError::KeyUnavailable,
+    }
+}
+
 /// Start relaying one provider stream (issue #61 step 8).
 ///
 /// The frontend supplies the provider, a provider-shaped JSON body, and a
@@ -41,7 +56,9 @@ pub fn delete_api_key(storage: State<'_, KeyStorage>, provider: AiProvider) -> R
 ///
 /// The command resolves `Err` only for requests it rejects up front (invalid
 /// stream id or body, no stored key, unsendable key, duplicate stream id, too
-/// many live streams); no events are emitted for those. Once accepted, every failure — HTTP status,
+/// many live streams); no events are emitted for those. Every one of those
+/// strings is a [`RelayError`] sentence authored here, never a raw internal
+/// error. Once accepted, every failure — HTTP status,
 /// transport, size violation — arrives as the typed `ai:stream-closed`
 /// outcome with any provider detail redacted and truncated before it leaves
 /// Rust.
@@ -59,7 +76,9 @@ pub async fn start_ai_stream(
 
     // Extract the key and build headers before any .await, then drop the key:
     // the headers are the only place it may live from here on.
-    let api_key = storage.get_key(&provider).map_err(|e| e.to_string())?;
+    let api_key = storage
+        .get_key(&provider)
+        .map_err(|e| key_refusal(&e).to_string())?;
     let headers = providers::auth_headers(&provider, &api_key).map_err(|e| e.to_string())?;
     drop(api_key);
 
@@ -105,4 +124,57 @@ pub fn cancel_ai_stream(
 pub fn cancel_chat_stream(registry: State<'_, AiStreamRegistry>) -> Result<(), String> {
     registry.cancel_all();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_key_is_refused_with_the_sentence_the_frontend_matches() {
+        let error = ThreatForgeError::NoApiKey {
+            provider: "anthropic".to_string(),
+        };
+
+        let refusal = key_refusal(&error).to_string();
+
+        // `src/lib/adapters/tauri-chat-adapter.ts` compares against exactly this
+        // sentence to raise `no_api_key`; its drift test reads `providers.rs`.
+        assert_eq!(
+            refusal,
+            "no API key is configured for this provider \u{2014} add one in AI Settings"
+        );
+        // The internal text names the storage key for the provider.
+        assert!(
+            !refusal.contains("anthropic"),
+            "internal detail reached the boundary: {refusal}"
+        );
+    }
+
+    #[test]
+    fn a_storage_fault_is_refused_without_echoing_the_internal_error() {
+        let error = ThreatForgeError::KeyStorage {
+            message: "Lock poisoned: PoisonError { .. } at /Users/someone/keys.enc".to_string(),
+        };
+
+        let refusal = key_refusal(&error).to_string();
+
+        assert_eq!(refusal, "the stored API key could not be read");
+        for leaked in ["Lock poisoned", "PoisonError", "/Users/someone"] {
+            assert!(
+                !refusal.contains(leaked),
+                "internal detail {leaked:?} reached the boundary: {refusal}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_storage_fault_is_not_reported_as_a_missing_key() {
+        // The frontend turns only the missing-key refusal into `no_api_key`, so
+        // telling a user to add a key they already added would be a dead end.
+        let fault = ThreatForgeError::KeyStorage {
+            message: "Failed to read encrypted file".to_string(),
+        };
+        assert_ne!(key_refusal(&fault), RelayError::NoApiKey);
+    }
 }

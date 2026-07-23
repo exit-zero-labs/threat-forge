@@ -12,7 +12,8 @@ import { ProtocolException } from "@/lib/ai/protocol/errors";
 import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import { buildOpenAiRequestBody } from "@/lib/ai/providers/openai";
 import type { SseFrame } from "@/lib/ai/providers/sse";
-import { BrowserChatTransport } from "./browser-chat-adapter";
+import type { ThreatModel } from "@/types/threat-model";
+import { BrowserChatAdapter, BrowserChatTransport } from "./browser-chat-adapter";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import type { ProviderStreamRequest, TransportCallbacks } from "./chat-adapter";
 import { PROVIDER_ENDPOINTS } from "./provider-endpoints";
@@ -65,7 +66,7 @@ function streamedResponse(chunks: string[], init?: ResponseInit): Response {
 /** A response body that stays open until the test closes or the reader cancels it. */
 function openResponse(): {
 	response: Response;
-	push: (text: string) => void;
+	push: (text: string) => boolean;
 	cancelled: () => boolean;
 } {
 	const encoder = new TextEncoder();
@@ -91,6 +92,46 @@ function openResponse(): {
 			}
 		},
 		cancelled: () => wasCancelled,
+	};
+}
+
+/**
+ * A provider endpoint that answers a keyed POST with a cross-origin redirect,
+ * standing in for a redirecting middlebox or a compromised edge.
+ *
+ * The stub implements the fetch spec's redirect handling, which is the whole
+ * point of the assertion: `redirect: "error"` rejects the request, while the
+ * default `"follow"` re-issues it at the `Location` origin. Only `Authorization`
+ * is stripped on a cross-origin redirect, so Anthropic's `x-api-key` would ride
+ * along — which is what the returned log records.
+ */
+function redirectingProvider(location: string): Array<{ url: string; headers: string }> {
+	const delivered: Array<{ url: string; headers: string }> = [];
+	vi.mocked(fetch).mockImplementation(async (input, init) => {
+		const url = String(input);
+		delivered.push({ url, headers: [...new Headers(init?.headers).values()].join(" ") });
+		if (url === location) return streamedResponse(["data: {}\n\n"]);
+		if (init?.redirect === "error") throw new TypeError("Failed to fetch");
+		return fetch(location, init);
+	});
+	return delivered;
+}
+
+function emptyModel(): ThreatModel {
+	return {
+		version: "1.0",
+		metadata: {
+			title: "Redirect Test Model",
+			author: "Test Author",
+			created: "2026-01-01",
+			modified: "2026-01-01",
+			description: "",
+		},
+		elements: [],
+		data_flows: [],
+		trust_boundaries: [],
+		threats: [],
+		diagrams: [],
 	};
 }
 
@@ -174,6 +215,27 @@ describe("BrowserChatTransport request building", () => {
 		expect(fetchArgs().init.signal).toBe(controller.signal);
 	});
 
+	it("refuses to follow a redirect rather than re-sending the key to another origin", async () => {
+		const attacker = "https://evil.example/v1/messages";
+		const delivered = redirectingProvider(attacker);
+		const callbacks = recordingCallbacks();
+
+		await new BrowserChatTransport().open(anthropicRequest, callbacks);
+
+		// One delivery, to the provider. The key was on it — which is what makes a
+		// second delivery to `attacker` an exfiltration rather than a stray request.
+		expect(delivered.map((request) => request.url)).toEqual([PROVIDER_ENDPOINTS.anthropic.url]);
+		expect(delivered[0]?.headers).toContain(ANTHROPIC_KEY);
+		// Reported like any other failed connection, and never as a success: a
+		// stream that silently ended up somewhere else is not a stream.
+		expect(callbacks.onTransportError).toHaveBeenCalledWith({
+			message: expect.stringContaining("Anthropic"),
+			reason: "network",
+		});
+		expect(callbacks.onClose).not.toHaveBeenCalled();
+		expect(callbacks.onFrame).not.toHaveBeenCalled();
+	});
+
 	it("refuses to send anything when no key is stored", async () => {
 		localStorage.clear();
 		const callbacks = recordingCallbacks();
@@ -192,6 +254,36 @@ describe("BrowserChatTransport request building", () => {
 		await expect(
 			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
 		).rejects.toMatchObject({ error: { code: "no_api_key" } });
+	});
+});
+
+/**
+ * The deprecated string-only path still ships in the browser build, and it
+ * POSTs the same key to the same endpoints, so it needs the same redirect
+ * refusal until issue #61 step 10 deletes it.
+ */
+describe("BrowserChatAdapter redirect handling", () => {
+	it.each([
+		["anthropic", "sk-ant-test-browser-key"],
+		["openai", "sk-openai-test-browser-key"],
+	] as const)("does not re-send the %s key to a redirect target", async (provider, key) => {
+		const attacker = "https://evil.example/v1/redirected";
+		const delivered = redirectingProvider(attacker);
+		const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() };
+
+		await expect(
+			new BrowserChatAdapter().sendMessage(
+				provider,
+				[{ role: "user", content: "hello" }],
+				emptyModel(),
+				callbacks,
+				"model-id",
+			),
+		).rejects.toBeInstanceOf(TypeError);
+
+		expect(delivered.map((request) => request.url)).toEqual([PROVIDER_ENDPOINTS[provider].url]);
+		expect(delivered[0]?.headers).toContain(key);
+		expect(delivered.filter((request) => request.url === attacker)).toEqual([]);
 	});
 });
 
@@ -260,6 +352,108 @@ describe("BrowserChatTransport streaming", () => {
 			reason: "malformedStream",
 		});
 	});
+
+	it.each([
+		[
+			"the byte budget is blown",
+			`data: ${"x".repeat(1024 * 1024 - 8)}\n\n`.repeat(51),
+			"responseTooLarge",
+		],
+		["the framing is unusable", `data: ${"x".repeat(1_100_000)}`, "malformedStream"],
+	] as const)("closes the provider connection when %s", async (_case, payload, reason) => {
+		const provider = openResponse();
+		vi.mocked(fetch).mockResolvedValue(provider.response);
+		const callbacks = recordingCallbacks();
+
+		const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+		await vi.waitFor(() => {
+			expect(provider.push(payload)).toBe(true);
+		});
+		await open;
+
+		expect(callbacks.onTransportError.mock.calls[0]?.[0]).toMatchObject({ reason });
+		// Releasing the reader without cancelling would leave this body open until
+		// collection, so the provider could keep sending past the budget that just
+		// fired — which is the cost the budget exists to bound.
+		expect(provider.cancelled()).toBe(true);
+	});
+
+	it("closes the provider connection when the body fails mid-stream", async () => {
+		const failing = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode("data: first\n\n"));
+			},
+			pull(controller) {
+				controller.error(new TypeError("network error"));
+			},
+		});
+		const callbacks = recordingCallbacks();
+		vi.mocked(fetch).mockResolvedValue(new Response(failing));
+
+		await new BrowserChatTransport().open(anthropicRequest, callbacks);
+
+		expect(callbacks.onTransportError).toHaveBeenCalledWith({
+			message: expect.stringContaining("could not be read"),
+			reason: "network",
+		});
+		expect(callbacks.onClose).not.toHaveBeenCalled();
+	});
+
+	it("fails a stream that goes silent instead of leaving open() pending forever", async () => {
+		vi.useFakeTimers();
+		try {
+			const provider = openResponse();
+			vi.mocked(fetch).mockResolvedValue(provider.response);
+			const callbacks = recordingCallbacks();
+
+			const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+			// Reach the first pending read, then hold the connection open and silent
+			// for one tick short of the relay's 300-second read timeout.
+			await vi.advanceTimersByTimeAsync(299_999);
+			expect(callbacks.onTransportError).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(1);
+			await open;
+
+			expect(callbacks.onTransportError).toHaveBeenCalledWith({
+				message: expect.stringContaining("timed out"),
+				// Retriable: the provider accepted the request and then stopped
+				// speaking, which says nothing about the request itself.
+				reason: "network",
+			});
+			expect(callbacks.onClose).not.toHaveBeenCalled();
+			expect(provider.cancelled()).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps a slow but live stream open past the read timeout", async () => {
+		vi.useFakeTimers();
+		try {
+			const provider = openResponse();
+			vi.mocked(fetch).mockResolvedValue(provider.response);
+			const callbacks = recordingCallbacks();
+
+			const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+			// The bound is per-gap, not per-request: a legitimate stream has no
+			// bounded duration, so a keep-alive inside every gap must not expire it.
+			for (let gap = 0; gap < 3; gap += 1) {
+				await vi.advanceTimersByTimeAsync(299_000);
+				provider.push("data: still here\n\n");
+				await vi.advanceTimersByTimeAsync(0);
+			}
+
+			expect(callbacks.onFrame).toHaveBeenCalledTimes(3);
+			expect(callbacks.onTransportError).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(300_000);
+			await open;
+			expect(callbacks.onTransportError).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
 
 describe("BrowserChatTransport cancellation", () => {
@@ -310,8 +504,10 @@ describe("BrowserChatTransport cancellation", () => {
 
 	it("reports a fetch aborted before the response as a cancellation, not a network failure", async () => {
 		const controller = new AbortController();
-		// Reproduces the real `fetch` contract: aborting rejects the in-flight
-		// request with the same error class a connection failure would.
+		// Reproduces the real `fetch` contract: an abort rejects the in-flight
+		// request, so the transport cannot tell a stop from a connection failure by
+		// catching alone — an `AbortError` here versus the `TypeError` a failed
+		// connection produces below. Only the signal separates them.
 		vi.mocked(fetch).mockImplementation(
 			(_input, init) =>
 				new Promise<Response>((_resolve, reject) => {
@@ -330,6 +526,25 @@ describe("BrowserChatTransport cancellation", () => {
 		await open;
 
 		expect(callbacks.onClose).toHaveBeenCalledWith("cancelled");
+		expect(callbacks.onTransportError).not.toHaveBeenCalled();
+	});
+
+	it("resolves an already-aborted request as cancelled before it looks up a key", async () => {
+		// No key is stored and the signal is already aborted. Resolving the key
+		// first — the old order — would reject with `no_api_key`; a caller that
+		// aborted before the request even ran wants the stop, and the desktop
+		// transport reports it first, so this one must too.
+		localStorage.clear();
+		const controller = new AbortController();
+		controller.abort();
+		const callbacks = recordingCallbacks();
+
+		await expect(
+			new BrowserChatTransport().open(anthropicRequest, callbacks, controller.signal),
+		).resolves.toBeUndefined();
+
+		expect(callbacks.onClose).toHaveBeenCalledWith("cancelled");
+		expect(fetch).not.toHaveBeenCalled();
 		expect(callbacks.onTransportError).not.toHaveBeenCalled();
 	});
 });
@@ -429,5 +644,38 @@ describe("BrowserChatTransport failure reporting", () => {
 		expect(failure?.reason).toBe("network");
 		expect(failure?.message).not.toContain("proxy.internal");
 		expect(callbacks.onClose).not.toHaveBeenCalled();
+	});
+
+	it("gives up on a stalled error body instead of leaving open() pending forever", async () => {
+		vi.useFakeTimers();
+		try {
+			// A non-2xx whose error body is present but never sends or closes. The
+			// success path already bounds a silent body per-gap; the error path must
+			// too, or reading the detail hangs open() exactly as a silent stream would.
+			let wasCancelled = false;
+			const body = new ReadableStream<Uint8Array>({
+				start() {},
+				cancel() {
+					wasCancelled = true;
+				},
+			});
+			vi.mocked(fetch).mockResolvedValue(new Response(body, { status: 503 }));
+			const callbacks = recordingCallbacks();
+
+			const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+			await vi.advanceTimersByTimeAsync(299_999);
+			expect(callbacks.onHttpError).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(1);
+			await open;
+
+			// The status is known from the headers, so the failure is still reported
+			// in full — only the unread detail is missing — and the body is cancelled.
+			expect(callbacks.onHttpError).toHaveBeenCalledTimes(1);
+			expect(callbacks.onHttpError.mock.calls[0]?.[0]).toMatchObject({ status: 503 });
+			expect(wasCancelled).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

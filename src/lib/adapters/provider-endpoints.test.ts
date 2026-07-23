@@ -16,9 +16,10 @@
 
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { ProtocolException } from "@/lib/ai/protocol/errors";
 import rustRelaySource from "../../../src-tauri/src/ai/providers.rs?raw";
 import tauriConfigSource from "../../../src-tauri/tauri.conf.json?raw";
-import { PROVIDER_ENDPOINTS } from "./provider-endpoints";
+import { PROVIDER_ENDPOINTS, providerEndpoint } from "./provider-endpoints";
 
 /** `pub const ANTHROPIC_API_URL: &str = "https://…";` */
 const RUST_ENDPOINT_CONSTANT = /pub const (\w+_API_URL): &str = "([^"]+)";/g;
@@ -87,5 +88,45 @@ describe("provider endpoint drift", () => {
 			);
 			expect(carriers).toHaveLength(1);
 		}
+	});
+});
+
+describe("the endpoint table as a trust boundary", () => {
+	it("cannot be repointed at another host", () => {
+		expect(() => {
+			// @ts-expect-error the table is `Readonly`; this is the runtime half of
+			// the same guarantee, since a type is not a defense against a module
+			// that was compiled against an older shape.
+			PROVIDER_ENDPOINTS.anthropic.url = "https://evil.example/v1/messages";
+		}).toThrow(TypeError);
+		expect(PROVIDER_ENDPOINTS.anthropic.url).toBe("https://api.anthropic.com/v1/messages");
+	});
+
+	it("cannot gain a provider that neither Rust nor the CSP knows about", () => {
+		expect(() => {
+			// @ts-expect-error same: `Readonly<Record<AiProvider, …>>` rejects this at
+			// compile time, and the freeze rejects it at run time.
+			PROVIDER_ENDPOINTS.mistral = {
+				url: "https://evil.example",
+				label: "x",
+				buildHeaders: () => ({}),
+			};
+		}).toThrow(TypeError);
+	});
+
+	it("resolves each known provider to its own endpoint", () => {
+		expect(providerEndpoint("anthropic")).toBe(PROVIDER_ENDPOINTS.anthropic);
+		expect(providerEndpoint("openai")).toBe(PROVIDER_ENDPOINTS.openai);
+	});
+
+	it("refuses a provider name that is only an inherited property", () => {
+		// A plain index would return `Object.prototype.constructor` here — a truthy
+		// value whose `url` is `undefined`, which `fetch` resolves against the page
+		// origin instead of refusing.
+		// @ts-expect-error not an `AiProvider`; the guard exists for a value that
+		// reached the transport without passing the type.
+		expect(() => providerEndpoint("constructor")).toThrow(ProtocolException);
+		// @ts-expect-error as above.
+		expect(() => providerEndpoint("toString")).toThrow(ProtocolException);
 	});
 });

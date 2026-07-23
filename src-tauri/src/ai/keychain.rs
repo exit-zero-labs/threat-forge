@@ -107,11 +107,8 @@ impl KeyStorage {
         })?;
         map.get(provider.keychain_key())
             .cloned()
-            .ok_or_else(|| ThreatForgeError::KeyStorage {
-                message: format!(
-                    "No API key stored for provider '{}'",
-                    provider.keychain_key()
-                ),
+            .ok_or_else(|| ThreatForgeError::NoApiKey {
+                provider: provider.keychain_key().to_string(),
             })
     }
 
@@ -352,6 +349,20 @@ mod tests {
 
         let result = storage.get_key(&AiProvider::Anthropic);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn a_missing_key_is_typed_apart_from_a_storage_fault() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = make_storage(tmp.path());
+
+        // `start_ai_stream` turns this variant into the one refusal a user can
+        // act on, so collapsing it back into `KeyStorage` would silently make
+        // "add a key" indistinguishable from "storage is broken".
+        match storage.get_key(&AiProvider::OpenAi) {
+            Err(ThreatForgeError::NoApiKey { provider }) => assert_eq!(provider, "openai"),
+            other => panic!("an absent key must report NoApiKey, got {other:?}"),
+        }
     }
 
     #[cfg(unix)]

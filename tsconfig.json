@@ -2,7 +2,10 @@
 	"compilerOptions": {
 		"target": "ES2020",
 		"useDefineForClassFields": true,
-		"lib": ["ES2020", "DOM", "DOM.Iterable"],
+		/* `ES2022.Object` declares `Object.hasOwn`, the own-property guard Biome's
+		   `noPrototypeBuiltins` requires. It needs Safari 15.4, which the app
+		   already requires for `structuredClone`, so the runtime floor is unchanged. */
+		"lib": ["ES2020", "ES2022.Object", "DOM", "DOM.Iterable"],
 		"module": "ESNext",
 		"skipLibCheck": true,
 

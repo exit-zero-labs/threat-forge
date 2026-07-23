@@ -103,6 +103,17 @@ pub enum RelayError {
     BodyUnserializable,
     #[error("the stored API key contains characters that cannot be sent in an HTTP header")]
     KeyNotHeaderSafe,
+    /// The refusal `start_ai_stream` returns when no credential is stored.
+    /// `src/lib/adapters/tauri-chat-adapter.ts` matches this exact sentence to
+    /// raise the same `no_api_key` protocol code the browser transport raises,
+    /// and its test reads this file to catch drift.
+    #[error("no API key is configured for this provider — add one in AI Settings")]
+    NoApiKey,
+    /// Any other key-storage failure. Deliberately says nothing about the
+    /// underlying fault: `ThreatForgeError`'s `Display` names internal state
+    /// (the storage key, a poisoned lock's payload) and must not reach the UI.
+    #[error("the stored API key could not be read")]
+    KeyUnavailable,
     #[error("streamId must be a non-empty string of at most 128 characters")]
     InvalidStreamId,
     #[error("a stream with this id is already running")]
@@ -169,7 +180,7 @@ impl AiStreamRegistry {
 
     /// Set every live stream's cancel flag. Exists only for the deprecated
     /// `cancel_chat_stream` alias, whose legacy caller runs at most one stream
-    /// at a time; deleted with it in issue #61 step 9.
+    /// at a time; deleted with it in issue #61 step 10.
     pub fn cancel_all(&self) {
         for flag in self.lock().values() {
             flag.store(true, Ordering::SeqCst);
@@ -405,6 +416,12 @@ impl SseFrameSplitter {
 /// boundary into the webview as the primary error message, so provider text
 /// has no place in it. Redacted provider text travels separately as
 /// `provider_detail`.
+///
+/// The numeric status is rendered with [`StatusCode::as_u16`] rather than the
+/// `StatusCode` itself, whose `Display` appends the canonical reason phrase
+/// ("401 Unauthorized"). The browser path (`userSafeProviderError` in
+/// `src/lib/ai-provider-errors.ts`) only has the number, so formatting the same
+/// failure differently per platform is drift the user would see.
 fn user_safe_provider_error(provider: &str, status: StatusCode) -> String {
     let reason = match status.as_u16() {
         400 => "the request was rejected as malformed",
@@ -419,7 +436,7 @@ fn user_safe_provider_error(provider: &str, status: StatusCode) -> String {
         500..=599 => "the provider is temporarily unavailable",
         _ => "the request failed",
     };
-    format!("{provider} API error ({status}): {reason}")
+    format!("{} API error ({}): {reason}", provider, status.as_u16())
 }
 
 /// Describe a transport failure without leaking connection detail.
@@ -1093,9 +1110,13 @@ mod tests {
         };
         assert_eq!(status, 401);
         // Pin the whole authored message so the format cannot drift unnoticed.
+        // This is byte-for-byte what `userSafeProviderError` renders in the
+        // browser (`src/lib/ai-provider-errors.test.ts` pins the same string):
+        // the two platforms report one provider failure one way, so a
+        // `StatusCode` reason phrase must not creep back into the number.
         assert_eq!(
             message,
-            "OpenAI API error (401 Unauthorized): the API key was rejected \u{2014} \
+            "OpenAI API error (401): the API key was rejected \u{2014} \
              check the key configured for this provider"
         );
         let detail = provider_detail.expect("the 401 body carries detail worth keeping");
@@ -1175,7 +1196,12 @@ mod tests {
     fn provider_error_falls_back_for_unmapped_statuses() {
         let message = user_safe_provider_error("Anthropic", StatusCode::IM_A_TEAPOT);
         assert!(message.contains("the request failed"));
-        assert!(message.contains("418"));
+        // The bare number, not `StatusCode`'s "418 I'm a Teapot": the browser
+        // path has no reason phrase to print and both must read the same.
+        assert!(
+            message.contains("(418)"),
+            "unexpected status rendering: {message}"
+        );
     }
 
     #[test]
