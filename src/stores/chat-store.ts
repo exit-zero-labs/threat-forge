@@ -21,6 +21,7 @@ import {
 	MAX_SESSIONS_PER_FILE,
 } from "@/types/chat-session";
 import type { ThreatModel } from "@/types/threat-model";
+import { cancelActiveTurn } from "./ai-turn-bridge";
 
 // `AiProvider` now belongs to the protocol module; re-exported so the eight
 // existing importers keep their import path while the AI stack is rebuilt.
@@ -501,6 +502,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			currentAbortController.abort();
 			currentAbortController = null;
 		}
+		// Also settle any live tool-loop turn (issue #62), so switching documents
+		// cannot let a turn write into the newly visible one. Routed through the
+		// bridge to avoid a static import cycle; idempotent when no turn is running.
+		cancelActiveTurn();
 		set({ isStreaming: false });
 	},
 

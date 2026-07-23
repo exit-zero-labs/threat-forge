@@ -37,6 +37,21 @@ import { extractThreats } from "@/lib/ai-utils";
 export const LEGACY_FENCED_ACTIONS_ENABLED = true;
 
 /**
+ * Whether fenced parsing should run for a turn that offered `toolCount` tools.
+ *
+ * A tool-enabled turn (issue #62) reviews mutations through the approval ledger,
+ * which binds each grant to a canonical input digest and validates the resulting
+ * document before committing. Fenced parsing has neither guard, so an injected
+ * assistant message could smuggle a ` ```actions ` block past the ledger into the
+ * legacy Apply button. The gate keeps fenced parsing to text-only turns
+ * (`toolCount === 0`), matching the branch `buildSystemPrompt` uses to decide
+ * whether to emit the fenced instructions at all.
+ */
+export function legacyFencedEnabledForTurn(toolCount: number): boolean {
+	return LEGACY_FENCED_ACTIONS_ENABLED && toolCount === 0;
+}
+
+/**
  * Parse fenced ` ```actions ` blocks out of accumulated assistant text.
  *
  * `enabled` defaults to the module flag and exists as an injection seam so a
