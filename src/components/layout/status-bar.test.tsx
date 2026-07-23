@@ -42,7 +42,7 @@ beforeEach(() => {
  * re-subscribe on a switch rather than serve a stale snapshot.
  */
 describe("StatusBar across a document switch (plan step 9)", () => {
-	it("case 10 - reflects the active document's counts and file path across switches", () => {
+	it("case 10 - reflects the active document's save, history, and file state across switches", () => {
 		const registry = useDocumentRegistry.getState();
 
 		// Document A: two elements, one flow, three history pushes, saved at /a.thf.
@@ -57,8 +57,7 @@ describe("StatusBar across a document switch (plan step 9)", () => {
 
 		render(<StatusBar />);
 		const bar = screen.getByTestId("status-bar");
-		expect(bar).toHaveTextContent("2 elements");
-		expect(bar).toHaveTextContent("1 flow");
+		expect(bar).toHaveTextContent("Unsaved changes");
 		expect(bar).toHaveTextContent("Undo: 3 / Redo: 0");
 		expect(bar).toHaveTextContent("/a.thf");
 
@@ -66,17 +65,15 @@ describe("StatusBar across a document switch (plan step 9)", () => {
 		act(() => {
 			registry.createDocument({ model: createTestModel("B"), filePath: null, pendingLayout: null });
 		});
-		expect(bar).toHaveTextContent("0 elements");
-		expect(bar).toHaveTextContent("0 flows");
+		expect(bar).toHaveTextContent("Saved");
 		expect(bar).not.toHaveTextContent("Undo:");
 		expect(bar).not.toHaveTextContent("/a.thf");
 
-		// Returning to A restores its rendered counts and file path — a stale snapshot would not.
+		// Returning to A restores its rendered state and file path — a stale snapshot would not.
 		act(() => {
 			registry.activateDocument(a);
 		});
-		expect(bar).toHaveTextContent("2 elements");
-		expect(bar).toHaveTextContent("1 flow");
+		expect(bar).toHaveTextContent("Unsaved changes");
 		expect(bar).toHaveTextContent("Undo: 3 / Redo: 0");
 		expect(bar).toHaveTextContent("/a.thf");
 	});

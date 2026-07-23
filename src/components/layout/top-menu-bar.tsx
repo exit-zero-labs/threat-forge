@@ -84,7 +84,7 @@ export function TopMenuBar() {
 						onDoubleClick={() => {
 							if (model) setEditingTitle(true);
 						}}
-						title={model ? "Double-click to rename" : undefined}
+						title={model ? `${displayTitle} - Double-click to rename` : undefined}
 					>
 						{displayTitle}
 					</span>
@@ -128,19 +128,21 @@ export function TopMenuBar() {
 			<div className="flex-1" />
 
 			{model && (
-				<dl
+				<section
 					aria-label={`Canvas summary: ${countLabel(componentCount, "component")}, ${countLabel(dataFlowCount, "data flow")}, ${countLabel(threatCount, "identified threat")}, ${countLabel(mitigatedThreatCount, "mitigated threat")}`}
 					data-testid="canvas-count-badge"
 					className="flex shrink-0 items-center divide-x divide-border rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm"
 				>
-					<CountItem label="Components" value={componentCount} />
-					<CountItem label="Data flows" value={dataFlowCount} />
-					<CountItem
-						label="Threats"
-						value={`${threatCount} / ${mitigatedThreatCount}`}
-						title="Threats: identified / mitigated"
-					/>
-				</dl>
+					<dl className="flex items-center divide-x divide-border">
+						<CountItem label="Components" value={componentCount} />
+						<CountItem label="Data flows" value={dataFlowCount} />
+						<CountItem
+							label="Threats"
+							value={`${threatCount} / ${mitigatedThreatCount}`}
+							title="Threats: identified / mitigated"
+						/>
+					</dl>
+				</section>
 			)}
 
 			{/* Divider */}

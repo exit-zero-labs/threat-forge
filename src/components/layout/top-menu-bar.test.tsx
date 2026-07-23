@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
@@ -61,6 +61,7 @@ describe("TopMenuBar title", () => {
 
 describe("TopMenuBar canvas count badge", () => {
 	it("shows component, data-flow, and identified / mitigated threat totals", () => {
+		const registry = useDocumentRegistry.getState();
 		const model = createTestModel("Overview", {
 			elements: Array.from({ length: 2 }, (_, index) => ({
 				id: `component-${index + 1}`,
@@ -107,7 +108,7 @@ describe("TopMenuBar canvas count badge", () => {
 				},
 			],
 		});
-		useDocumentRegistry.getState().createDocument({
+		const overviewId = registry.createDocument({
 			model,
 			filePath: null,
 			pendingLayout: null,
@@ -115,12 +116,29 @@ describe("TopMenuBar canvas count badge", () => {
 
 		render(<TopMenuBar />);
 
-		const badge = screen.getByTestId("canvas-count-badge");
+		const badge = screen.getByRole("region", {
+			name: "Canvas summary: 2 components, 1 data flow, 3 identified threats, 1 mitigated threat",
+		});
 		expect(badge).toHaveTextContent("Components 2");
 		expect(badge).toHaveTextContent("Data flows 1");
 		expect(badge).toHaveTextContent("Threats 3 / 1");
-		expect(badge).toHaveAccessibleName(
-			"Canvas summary: 2 components, 1 data flow, 3 identified threats, 1 mitigated threat",
+
+		act(() => {
+			registry.createDocument({
+				model: createTestModel("Empty"),
+				filePath: null,
+				pendingLayout: null,
+			});
+		});
+		expect(screen.getByTestId("canvas-count-badge")).toHaveTextContent(
+			"Components 0Data flows 0Threats 0 / 0",
+		);
+
+		act(() => {
+			registry.activateDocument(overviewId);
+		});
+		expect(screen.getByTestId("canvas-count-badge")).toHaveTextContent(
+			"Components 2Data flows 1Threats 3 / 1",
 		);
 	});
 });
