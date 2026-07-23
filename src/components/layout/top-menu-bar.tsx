@@ -20,6 +20,11 @@ import { Keytip } from "../ui/keytip";
 export function TopMenuBar() {
 	const isDirty = useModelStore((s) => s.isDirty);
 	const model = useModelStore((s) => s.model);
+	const componentCount = model?.elements.length ?? 0;
+	const dataFlowCount = model?.data_flows.length ?? 0;
+	const threatCount = model?.threats.length ?? 0;
+	const mitigatedThreatCount =
+		model?.threats.filter((threat) => threat.mitigation?.status === "mitigated").length ?? 0;
 	const filePath = useModelStore((s) => s.filePath);
 	const toggleLeftPanel = useUiStore((s) => s.toggleLeftPanel);
 	const toggleRightPanel = useUiStore((s) => s.toggleRightPanel);
@@ -122,6 +127,25 @@ export function TopMenuBar() {
 			{/* Spacer */}
 			<div className="flex-1" />
 
+			{model && (
+				<dl
+					aria-label={`Canvas summary: ${countLabel(componentCount, "component")}, ${countLabel(dataFlowCount, "data flow")}, ${countLabel(threatCount, "identified threat")}, ${countLabel(mitigatedThreatCount, "mitigated threat")}`}
+					data-testid="canvas-count-badge"
+					className="flex shrink-0 items-center divide-x divide-border rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm"
+				>
+					<CountItem label="Components" value={componentCount} />
+					<CountItem label="Data flows" value={dataFlowCount} />
+					<CountItem
+						label="Threats"
+						value={`${threatCount} / ${mitigatedThreatCount}`}
+						title="Threats: identified / mitigated"
+					/>
+				</dl>
+			)}
+
+			{/* Divider */}
+			{model && <div className="mx-1.5 h-4 w-px bg-border" />}
+
 			{/* View toggles */}
 			<div className="flex items-center gap-0.5">
 				<MenuButton
@@ -191,4 +215,24 @@ function MenuButton({
 			{keytip && <Keytip shortcut={keytip} />}
 		</span>
 	);
+}
+
+function CountItem({
+	label,
+	value,
+	title,
+}: {
+	label: string;
+	value: number | string;
+	title?: string;
+}) {
+	return (
+		<div className="flex gap-1 whitespace-nowrap px-2 first:pl-0 last:pr-0" title={title}>
+			<dt>{label}</dt> <dd className="font-semibold tabular-nums text-foreground">{value}</dd>
+		</div>
+	);
+}
+
+function countLabel(count: number, noun: string): string {
+	return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }

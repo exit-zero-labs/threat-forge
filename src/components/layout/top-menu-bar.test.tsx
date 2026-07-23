@@ -6,7 +6,7 @@ import { useModelStore } from "@/stores/model-store";
 import type { ThreatModel } from "@/types/threat-model";
 import { TopMenuBar } from "./top-menu-bar";
 
-function createTestModel(title: string): ThreatModel {
+function createTestModel(title: string, overrides: Partial<ThreatModel> = {}): ThreatModel {
 	return {
 		version: "1.0",
 		metadata: {
@@ -21,6 +21,7 @@ function createTestModel(title: string): ThreatModel {
 		trust_boundaries: [],
 		threats: [],
 		diagrams: [],
+		...overrides,
 	};
 }
 
@@ -55,5 +56,71 @@ describe("TopMenuBar title", () => {
 		render(<TopMenuBar />);
 
 		expect(screen.getByText("Draft *")).toBeInTheDocument();
+	});
+});
+
+describe("TopMenuBar canvas count badge", () => {
+	it("shows component, data-flow, and identified / mitigated threat totals", () => {
+		const model = createTestModel("Overview", {
+			elements: Array.from({ length: 2 }, (_, index) => ({
+				id: `component-${index + 1}`,
+				type: "process",
+				name: `Component ${index + 1}`,
+				trust_zone: "",
+				description: "",
+				technologies: [],
+			})),
+			data_flows: [
+				{
+					id: "flow-1",
+					name: "Request",
+					from: "component-1",
+					to: "component-2",
+					protocol: "HTTPS",
+					data: [],
+					authenticated: true,
+				},
+			],
+			threats: [
+				{
+					id: "threat-1",
+					title: "Mitigated threat",
+					category: "Spoofing",
+					severity: "high",
+					description: "",
+					mitigation: { status: "mitigated", description: "Fixed" },
+				},
+				{
+					id: "threat-2",
+					title: "Accepted threat",
+					category: "Tampering",
+					severity: "medium",
+					description: "",
+					mitigation: { status: "accepted", description: "Risk accepted" },
+				},
+				{
+					id: "threat-3",
+					title: "Open threat",
+					category: "Repudiation",
+					severity: "low",
+					description: "",
+				},
+			],
+		});
+		useDocumentRegistry.getState().createDocument({
+			model,
+			filePath: null,
+			pendingLayout: null,
+		});
+
+		render(<TopMenuBar />);
+
+		const badge = screen.getByTestId("canvas-count-badge");
+		expect(badge).toHaveTextContent("Components 2");
+		expect(badge).toHaveTextContent("Data flows 1");
+		expect(badge).toHaveTextContent("Threats 3 / 1");
+		expect(badge).toHaveAccessibleName(
+			"Canvas summary: 2 components, 1 data flow, 3 identified threats, 1 mitigated threat",
+		);
 	});
 });
