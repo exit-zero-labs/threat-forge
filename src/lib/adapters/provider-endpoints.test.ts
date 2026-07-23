@@ -17,12 +17,22 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ProtocolException } from "@/lib/ai/protocol/errors";
+import webHeadersSource from "../../../public/_headers?raw";
 import rustRelaySource from "../../../src-tauri/src/ai/providers.rs?raw";
 import tauriConfigSource from "../../../src-tauri/tauri.conf.json?raw";
 import { PROVIDER_ENDPOINTS, providerEndpoint } from "./provider-endpoints";
 
 /** `pub const ANTHROPIC_API_URL: &str = "https://…";` */
 const RUST_ENDPOINT_CONSTANT = /pub const (\w+_API_URL): &str = "([^"]+)";/g;
+
+/**
+ * Origins the web CSP (`public/_headers`) allows for connect-src that carry no
+ * key — currently only the write-only analytics beacon — so they are excluded
+ * when the web `connect-src` is compared against the key-bearing endpoint table.
+ * See the rationale in `public/_headers`. Adding an origin here is a security
+ * change: it asserts the origin is not a usable exfiltration drop for the key.
+ */
+const WEB_NON_KEY_ORIGINS = new Set(["https://cloudflareinsights.com"]);
 
 const tauriConfigSchema = z.object({
 	app: z.object({ security: z.object({ csp: z.string() }) }),
@@ -32,10 +42,9 @@ function rustEndpointUrls(): string[] {
 	return [...rustRelaySource.matchAll(RUST_ENDPOINT_CONSTANT)].map((match) => match[2]);
 }
 
-/** The `https:` origins the Tauri CSP permits the webview to connect to. */
-function cspConnectSrcOrigins(): string[] {
-	const config = tauriConfigSchema.parse(JSON.parse(tauriConfigSource));
-	const connectSrc = config.app.security.csp
+/** The `https:` origins a CSP's `connect-src` directive permits. */
+function connectSrcOrigins(csp: string): string[] {
+	const connectSrc = csp
 		.split(";")
 		.map((directive) => directive.trim())
 		.find((directive) => directive.startsWith("connect-src "));
@@ -44,6 +53,19 @@ function cspConnectSrcOrigins(): string[] {
 		.split(/\s+/)
 		.filter((source) => source.startsWith("https://"))
 		.map((source) => new URL(source).origin);
+}
+
+/** The `connect-src` https origins the desktop (Tauri) CSP permits. */
+function tauriCspConnectSrcOrigins(): string[] {
+	const config = tauriConfigSchema.parse(JSON.parse(tauriConfigSource));
+	return connectSrcOrigins(config.app.security.csp);
+}
+
+/** The single CSP the deployed web build serves for every route via `_headers`. */
+function webCsp(): string {
+	const match = webHeadersSource.match(/Content-Security-Policy:\s*([^\n]+)/);
+	expect(match, "public/_headers must declare a Content-Security-Policy").not.toBeNull();
+	return match?.[1]?.trim() ?? "";
 }
 
 const tableUrls = Object.values(PROVIDER_ENDPOINTS).map((endpoint) => endpoint.url);
@@ -59,18 +81,59 @@ describe("provider endpoint drift", () => {
 		expect([...tableUrls].sort()).toEqual([...rustEndpointUrls()].sort());
 	});
 
-	it("only names origins the Tauri CSP allows the webview to reach", () => {
-		const allowed = cspConnectSrcOrigins();
+	it("only names origins the desktop CSP allows the webview to reach", () => {
+		const allowed = tauriCspConnectSrcOrigins();
 		for (const url of tableUrls) {
-			expect(allowed, `${url} is not in the CSP connect-src allowlist`).toContain(
+			expect(allowed, `${url} is not in the desktop CSP connect-src allowlist`).toContain(
 				new URL(url).origin,
 			);
 		}
 	});
 
-	it("leaves no provider origin allowed by the CSP that nothing sends to", () => {
+	it("leaves no provider origin the desktop CSP allows that nothing sends to", () => {
 		const tableOrigins = tableUrls.map((url) => new URL(url).origin);
-		expect([...cspConnectSrcOrigins()].sort()).toEqual([...new Set(tableOrigins)].sort());
+		expect([...tauriCspConnectSrcOrigins()].sort()).toEqual([...new Set(tableOrigins)].sort());
+	});
+
+	it("lets the web build reach every provider origin the endpoint table names", () => {
+		const allowed = connectSrcOrigins(webCsp());
+		for (const url of tableUrls) {
+			expect(allowed, `${url} is not in the web CSP connect-src allowlist`).toContain(
+				new URL(url).origin,
+			);
+		}
+	});
+
+	it("allows the web build no key-bearing connect origin beyond the endpoint table", () => {
+		// The deployed web build additionally allows a small set of no-key service
+		// origins (analytics, GitHub release lookup); every other https origin the
+		// web CSP permits must be a table endpoint, so a stray host added to either
+		// side fails here.
+		const tableOrigins = new Set(tableUrls.map((url) => new URL(url).origin));
+		const keyBearing = connectSrcOrigins(webCsp()).filter(
+			(origin) => !WEB_NON_KEY_ORIGINS.has(origin),
+		);
+		expect([...keyBearing].sort()).toEqual([...tableOrigins].sort());
+	});
+
+	it("fails the web build's non-connect vectors closed", () => {
+		const csp = webCsp();
+		for (const directive of [
+			"default-src 'self'",
+			"object-src 'none'",
+			"base-uri 'self'",
+			"form-action 'self'",
+			"frame-ancestors 'none'",
+		]) {
+			expect(csp, `the web CSP must set ${directive}`).toContain(directive);
+		}
+	});
+
+	it("hardens the desktop CSP with base-uri and form-action", () => {
+		const config = tauriConfigSchema.parse(JSON.parse(tauriConfigSource));
+		for (const directive of ["base-uri 'self'", "form-action 'self'"]) {
+			expect(config.app.security.csp, `the desktop CSP must set ${directive}`).toContain(directive);
+		}
 	});
 
 	it("sends every provider request over https", () => {
