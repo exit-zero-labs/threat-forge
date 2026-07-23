@@ -7,7 +7,7 @@
 | Low adoption / no community | Market | Medium | High | Multi-channel launch; file-format virality; build-in-public; kill gate at <100 stars |
 | Solo developer burnout | Execution | Medium | High | Scope ruthlessly (MoSCoW); accept contributions early; burnout kill gate |
 | File format doesn't gain traction | Market | Medium | Medium | Support import/export from existing formats; propose to OWASP TM-BOM |
-| Cross-platform Tauri bugs | Technical | Low | Medium | CI matrix on all platforms; Tailwind abstracts most differences |
+| Cross-platform Tauri bugs | Technical | Low | Medium | Desktop CI builds on macOS, Windows, and Linux; browser checks run separately |
 | AI features perceived as gimmicky | Product | Low | Low | AI is optional, not core; focus on genuine utility; iterate on feedback |
 | Threat Dragon ships v3 competitive update | Competition | Low | Medium | Move faster; modern UX is hard to retrofit; file format + AI are differentiators |
 
@@ -17,7 +17,7 @@
 
 Ship a polished tool, launch on HN, get 200 upvotes and 50 stars... then crickets. The problem is real but the market is too niche. The repo goes stale with 0 contributors.
 
-**Mitigation:** The $600/year cost means financial loss is trivial. Risk is limited to time invested. Launch fast, kill early if no traction.
+**Mitigation:** Current operating costs limit financial exposure; the primary risk is maintainer time. Launch fast, kill early if no traction.
 
 ### Scenario 2: "Lost to a day job crunch" (Medium likelihood)
 
@@ -29,7 +29,7 @@ Day job has a crunch period. Side project stalls for 2-3 months during a critica
 
 YAML edge cases make git diffs messy in practice. Users report the file is "human-readable but not human-diffable."
 
-**Mitigation:** Validated in Phase 0 with 10 sample models. Format has been stable through extensive development. Inline layout data decision specifically addresses diff noise.
+**Mitigation:** Preserve backward-compatible schema handling, representative round-trip fixtures, and reviewable YAML diffs. Validate human-diffability with real models before broad release claims.
 
 ## Single Points of Failure
 
@@ -38,7 +38,7 @@ YAML edge cases make git diffs messy in practice. Users report the file is "huma
 | Shreyas (sole developer) | Human | Document everything; accept contributions early; readable code |
 | ReactFlow (diagramming) | Library | Active community (MIT); monitor health |
 | GitHub (hosting, CI, releases) | Platform | Local backups; mirror to GitLab if needed |
-| Tauri v2 | Framework | 88K+ stars; large enough to be sustained |
+| Tauri v2 | Framework | Active ecosystem; monitor project health and maintain migration options |
 
 ## Reasons to Believe
 

@@ -15,7 +15,7 @@
 | **ReactFlow** | React library for building node-based editors and interactive diagrams (MIT, xyflow) |
 | **Zustand** | Lightweight state management library for React |
 | **serde** | Rust framework for serializing and deserializing data structures |
-| **IPC** | Inter-Process Communication — in Tauri, the JSON-RPC bridge between frontend (WebView) and backend (Rust) |
+| **IPC** | Inter-Process Communication — Tauri's command/event bridge between the frontend WebView and Rust backend |
 | **CSP** | Content Security Policy — HTTP header that restricts what resources a page can load |
 
 ## Element-to-STRIDE Threat Mapping
@@ -30,13 +30,13 @@
 
 ## Comparable Open-Source Projects
 
-| Project | Relevance | Stars | Outcome |
-|---------|-----------|-------|---------|
-| **Excalidraw** | Open-source diagramming with delightful UX | 90K+ | Proves modern UX in boring space wins |
-| **OWASP Threat Dragon** | Direct competitor; OSS threat modeling | ~1,300 | Functional but not beloved; validates the space |
-| **STRIDE-GPT** | AI-powered threat model generator | ~600 | Proves AI + STRIDE has demand; but output-only |
-| **Insomnia** | OSS API client that disrupted Postman | Acquired | Great UX builds large communities; later acquired by Kong |
-| **Linear** | Project management with exceptional UX | N/A | Fast + beautiful beats entrenched players |
+| Project | Relevance | Outcome |
+|---------|-----------|---------|
+| **Excalidraw** | Open-source diagramming with polished UX | Demonstrates demand for approachable diagramming |
+| **OWASP Threat Dragon** | Direct OSS threat-modeling comparison | Validates an open-source threat-modeling audience |
+| **STRIDE-GPT** | AI-powered threat-model generator | Demonstrates interest in AI-assisted STRIDE analysis |
+| **Insomnia** | OSS API client | Demonstrates how UX can differentiate developer tooling |
+| **Linear** | Project management with polished UX | Demonstrates demand for fast, focused workflows |
 
 ## Research Sources
 

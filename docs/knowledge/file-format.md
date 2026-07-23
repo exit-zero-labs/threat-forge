@@ -179,7 +179,7 @@ threats:
     category: Tampering
     element: api-gateway
     flow: flow-2
-    severity: High
+    severity: high
     description: |
       Malicious SQL could be injected through payment
       parameters if input validation is insufficient.
@@ -192,7 +192,7 @@ threats:
     category: Information Disclosure
     element: api-gateway
     flow: flow-3
-    severity: Medium
+    severity: medium
     description: "API calls to Stripe could be intercepted."
     mitigation:
       status: mitigated

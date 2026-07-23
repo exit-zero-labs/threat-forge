@@ -17,14 +17,14 @@
 
 | Feature | Description |
 |---------|-------------|
-| Diagramming canvas | DFD canvas with drag-and-drop, trust boundaries, data flows, text annotations, 44 typed components |
+| Diagramming canvas | DFD canvas with drag-and-drop, trust boundaries, data flows, text annotations, typed components |
 | `.thf` YAML file format | Human-readable, git-diffable, schema-validated, single-file |
 | STRIDE threat engine | Auto-generated threats per element type, rule-based |
 | AI chat pane (BYOK) | OpenAI + Anthropic support; model selector; chat sessions (persisted per file); markdown rendering; stop generating; enhanced STRIDE prompts |
-| Cross-platform | macOS, Windows, Linux via Tauri v2 |
-| Component library | 44 typed components across 10 categories (incl. Annotations) with lucide icons |
-| Themes | 13+ themes (light and dark), separate light/dark selection |
-| Keyboard shortcuts | 27+ shortcuts, Cmd+K command palette |
+| Cross-platform | Browser plus macOS, Windows, and Linux desktop builds via Tauri v2 |
+| Component library | Typed components across 10 categories (incl. Annotations) with lucide icons, defined in `src/lib/component-library.ts` |
+| Themes | Built-in light and dark themes with separate light/dark selection (`src/lib/themes/presets.ts`) |
+| Keyboard shortcuts | Keyboard shortcuts with Cmd+K command palette (`src/lib/command-registry.ts`) |
 | Resizable panes | Draggable left/right panels with min/max constraints |
 | Onboarding | Interactive guides, tooltips, What's New overlay |
 | Undo/Redo | Full history with snapshot-based undo for all operations |
@@ -37,20 +37,22 @@
 
 ### Should-Have (future)
 
-| Feature | Priority |
-|---------|----------|
-| Import from Threat Dragon (.json) | P0 |
-| PDF/HTML export for stakeholders | P1 |
-| LINDDUN privacy methodology support | P2 |
-| Multiple diagrams per model | P2 |
+Future capabilities below are not yet shipped; they are tracked in [the roadmap](../plans/roadmap.md) and GitHub Project 2.
+
+| Future capability |
+|-------------------|
+| Import from Threat Dragon (.json) |
+| PDF/HTML export for stakeholders |
+| LINDDUN privacy methodology support |
+| Multiple diagrams per model |
 
 ### Could-Have (future)
 
-| Feature | Priority |
-|---------|----------|
-| CI/CD GitHub Action for validation | Medium |
-| TM-BOM (CycloneDX) export | Medium |
-| Collaborative editing via git merge | High complexity |
+| Future capability |
+|-------------------|
+| CI/CD GitHub Action for validation |
+| TM-BOM (CycloneDX) export |
+| Collaborative editing via git merge |
 
 ## User Journey (Critical Path)
 
@@ -81,23 +83,26 @@ Download ThreatForge → Open App → First-run Welcome
 
 ## Success Metrics (HEART Framework)
 
+These are planning targets, not currently instrumented product metrics. Any collection
+requires a separately scoped issue and privacy review.
+
 | Metric | Definition | Target (6mo) | Target (12mo) |
 |--------|-----------|-------------|--------------|
 | **Happiness** | GitHub star growth rate | 2,000 stars | 5,000 stars; >50 NPS |
-| **Engagement** | Monthly active users (opt-in telemetry) | 2,000 MAU | 8,000 MAU |
+| **Engagement** | Monthly active users (measurement approach TBD) | 2,000 MAU | 8,000 MAU |
 | **Adoption** | Downloads per month | 1,000/mo | 5,000/mo |
 | **Retention** | % users active 30 days after first use | 25% | 35% |
 | **Task Success** | % who save a complete threat model | >70% | >80% |
 
 ## Edge Cases & Error Handling
 
-- **Offline operation:** Core diagramming and threat analysis work fully offline. AI features degrade gracefully with clear messaging.
-- **File conflicts:** If `.thf` is modified externally (e.g., git merge), the app detects changes on focus and offers to reload.
-- **Large models:** Canvas uses virtualized rendering for 100+ elements.
-- **Invalid files:** Schema validation on open with clear error messages pointing to the invalid section.
-- **API key security:** AES-256-GCM encrypted at rest. Never written to threat model file.
+- **Offline operation — shipped:** Core diagramming and threat analysis work offline. AI remains optional.
+- **File conflicts — planned:** Detecting externally changed `.thf` files and offering recovery is tracked in [roadmap Phase 1](../plans/roadmap.md#phase-1--multi-document-local-first-workspace).
+- **Large models — design target:** Validate responsiveness with representative large-model fixtures before making a shipped performance claim.
+- **Invalid files — shipped:** Schema validation rejects invalid files with user-safe errors.
+- **API key security — shipped:** Desktop keys are AES-256-GCM encrypted at rest; browser keys use `localStorage` with an explicit in-app warning. Keys are never written to threat model files.
 
 ## Accessibility
 
 - WCAG 2.1 AA compliance target: keyboard navigation for all canvas operations, screen reader labels, 4.5:1 contrast ratios, focus management.
-- English-only initially. i18n architecture in place for future community-driven translations.
+- English-only currently. Internationalization is not yet scoped and requires a canonical issue before implementation.

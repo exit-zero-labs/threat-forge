@@ -33,7 +33,7 @@ ThreatForge is a cross-platform desktop app for threat modeling. It produces hum
 
 ## The Problem
 
-Threat modeling tools fall into two camps. On one side: Microsoft's Threat Modeling Tool — free, but Windows-only, with a 2016-era UI and opaque `.tm7` binary files that can't be diffed, reviewed, or versioned. On the other: enterprise platforms like IriusRisk and ThreatModeler at $20K+/year.
+Threat modeling tools fall into two camps. On one side: Microsoft's Threat Modeling Tool — free, but Windows-only, with a legacy UI and opaque `.tm7` binary files that can't be diffed, reviewed, or versioned. On the other: procurement-oriented enterprise platforms like IriusRisk and ThreatModeler.
 
 There's nothing in between for developers who want a modern interface, a clean file format, and AI assistance — without a procurement cycle.
 
@@ -43,7 +43,7 @@ ThreatForge fills that gap.
 
 ### Visual Data Flow Diagrams
 
-Drag-and-drop canvas for building data flow diagrams. 44 typed components across 10 categories (services, databases, messaging, infrastructure, security, clients, networking, cloud/platform, and more), plus resizable trust boundaries and text annotations. Connection handles auto-route between elements.
+Drag-and-drop canvas for building data flow diagrams. Typed components span services, databases, messaging, infrastructure, security, clients, networking, cloud/platform, and more, alongside resizable trust boundaries and text annotations. Connection handles auto-route between elements.
 
 ### STRIDE Threat Engine
 
@@ -53,7 +53,7 @@ Built-in rule engine that applies Microsoft's STRIDE-per-element methodology to 
 
 Chat with Claude or GPT about your threat model. The AI sees your full architecture — elements, data flows, trust boundaries, and existing threats — and can suggest new threats, propose mitigations, or answer security questions. One-click to accept AI-suggested threats into your model.
 
-Bring your own API key. Supports Anthropic (Claude Opus 4, Sonnet 4, Haiku 3.5) and OpenAI (GPT-4o, GPT-4o Mini). Keys are AES-256-GCM encrypted at rest.
+Bring your own API key. Supports Anthropic (Claude Opus 4, Sonnet 4, Haiku 3.5) and OpenAI (GPT-4o, GPT-4o Mini). Desktop keys are AES-256-GCM encrypted at rest; browser storage displays an explicit security warning.
 
 ### Import from Microsoft TMT
 
@@ -63,20 +63,20 @@ Import existing `.tm7` files from Microsoft's Threat Modeling Tool. ThreatForge 
 
 Start from six production-quality templates: **Cloud Microservices**, **E-Commerce Platform**, **Mobile Banking**, **SaaS Platform**, **IoT Smart Building**, and **Healthcare System**. Each includes a complete data flow diagram with elements, trust boundaries, data flows, and STRIDE threats.
 
-### 15 Themes
+### Themes
 
-8 dark themes (Midnight, Slate, Nord, Dracula, Monokai, GitHub Dark, One Dark, Catppuccin Mocha) and 7 light themes (Daylight, Warm Sand, High Contrast, GitHub Light, Solarized Light, One Light, Catppuccin Latte). Auto-detects system preference.
+Built-in dark and light themes can follow the system preference.
 
 ### Keyboard-First Workflow
 
 - **Command palette** (`Cmd/Ctrl+K`) with fuzzy search across all actions and components
-- **27+ keyboard shortcuts** for file operations, canvas navigation, panel switching, and more
+- **Keyboard shortcuts** for file operations, canvas navigation, panel switching, and more
 - **Undo/redo** with full state history
 - **Resizable panels** — palette on the left, properties/threats/AI on the right
 - **Canvas minimap**, grid snapping, and arrow-key nudging
 - **Copy/paste** elements between models
 - **Interactive onboarding** guides for new users
-- **Auto-updater** with signature verification
+- **Signed, verifiable auto-updates** are planned; see the [release-signing runbook](docs/runbooks/configuring-release-signing.md)
 
 ## File Format
 
@@ -122,7 +122,7 @@ threats:
     title: "SQL Injection on payment queries"
     category: Tampering
     element: api-gateway
-    severity: High
+    severity: high
     mitigation:
       status: mitigated
       description: "Parameterized queries via ORM"
@@ -160,8 +160,8 @@ Produces a native desktop binary for your platform (~10MB).
 ### Test
 
 ```bash
-npx vitest --run                                       # 417+ frontend tests
-cargo test --manifest-path src-tauri/Cargo.toml        # 73+ Rust tests
+npx vitest --run                                       # Frontend test suite
+cargo test --manifest-path src-tauri/Cargo.toml        # Rust test suite
 ```
 
 ### Lint
@@ -184,7 +184,7 @@ npm run ci:docker:build   # Docker lint + test + Tauri build
 | Layer | Technology |
 |-------|-----------|
 | Desktop framework | [Tauri v2](https://v2.tauri.app/) (Rust backend, native webview) |
-| Frontend | React 19, TypeScript 5 (strict), Tailwind CSS 4, shadcn/ui |
+| Frontend | React 19, TypeScript (strict), Tailwind CSS 4, shadcn/ui |
 | Diagramming | [ReactFlow / xyflow](https://reactflow.dev/) |
 | State management | Zustand |
 | File format | Custom YAML schema (serde_yaml) |
@@ -217,13 +217,12 @@ All AI calls go directly from the user's machine with the user's API key. No pro
 
 ThreatForge is a security tool — the bar for security in our own code is high.
 
-- **API keys** encrypted at rest with AES-256-GCM
+- **API keys** use AES-256-GCM encrypted storage on desktop; browser storage displays an explicit warning
 - **AI calls** go directly to the provider — no intermediary server
-- **LLM output** treated as untrusted input and sanitized before rendering
-- **File paths** scoped via Tauri's capability system
+- **LLM output** is treated as untrusted; raw HTML is escaped by default
 - **Strict CSP** — no inline scripts, no remote code loading
-- **Auto-updates** are signature-verified
-- **Minimal dependencies** — audited with `cargo audit` and `npm audit`
+- **Auto-update signature verification** remains a [roadmap Phase 0](docs/plans/roadmap.md#phase-0--operational-foundation) gate
+- **Supply chain checks** include Dependabot, lockfile integrity, dependency review, and GitHub CodeQL default setup
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md). Do not open a public issue.
 
