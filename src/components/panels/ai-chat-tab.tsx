@@ -3,6 +3,7 @@ import {
 	Bot,
 	Check,
 	ChevronDown,
+	Info,
 	Loader2,
 	Play,
 	Plus,
@@ -11,23 +12,42 @@ import {
 	Sparkles,
 	Square,
 	Trash2,
+	Undo2,
 	User,
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { extractLegacyActions, extractLegacyThreats } from "@/lib/ai/legacy/fenced-actions";
-import { flattenText } from "@/lib/ai/protocol/messages";
+import {
+	extractLegacyActions,
+	extractLegacyThreats,
+	legacyFencedEnabledForTurn,
+} from "@/lib/ai/legacy/fenced-actions";
+import type { TurnState } from "@/lib/ai/loop/turn-machine";
+import { flattenText, type ProtocolMessage } from "@/lib/ai/protocol/messages";
 import { executeActions, executeSingleAction } from "@/lib/ai-action-executor";
 import { type AiAction, describeAction } from "@/lib/ai-actions";
 import { suggestionToThreat } from "@/lib/ai-utils";
 import { cn } from "@/lib/utils";
+import { useAiTurnStore } from "@/stores/ai-turn-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
 import { MarkdownContent } from "./markdown-content";
+import { ToolCallBatch } from "./tool-call-card";
+
+/** Turn phases in which a request or execution is in flight and can be stopped. */
+function isTurnLive(phase: TurnState["phase"] | undefined): boolean {
+	return (
+		phase === "requesting" ||
+		phase === "streaming" ||
+		phase === "awaiting_approval" ||
+		phase === "executing"
+	);
+}
 
 export function AiChatTab() {
 	const model = useModelStore((s) => s.model);
@@ -38,12 +58,25 @@ export function AiChatTab() {
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
 	const migrateSessionKey = useChatStore((s) => s.migrateSessionKey);
 	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
+	const resetTurn = useAiTurnStore((s) => s.resetTurn);
 	const prevFilePathRef = useRef<string | null | undefined>(undefined);
 
 	// Check API key on mount
 	useEffect(() => {
 		void checkApiKey();
 	}, [checkApiKey]);
+
+	// The tool-loop turn is process-global and holds its conversation in memory
+	// (durable, per-document retention is #63). Reset it whenever the active
+	// document changes — and on mount — so the prior document's turn is never
+	// shown here and its transcript is never sent as `baseMessages` to the new
+	// document's provider request. Keyed on `activeDocumentId` only, so a Save As
+	// (a `filePath` change on the same document) does not discard a live turn.
+	// This runs entirely in the panel; `document-registry.ts` is unchanged.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on document switch, not on resetTurn identity
+	useEffect(() => {
+		resetTurn();
+	}, [activeDocumentId]);
 
 	// Load sessions when the active document changes; migrate on Save As. `activeDocumentId` is
 	// a dependency so a switch between two unsaved documents (both `filePath === null`) still
@@ -116,6 +149,9 @@ function ChatView() {
 	const isStreaming = useChatStore((s) => s.isStreaming);
 	const error = useChatStore((s) => s.error);
 	const clearError = useChatStore((s) => s.clearError);
+	// The live tool-loop turn (issue #62) owns the conversation once one starts;
+	// before that, the pre-loop transcript renders as it always has.
+	const turn = useAiTurnStore((s) => s.turn);
 
 	return (
 		<div className="flex flex-1 flex-col gap-2 overflow-hidden">
@@ -123,7 +159,11 @@ function ChatView() {
 			<SessionBar />
 
 			{/* Messages area */}
-			<MessageList messages={messages} isStreaming={isStreaming} />
+			{turn ? (
+				<TurnConversation turn={turn} />
+			) : (
+				<MessageList messages={messages} isStreaming={isStreaming} />
+			)}
 
 			{/* Error display */}
 			{error && (
@@ -149,10 +189,27 @@ function SessionBar() {
 	const switchSession = useChatStore((s) => s.switchSession);
 	const deleteSession = useChatStore((s) => s.deleteSession);
 	const isStreaming = useChatStore((s) => s.isStreaming);
+	const resetTurn = useAiTurnStore((s) => s.resetTurn);
 	const [dropdownOpen, setDropdownOpen] = useState(false);
 
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
 	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	// A session change is a conversation-context change, so it clears the live
+	// turn: "New chat" starts fresh, and switching sessions shows that session's
+	// transcript instead of the previous turn.
+	const startNewSession = () => {
+		resetTurn();
+		newSession();
+	};
+	const goToSession = (id: string) => {
+		resetTurn();
+		switchSession(id);
+	};
+	const removeSession = (id: string) => {
+		resetTurn();
+		deleteSession(id);
+	};
 
 	// Close dropdown on click outside
 	useEffect(() => {
@@ -170,7 +227,7 @@ function SessionBar() {
 		<div className="flex items-center gap-1" ref={dropdownRef}>
 			<button
 				type="button"
-				onClick={newSession}
+				onClick={startNewSession}
 				disabled={isStreaming}
 				className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
 				title="New chat session"
@@ -195,7 +252,7 @@ function SessionBar() {
 								key={session.id}
 								type="button"
 								onClick={() => {
-									switchSession(session.id);
+									goToSession(session.id);
 									setDropdownOpen(false);
 								}}
 								className={cn(
@@ -213,7 +270,7 @@ function SessionBar() {
 			{activeSession && sessions.length > 0 && (
 				<button
 					type="button"
-					onClick={() => deleteSession(activeSession.id)}
+					onClick={() => removeSession(activeSession.id)}
 					disabled={isStreaming}
 					className="shrink-0 rounded p-1 text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50"
 					title="Delete this session"
@@ -261,14 +318,118 @@ function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStr
 	);
 }
 
+/** A message that renders as a chat bubble; tool_result carriers and empty turns are internal. */
+function hasVisibleText(message: ProtocolMessage): boolean {
+	return message.content.some((block) => block.type === "text" && block.text.trim().length > 0);
+}
+
+/** The live tool-loop turn: its conversation, approval cards, notice, and one-step undo. */
+function TurnConversation({ turn }: { turn: TurnState }) {
+	const approveCall = useAiTurnStore((s) => s.approveCall);
+	const approveBatch = useAiTurnStore((s) => s.approveBatch);
+	const denyCall = useAiTurnStore((s) => s.denyCall);
+	const undoTurn = useAiTurnStore((s) => s.undoTurn);
+	const undoAvailability = useAiTurnStore((s) => s.undoAvailability);
+	// Undo availability lives in the runner's ledger and depends on the history
+	// stack, which changes when the user edits or presses Cmd+Z after the turn
+	// without touching the turn. Selecting the stack depth re-renders this panel on
+	// those edits so the button's disabled state stays accurate; the depth itself
+	// is not otherwise needed, only its change.
+	const historyStackDepth = useHistoryStore((s) => s.past.length);
+	const messagesEndRef = useRef<HTMLDivElement>(null);
+
+	// A tool-enabled turn reviews mutations through the approval ledger, so fenced
+	// parsing is disabled for it; a text-only fallback turn keeps it.
+	const fencedEnabled = legacyFencedEnabledForTurn(turn.toolSet.list().length);
+	const isStreaming = turn.phase === "requesting" || turn.phase === "streaming";
+	const bubbles = turn.messages.filter(hasVisibleText);
+	const hasApplied = turn.phase === "settled" && turn.calls.some((c) => c.status === "succeeded");
+	// Reading the stack depth above subscribes this panel so the button's disabled
+	// state updates on a post-turn edit; the value itself is only a change signal,
+	// and `undoAvailability()` reads the live stack when it recomputes below.
+	void historyStackDepth;
+	const availability = hasApplied ? undoAvailability() : "already_undone";
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the latest on any turn change
+	useEffect(() => {
+		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+	}, [turn]);
+
+	return (
+		<div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+			{bubbles.map((message, i) => (
+				<MessageBubble
+					// biome-ignore lint/suspicious/noArrayIndexKey: turn messages are append-only
+					key={i}
+					message={message}
+					isLast={i === bubbles.length - 1}
+					isStreaming={isStreaming && i === bubbles.length - 1 && message.role === "assistant"}
+					fencedEnabled={fencedEnabled}
+				/>
+			))}
+
+			{turn.calls.length > 0 && (
+				<ToolCallBatch
+					calls={[...turn.calls]}
+					onApprove={approveCall}
+					onApproveBatch={approveBatch}
+					onDeny={denyCall}
+				/>
+			)}
+
+			{isStreaming && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+
+			{turn.notice && (
+				<div
+					role="status"
+					className="flex items-start gap-1.5 rounded bg-secondary/40 px-2 py-1.5 text-[10px] text-muted-foreground"
+				>
+					<Info className="mt-0.5 h-3 w-3 shrink-0" />
+					<span className="flex-1">{turn.notice}</span>
+				</div>
+			)}
+
+			{turn.error && (
+				<div className="flex items-start gap-1.5 rounded bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+					<AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+					<span className="flex-1">{turn.error.message}</span>
+				</div>
+			)}
+
+			{hasApplied && (
+				<button
+					type="button"
+					onClick={undoTurn}
+					disabled={availability !== "undoable"}
+					title={
+						availability === "undoable"
+							? "Undo every change this turn applied"
+							: availability === "already_undone"
+								? "This turn has already been undone"
+								: "A later edit has superseded this turn, so it can no longer be undone in one step"
+					}
+					className="flex items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
+				>
+					<Undo2 className="h-2.5 w-2.5" /> Undo this turn
+				</button>
+			)}
+
+			<div ref={messagesEndRef} />
+		</div>
+	);
+}
+
 function MessageBubble({
 	message,
 	isLast,
 	isStreaming,
+	fencedEnabled = true,
 }: {
-	message: ChatMessage;
+	message: ProtocolMessage;
 	isLast: boolean;
 	isStreaming: boolean;
+	/** Whether fenced ` ```actions ` parsing runs; a tool-enabled turn disables it. */
+	fencedEnabled?: boolean;
 }) {
 	const isUser = message.role === "user";
 	// Messages carry block content now; the bubble renders the accumulated text.
@@ -299,7 +460,12 @@ function MessageBubble({
 				{isUser ? (
 					<p className="whitespace-pre-wrap">{displayText}</p>
 				) : (
-					<AssistantContent content={displayText} isStreaming={isStreaming} isLast={isLast} />
+					<AssistantContent
+						content={displayText}
+						isStreaming={isStreaming}
+						isLast={isLast}
+						fencedEnabled={fencedEnabled}
+					/>
 				)}
 			</div>
 		</div>
@@ -340,18 +506,23 @@ function AssistantContent({
 	content,
 	isStreaming,
 	isLast,
+	fencedEnabled,
 }: {
 	content: string;
 	isStreaming: boolean;
 	isLast: boolean;
+	/** Whether fenced parsing runs; a tool-enabled turn passes `false`. */
+	fencedEnabled: boolean;
 }) {
 	const addThreat = useModelStore((s) => s.addThreat);
 	const [acceptedIds, setAcceptedIds] = useState<Set<number>>(new Set());
 
 	// `content` is the assistant turn's accumulated text; fenced parsing is the
-	// legacy boundary's job and only runs there (issue #64 removes it).
-	const threats = isLast && !isStreaming ? extractLegacyThreats(content) : [];
-	const actions = isLast && !isStreaming ? extractLegacyActions(content) : [];
+	// legacy boundary's job and only runs there (issue #64 removes it). A
+	// tool-enabled turn disables it so an injected fence cannot bypass the ledger.
+	const parseFenced = isLast && !isStreaming && fencedEnabled;
+	const threats = parseFenced ? extractLegacyThreats(content) : [];
+	const actions = parseFenced ? extractLegacyActions(content) : [];
 
 	const handleAccept = useCallback(
 		(index: number, threat: Threat) => {
@@ -558,12 +729,16 @@ function ThreatSuggestionCard({
 }
 
 function ChatInput() {
-	const sendMessage = useChatStore((s) => s.sendMessage);
-	const isStreaming = useChatStore((s) => s.isStreaming);
+	const submitTurn = useAiTurnStore((s) => s.submitTurn);
+	const turnPhase = useAiTurnStore((s) => s.turn?.phase);
+	const chatIsStreaming = useChatStore((s) => s.isStreaming);
 	const stopGenerating = useChatStore((s) => s.stopGenerating);
 	const model = useModelStore((s) => s.model);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+
+	// Busy while a tool-loop turn is live or the legacy text stream is running.
+	const isBusy = isTurnLive(turnPhase) || chatIsStreaming;
 
 	// Keyboard shortcuts: Cmd+L to focus, Escape to stop generating
 	useEffect(() => {
@@ -573,7 +748,10 @@ function ChatInput() {
 				e.preventDefault();
 				inputRef.current?.focus();
 			}
-			if (e.key === "Escape" && useChatStore.getState().isStreaming) {
+			// `stopGenerating` cancels both the chat stream and any live tool turn.
+			const live =
+				isTurnLive(useAiTurnStore.getState().turn?.phase) || useChatStore.getState().isStreaming;
+			if (e.key === "Escape" && live) {
 				stopGenerating();
 			}
 		}
@@ -583,10 +761,10 @@ function ChatInput() {
 
 	function handleSubmit() {
 		const trimmed = input.trim();
-		if (!trimmed || isStreaming || !model) return;
+		if (!trimmed || isBusy || !model) return;
 
 		setInput("");
-		void sendMessage(trimmed, model);
+		void submitTurn(trimmed, model);
 	}
 
 	function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -605,10 +783,10 @@ function ChatInput() {
 				onKeyDown={handleKeyDown}
 				placeholder="Ask about threats..."
 				rows={2}
-				disabled={isStreaming}
+				disabled={isBusy}
 				className="flex-1 resize-none rounded border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none disabled:opacity-50"
 			/>
-			{isStreaming ? (
+			{isBusy ? (
 				<button
 					type="button"
 					onClick={stopGenerating}

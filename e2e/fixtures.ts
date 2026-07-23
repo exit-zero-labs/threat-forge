@@ -100,6 +100,18 @@ export async function suppressFirstRunOverlays(page: Page) {
 	}, AUTO_START_GUIDE_IDS);
 }
 
+/**
+ * Seed a browser API key so the AI panel reaches the chat view without a real
+ * provider account. The key is the value `BrowserKeychainAdapter` reads
+ * (`tf-api-key-<provider>`); the AI-loop spec pairs it with a routed, canned SSE
+ * response so no request ever leaves the machine.
+ */
+export async function seedAnthropicApiKey(page: Page) {
+	await page.addInitScript(() => {
+		localStorage.setItem("tf-api-key-anthropic", "sk-ant-e2e-not-a-real-key");
+	});
+}
+
 /** Test fixture that applies {@link suppressFirstRunOverlays} to every page before it loads. */
 export const test = base.extend({
 	page: async ({ page }, use) => {

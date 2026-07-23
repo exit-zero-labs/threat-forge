@@ -73,6 +73,7 @@ compatibility boundary — is documented in
 | **ADR-008** | Tailwind + shadcn/ui | Lightweight, customizable, excellent dark mode, growing Tauri adoption | More manual composition than MUI |
 | **ADR-009** | Additive schema growth keeps `version: "1.0"` | Additive optional fields break nothing, so bumping would make every already-shipped build refuse to open every new file; `validate_version` stays exact-match and fail-closed. Full argument in [`file-format.md`](file-format.md#schema-versioning-policy) | An older desktop build that opens and saves a newer document silently discards the sections it does not know |
 | **ADR-010** | Per-document state lives in swapped store bundles, not copied checkpoints | Each open document owns real model/canvas/history store instances; activation repoints the store facades at that document's bundle. Nothing is copied on switch, so no field can be forgotten and leak across documents, and every future document field is per-document by construction. Full rationale in [`docs/plans/53-document-registry.md`](../plans/53-document-registry.md) | `activateDocument` has no production caller until the tab UI (`#54`) renders more than one document at a time |
+| **ADR-011** | One undo entry per AI turn, not per accepted call or batch | A multi-iteration tool turn can apply many mutations; a per-call rule would evict more than half of the 20-entry history for a single turn. One lazily-pushed snapshot per turn means a single `Cmd+Z` reverts the whole turn. Full rationale in [`ai-tool-loop.md`](ai-tool-loop.md) and [`docs/plans/62-bounded-tool-loop.md`](../plans/62-bounded-tool-loop.md) | Call 3 of 5 cannot be undone individually; the turn is the atomic unit of undo |
 
 ## Document registry and per-document state scope
 
@@ -356,5 +357,6 @@ npm run ci:docker:build  # Docker lint + test + Tauri build
 | CSP | Strict Content Security Policy; no inline scripts, no remote code |
 | Native File I/O | Rust commands handle reads and writes; export writes restrict extensions, while path confinement remains an active security review surface |
 | Input Validation | React escapes rendered content by default; LLM output remains untrusted |
+| AI Tool Authorization | Every model-requested mutation is validated, reviewed, and executed only under a single-use grant bound to one call id, tool, canonical input digest, and iteration; the bounded loop is cancellable and undoable. No self-authorization from model output, tool results, or document content — see [`ai-tool-loop.md`](ai-tool-loop.md) |
 
 See [SECURITY.md](../../SECURITY.md) for the full security policy and vulnerability reporting.

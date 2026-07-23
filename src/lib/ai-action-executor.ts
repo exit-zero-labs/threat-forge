@@ -39,8 +39,15 @@ export function sortActionsByDependency(actions: AiAction[]): AiAction[] {
 	return [...actions].sort((a, b) => priority(a) - priority(b));
 }
 
-/** Apply a single AI action to the model. Returns updated model or null on failure. */
-function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
+/**
+ * Apply a single AI action to the model. Returns updated model or null on failure.
+ *
+ * Exported so the bounded tool loop (issue #62) can execute the same twelve
+ * actions as native tools without reimplementing the graph mutations. It is a
+ * pure `(ThreatModel, AiAction) => ThreatModel | null`: it never touches a store,
+ * pushes history, or syncs the canvas, so the loop owns the commit and undo.
+ */
+export function applyAction(model: ThreatModel, action: AiAction): ThreatModel | null {
 	switch (action.action) {
 		case "add_element": {
 			const id = generateElementId();

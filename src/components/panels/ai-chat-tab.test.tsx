@@ -1,12 +1,19 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
+import { useAiTurnStore } from "@/stores/ai-turn-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
+import { useHistoryStore } from "@/stores/history-store";
+import { useModelStore } from "@/stores/model-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { ThreatModel } from "@/types/threat-model";
 import { AiChatTab } from "./ai-chat-tab";
+
+/** Drain the microtask/timer queue so the fire-and-forget turn runner settles. */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // The store drives the protocol client over a platform transport. The client is
 // captured so a test can push stream events and hold the turn open; the
@@ -58,6 +65,10 @@ beforeEach(() => {
 		activeDocumentId: null,
 	});
 	setActiveStores(createDocumentStores());
+	useAiTurnStore.getState().resetTurn();
+	useSettingsStore.setState((state) => ({
+		settings: { ...state.settings, aiModelAnthropic: "claude-sonnet-4-20250514" },
+	}));
 	useChatStore.setState({
 		sessions: [],
 		activeSessionId: null,
@@ -65,6 +76,7 @@ beforeEach(() => {
 		messages: [],
 		isStreaming: false,
 		error: null,
+		provider: "anthropic",
 	});
 });
 
@@ -209,5 +221,258 @@ describe("AiChatTab fenced action rendering", () => {
 		expect(screen.getByText("Suggested changes (1):")).toBeInTheDocument();
 		expect(screen.getByText("Delete element: old-service")).toBeInTheDocument();
 		expect(screen.queryByText(/```actions/)).not.toBeInTheDocument();
+	});
+});
+
+describe("AiChatTab tool-loop turn", () => {
+	function openDocument(title: string): void {
+		const registry = useDocumentRegistry.getState();
+		const id = registry.createDocument({
+			model: makeModel(title),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(id);
+	}
+
+	it("does not render fenced Apply buttons for a tool-enabled turn", async () => {
+		keychain.hasKey = true;
+		openDocument("A");
+		streamConversationMock.mockImplementation(
+			async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+				handlers.onEvent({ type: "message_start", model: "m" });
+				handlers.onEvent({
+					type: "text_delta",
+					text: 'Here is a change.\n```actions\n[{ "action": "delete_element", "id": "old-service" }]\n```',
+				});
+				handlers.onEvent({ type: "message_stop", stopReason: "end_turn" });
+			},
+		);
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("change it", makeModel("A"));
+			await flush();
+		});
+
+		// The turn offered the twelve native tools, so the injected fence is inert.
+		expect(useAiTurnStore.getState().turn?.toolSet.list().length).toBeGreaterThan(0);
+		expect(screen.queryByText(/Suggested changes/)).not.toBeInTheDocument();
+		expect(screen.queryByText("Delete element: old-service")).not.toBeInTheDocument();
+	});
+
+	it("shows the Stop button and an approval card while a turn awaits review", async () => {
+		keychain.hasKey = true;
+		openDocument("A");
+		streamConversationMock.mockImplementation(
+			async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+				handlers.onEvent({ type: "message_start", model: "m" });
+				handlers.onEvent({
+					type: "tool_call_complete",
+					id: "c1",
+					name: "add_element",
+					input: { action: "add_element", element: { type: "process", name: "Cache" } },
+				});
+				handlers.onEvent({ type: "message_stop", stopReason: "tool_use" });
+			},
+		);
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("add a cache", makeModel("A"));
+			await flush();
+		});
+
+		expect(useAiTurnStore.getState().turn?.phase).toBe("awaiting_approval");
+		expect(screen.getByTitle("Stop generating (Esc)")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+	});
+
+	it("settles a live turn cancelled when the active document switches", async () => {
+		keychain.hasKey = true;
+		openDocument("A");
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("B"), filePath: null, pendingLayout: null });
+		const registry = useDocumentRegistry.getState();
+		const otherId = registry.openDocumentIds[registry.openDocumentIds.length - 1];
+		registry.activateDocument(registry.openDocumentIds[0]);
+
+		streamConversationMock.mockImplementation(
+			async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+				handlers.onEvent({ type: "message_start", model: "m" });
+				handlers.onEvent({
+					type: "tool_call_complete",
+					id: "c1",
+					name: "add_element",
+					input: { action: "add_element", element: { type: "process", name: "Cache" } },
+				});
+				handlers.onEvent({ type: "message_stop", stopReason: "tool_use" });
+			},
+		);
+
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("add a cache", makeModel("A"));
+			await flush();
+		});
+		expect(useAiTurnStore.getState().turn?.phase).toBe("awaiting_approval");
+
+		// A document switch cancels the in-flight turn through the preserved
+		// stopGenerating contract — document-registry.ts is unchanged.
+		await act(async () => {
+			registry.activateDocument(otherId);
+			await flush();
+		});
+		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
+	});
+});
+
+describe("AiChatTab conversation isolation", () => {
+	const textTurn =
+		(text: string) => async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+			handlers.onEvent({ type: "message_start", model: "m" });
+			handlers.onEvent({ type: "text_delta", text });
+			handlers.onEvent({ type: "message_stop", stopReason: "end_turn" });
+		};
+
+	it("does not carry a settled turn or its history from one document to another", async () => {
+		keychain.hasKey = true;
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const b = registry.createDocument({
+			model: makeModel("B"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(a);
+
+		streamConversationMock.mockImplementation(textTurn("Doc A analysis"));
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("secret A question", makeModel("A"));
+			await flush();
+		});
+		expect(screen.getByText("Doc A analysis")).toBeInTheDocument();
+
+		// Switching documents clears the turn through the panel's activeDocumentId
+		// effect — document-registry.ts is unchanged.
+		await act(async () => {
+			registry.activateDocument(b);
+			await flush();
+		});
+		expect(useAiTurnStore.getState().turn).toBeNull();
+		expect(screen.queryByText("Doc A analysis")).not.toBeInTheDocument();
+
+		// Doc B's first turn sends none of doc A's conversation to the provider.
+		streamConversationMock.mockClear();
+		streamConversationMock.mockImplementation(textTurn("Doc B analysis"));
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("doc B question", makeModel("B"));
+			await flush();
+		});
+		const request = streamConversationMock.mock.calls[0][0];
+		const texts = request.messages
+			.flatMap((m: { content: Array<{ type: string; text?: string }> }) => m.content)
+			.filter((block: { type: string }) => block.type === "text")
+			.map((block: { text?: string }) => block.text);
+		expect(texts).toContain("doc B question");
+		expect(texts).not.toContain("secret A question");
+		expect(texts).not.toContain("Doc A analysis");
+	});
+
+	it("clears a settled turn when a new chat session starts", async () => {
+		keychain.hasKey = true;
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(a);
+
+		streamConversationMock.mockImplementation(textTurn("prior turn text"));
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("a question", makeModel("A"));
+			await flush();
+		});
+		expect(screen.getByText("prior turn text")).toBeInTheDocument();
+
+		await act(async () => {
+			fireEvent.click(screen.getByTitle("New chat session"));
+			await flush();
+		});
+		expect(useAiTurnStore.getState().turn).toBeNull();
+		expect(screen.queryByText("prior turn text")).not.toBeInTheDocument();
+	});
+});
+
+describe("AiChatTab undo affordance", () => {
+	it("disables 'Undo this turn' with an explanation once a later edit supersedes it", async () => {
+		keychain.hasKey = true;
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(a);
+
+		let requests = 0;
+		streamConversationMock.mockImplementation(
+			async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+				if (requests === 0) {
+					requests += 1;
+					handlers.onEvent({ type: "message_start", model: "m" });
+					handlers.onEvent({
+						type: "tool_call_complete",
+						id: "c1",
+						name: "add_element",
+						input: { action: "add_element", element: { type: "process", name: "Cache" } },
+					});
+					handlers.onEvent({ type: "message_stop", stopReason: "tool_use" });
+					return;
+				}
+				handlers.onEvent({ type: "message_start", model: "m" });
+				handlers.onEvent({ type: "text_delta", text: "done" });
+				handlers.onEvent({ type: "message_stop", stopReason: "end_turn" });
+			},
+		);
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		await act(async () => {
+			await useAiTurnStore.getState().submitTurn("add a cache", makeModel("A"));
+			await flush();
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+			await flush();
+		});
+
+		expect(screen.getByRole("button", { name: /Undo this turn/ })).toBeEnabled();
+
+		// A later canvas edit supersedes the turn's single undo entry.
+		await act(async () => {
+			const model = useModelStore.getState().model;
+			if (model) useHistoryStore.getState().pushSnapshot(model);
+		});
+
+		const undoButton = screen.getByRole("button", { name: /Undo this turn/ });
+		expect(undoButton).toBeDisabled();
+		expect(undoButton.getAttribute("title")).toContain("superseded");
 	});
 });
