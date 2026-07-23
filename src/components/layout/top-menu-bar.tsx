@@ -63,8 +63,8 @@ export function TopMenuBar() {
 			className="flex h-10 shrink-0 items-center border-b border-border bg-card px-3"
 		>
 			{/* App title / branding */}
-			<div className="flex items-center gap-2">
-				<img src="/logo_square.png" alt="Threat Forge" className="h-5 w-5" />
+			<div className="flex min-w-0 items-center gap-2">
+				<img src="/logo_square.png" alt="Threat Forge" className="h-5 w-5 shrink-0" />
 				{editingTitle && model ? (
 					<input
 						ref={titleInputRef}
@@ -80,7 +80,7 @@ export function TopMenuBar() {
 					/>
 				) : (
 					<span
-						className="text-sm font-semibold tracking-tight cursor-default"
+						className="min-w-0 truncate text-sm font-semibold tracking-tight cursor-default"
 						onDoubleClick={() => {
 							if (model) setEditingTitle(true);
 						}}

@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { createModel, expect, test } from "./fixtures";
 
 test.describe("App Launch", () => {
 	test.beforeEach(async ({ page }) => {
@@ -19,5 +19,22 @@ test.describe("App Launch", () => {
 
 	test("has status bar at bottom", async ({ page }) => {
 		await expect(page.getByTestId("status-bar")).toBeVisible();
+	});
+
+	test("keeps top-menu controls visible with a long document title at minimum width", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 900, height: 700 });
+		await createModel(page);
+
+		await page.getByTitle("Double-click to rename").dblclick();
+		const titleInput = page.getByTestId("top-menu-bar").locator("input");
+		await titleInput.fill("Customer Identity Access Model");
+		const download = page.waitForEvent("download");
+		await titleInput.press("Enter");
+		await download;
+
+		await expect(page.getByTestId("canvas-count-badge")).toBeVisible();
+		await expect(page.getByTestId("btn-settings-dialog")).toBeInViewport({ ratio: 1 });
 	});
 });
