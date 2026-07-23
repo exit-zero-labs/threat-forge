@@ -35,4 +35,10 @@ export interface DocumentSession {
 	fileSettings: FileSettings | null;
 	/** Reference to the AI session this document last used, or null. Populated from step 8. */
 	activeChatSessionId: string | null;
+	/**
+	 * Whether the tab is pinned to the leading pinned block (`#54` D5). Pinning is ordering plus
+	 * identity, not close protection. Session-scoped and unpersisted: `#54` writes no tab order or
+	 * pin state to storage, so a reload loses it — as it currently loses the whole workspace.
+	 */
+	pinned: boolean;
 }

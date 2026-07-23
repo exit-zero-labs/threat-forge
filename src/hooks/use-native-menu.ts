@@ -21,10 +21,10 @@ async function openFileByPath(filePath: string) {
 	});
 
 	const pendingLayout = buildLayoutFromModel(model);
-	const registry = useDocumentRegistry.getState();
-	if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
-	// createDocument seeds the new document's fileSettings from model.metadata.settings.
-	registry.createDocument({ model, filePath, pendingLayout });
+	// Open in a new tab, matching the in-app Open (`#54` step 6): a file-association open adds a
+	// document rather than replacing the current one. createDocument seeds fileSettings from
+	// model.metadata.settings.
+	useDocumentRegistry.getState().createDocument({ model, filePath, pendingLayout });
 }
 
 /**

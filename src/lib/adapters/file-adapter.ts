@@ -21,6 +21,11 @@ export interface FileAdapter {
 	saveLayout(modelPath: string, layoutFile: string, layout: DiagramLayout): Promise<void>;
 	/** Export the threat model as a self-contained HTML report. Returns the saved path, or null if cancelled. */
 	exportAsHtml(htmlContent: string, defaultName: string): Promise<string | null>;
-	/** Show a confirmation dialog for discarding unsaved changes. */
-	confirmDiscard(): Promise<boolean>;
+	/**
+	 * Show a confirmation dialog for discarding unsaved changes. When a `documentTitle` is given the
+	 * prompt names the document, so a user with several tabs open can answer it correctly (`#54`
+	 * D6). Absent the argument the message is the original unnamed one, keeping every prior call
+	 * site compiling and unchanged.
+	 */
+	confirmDiscard(documentTitle?: string): Promise<boolean>;
 }

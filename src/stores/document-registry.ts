@@ -33,6 +33,62 @@ export interface HydrateDocumentInput extends CreateDocumentInput {
 	activate: boolean;
 }
 
+/**
+ * D1 close-activation policy — the sibling that becomes active when the active document closes.
+ *
+ * Activate the closed document's **right** neighbour in rendered order; when it was rightmost,
+ * activate its **left** neighbour; when nothing remains, return `null`. Computed as a pure
+ * function of the order *before* the close, so it is unit-testable without React and derives
+ * entirely from `openDocumentIds` — no separate activation stack that could drift.
+ */
+export function nextActiveDocumentId(
+	orderBeforeClose: readonly DocumentId[],
+	closedId: DocumentId,
+): DocumentId | null {
+	const closedIndex = orderBeforeClose.indexOf(closedId);
+	if (closedIndex === -1) return null;
+	const remaining = orderBeforeClose.filter((id) => id !== closedId);
+	// remaining[closedIndex] is the right neighbour (everything after the closed id shifted left);
+	// clamping to the last index yields the left neighbour when the closed tab was rightmost.
+	return remaining[Math.min(closedIndex, remaining.length - 1)] ?? null;
+}
+
+/**
+ * Produce the pinned-first order (`#54` D5): pinned ids ahead of unpinned ids, each block keeping
+ * its existing relative order, so `openDocumentIds` stays the one rendered order.
+ */
+export function applyPinnedOrder(
+	order: readonly DocumentId[],
+	pinnedIds: ReadonlySet<DocumentId>,
+): DocumentId[] {
+	const pinned = order.filter((id) => pinnedIds.has(id));
+	const unpinned = order.filter((id) => !pinnedIds.has(id));
+	return [...pinned, ...unpinned];
+}
+
+/**
+ * Move `id` to `toIndex` within its own pinned/unpinned block, clamping so pinned and unpinned
+ * tabs can never interleave. `toIndex` is the desired final index in the returned order;
+ * `pinnedCount` is how many pinned tabs lead `order`. Returns a copy; a no-op returns a copy too.
+ */
+export function moveDocumentInOrder(
+	order: readonly DocumentId[],
+	id: DocumentId,
+	toIndex: number,
+	isPinned: boolean,
+	pinnedCount: number,
+): DocumentId[] {
+	if (order.indexOf(id) === -1) return [...order];
+	// The half-open block this id may occupy: pinned tabs lead, so unpinned tabs start at
+	// `pinnedCount`. The last valid final index is one before the block's exclusive end.
+	const blockStart = isPinned ? 0 : pinnedCount;
+	const blockEnd = isPinned ? pinnedCount : order.length;
+	const clamped = Math.max(blockStart, Math.min(toIndex, blockEnd - 1));
+	const without = order.filter((docId) => docId !== id);
+	without.splice(clamped, 0, id);
+	return without;
+}
+
 interface DocumentRegistryState {
 	/** All open documents, keyed by their stable identity. */
 	documents: Record<DocumentId, DocumentSession>;
@@ -64,6 +120,16 @@ interface DocumentRegistryState {
 	setDocumentFileSettings: (id: DocumentId, fileSettings: FileSettings | null) => void;
 	/** Update a document's AI session reference. No-op if the id is unknown. */
 	setDocumentChatSessionId: (id: DocumentId, sessionId: string | null) => void;
+	/**
+	 * Move a document to `toIndex` within its pinned/unpinned block (`#54` D5). Clamps so the two
+	 * blocks cannot interleave and never changes which document is active. No-op if id is unknown.
+	 */
+	reorderDocument: (id: DocumentId, toIndex: number) => void;
+	/**
+	 * Pin or unpin a document, resorting `openDocumentIds` so pinned tabs lead (`#54` D5). Never
+	 * changes which document is active. No-op if the id is unknown or already in that pin state.
+	 */
+	setDocumentPinned: (id: DocumentId, pinned: boolean) => void;
 	/** Read a document's own store bundle without subscribing, or null if the id is unknown. */
 	getDocumentStores: (id: DocumentId) => DocumentStores | null;
 }
@@ -95,6 +161,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 			stores,
 			fileSettings: model.metadata.settings ?? null,
 			activeChatSessionId: null,
+			pinned: false,
 		};
 
 		set((state) => ({
@@ -128,6 +195,9 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 			stores,
 			fileSettings: model.metadata.settings ?? null,
 			activeChatSessionId: null,
+			// Restored documents start unpinned: `#54` does not persist pin state, so a hydrate has
+			// nothing to restore it from. A later issue that persists layout sets this from storage.
+			pinned: false,
 		};
 
 		set((state) => ({
@@ -144,10 +214,11 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		if (!session) return;
 
 		const prevActiveId = state.activeDocumentId;
-		// A real switch moves between two live documents. Creation flows (New, Open, Import,
-		// template) reach here with `prevActiveId === null` because they close the previous
-		// document first, so their viewport/session behavior is left to the DfdCanvas mount
-		// and stays pixel-identical to the single-document path.
+		// A switch moves away from a live document. Since `#54` opens New/Open/Import/template in a
+		// new tab instead of closing the previous document first, creation flows now reach here with
+		// a non-null `prevActiveId` too, so this branch flushes the outgoing document's viewport on
+		// those paths as well. The *incoming* document's viewport is applied by the DfdCanvas effect,
+		// the only place that runs after `syncFromModel` populates the incoming document's nodes.
 		const isSwitch = prevActiveId !== null && prevActiveId !== id;
 		const instance = useCanvasInstanceStore.getState();
 		const chat = useChatStore.getState();
@@ -183,16 +254,11 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		set({ activeDocumentId: id });
 		setActiveStores(session.stores);
 
-		if (isSwitch) {
-			// Restore the incoming document's on-screen viewport. A document that has never been
-			// laid out (no nodes yet) keeps the existing fit-to-view behavior.
-			const incoming = session.stores.canvas.getState();
-			if (incoming.nodes.length > 0) {
-				instance.rfSetViewport?.(incoming.viewport);
-			} else {
-				instance.rfFitView?.();
-			}
-		}
+		// The incoming document's viewport is intentionally not applied here. At this point its nodes
+		// are not synced yet — `syncFromModel` runs from the DfdCanvas effect after React commits — so
+		// a fit-or-restore decided now would act on the outgoing document's stale geometry (the defect
+		// that surfaced once creation stopped closing the previous document first). The DfdCanvas
+		// effect owns the incoming viewport and runs the decision once per activation after the sync.
 
 		// Restore the incoming document's last AI session when it still exists. switchSession
 		// no-ops for an unknown id, so this fails safe when that session was deleted.
@@ -221,11 +287,10 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 
 		if (!wasActive) return;
 
-		// The active document closed. Activation policy on close (which sibling becomes active)
-		// is owned by the tab UX in #54; here we deterministically fall back to the most
-		// recently created document still open.
-		const nextActiveId = remainingIds[remainingIds.length - 1];
-		if (nextActiveId !== undefined) {
+		// The active document closed. `#54` D1 activates the right neighbour in rendered order (the
+		// left neighbour when the closed tab was rightmost), computed over the pre-close order.
+		const nextActiveId = nextActiveDocumentId(state.openDocumentIds, id);
+		if (nextActiveId !== null) {
 			get().activateDocument(nextActiveId);
 		} else {
 			setActiveStores(createDocumentStores());
@@ -246,6 +311,36 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 			return {
 				documents: { ...state.documents, [id]: { ...session, activeChatSessionId: sessionId } },
 			};
+		}),
+
+	reorderDocument: (id, toIndex) =>
+		set((state) => {
+			const session = state.documents[id];
+			if (!session) return state;
+			const pinnedCount = state.openDocumentIds.filter(
+				(docId) => state.documents[docId]?.pinned,
+			).length;
+			return {
+				openDocumentIds: moveDocumentInOrder(
+					state.openDocumentIds,
+					id,
+					toIndex,
+					session.pinned,
+					pinnedCount,
+				),
+			};
+		}),
+
+	setDocumentPinned: (id, pinned) =>
+		set((state) => {
+			const session = state.documents[id];
+			if (!session || session.pinned === pinned) return state;
+			const documents: Record<DocumentId, DocumentSession> = {
+				...state.documents,
+				[id]: { ...session, pinned },
+			};
+			const pinnedIds = new Set(state.openDocumentIds.filter((docId) => documents[docId]?.pinned));
+			return { documents, openDocumentIds: applyPinnedOrder(state.openDocumentIds, pinnedIds) };
 		}),
 
 	getDocumentStores: (id) => get().documents[id]?.stores ?? null,

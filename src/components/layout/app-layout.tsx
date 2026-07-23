@@ -1,12 +1,14 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useCallback, useEffect } from "react";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useCloseGuard } from "@/hooks/use-close-guard";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useNativeMenu } from "@/hooks/use-native-menu";
 import { useOnboardingTriggers } from "@/hooks/use-onboarding-triggers";
 import { useWindowTitle } from "@/hooks/use-window-title";
 import { useWorkspacePersistence } from "@/hooks/use-workspace-persistence";
 import { useWorkspaceRestore } from "@/hooks/use-workspace-restore";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { checkOnLaunch } from "@/stores/update-store";
@@ -21,6 +23,7 @@ import { KeyboardShortcutsDialog } from "../panels/keyboard-shortcuts-dialog";
 import { RightPanel } from "../panels/right-panel";
 import { SettingsDialog } from "../panels/settings-dialog";
 import { ResizeHandle } from "../ui/resize-handle";
+import { DocumentTabStrip } from "./document-tab-strip";
 import { StatusBar } from "./status-bar";
 import { TopMenuBar } from "./top-menu-bar";
 import { UpdateBar } from "./update-bar";
@@ -32,6 +35,7 @@ export function AppLayout() {
 	const rightPanelWidth = useUiStore((s) => s.rightPanelWidth);
 	const commandPaletteOpen = useUiStore((s) => s.commandPaletteOpen);
 	const closeCommandPalette = useUiStore((s) => s.closeCommandPalette);
+	const activeDocumentId = useDocumentRegistry((s) => s.activeDocumentId);
 	const keyboardShortcutsDialogOpen = useUiStore((s) => s.keyboardShortcutsDialogOpen);
 	const settingsDialogOpen = useSettingsStore((s) => s.settingsDialogOpen);
 	useKeyboardShortcuts();
@@ -43,6 +47,8 @@ export function AppLayout() {
 	useWorkspacePersistence();
 	useOnboardingTriggers();
 	useWindowTitle();
+	// Window/application close guards. Returns the desktop close-summary modal (or null).
+	const closeGuardModal = useCloseGuard();
 	useEffect(() => checkOnLaunch(), []);
 
 	// Apply font size preference to <html> so rem-based sizes cascade
@@ -88,9 +94,23 @@ export function AppLayout() {
 						</aside>
 					)}
 
-					{/* Main canvas area */}
-					<main className="flex-1 overflow-hidden">
-						<Canvas />
+					{/* Main canvas area: the tab strip sits above the canvas, which becomes the tabpanel
+					    the tablist controls. The role/labelling go on the wrapper, not on <main>, so the
+					    main landmark survives (`#54` D4). */}
+					<main className="flex flex-1 flex-col overflow-hidden">
+						<DocumentTabStrip />
+						<div
+							className="flex-1 overflow-hidden"
+							{...(activeDocumentId
+								? {
+										id: "document-panel",
+										role: "tabpanel",
+										"aria-labelledby": `tab-${activeDocumentId}`,
+									}
+								: {})}
+						>
+							<Canvas />
+						</div>
 					</main>
 
 					{/* Right panel — Properties / Threats */}
@@ -113,6 +133,7 @@ export function AppLayout() {
 				<CommandPalette open={commandPaletteOpen} onClose={closeCommandPalette} />
 				<GuideProvider />
 				<WhatsNewOverlay />
+				{closeGuardModal}
 			</div>
 		</ReactFlowProvider>
 	);

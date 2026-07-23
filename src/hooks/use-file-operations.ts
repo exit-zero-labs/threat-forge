@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { getFileAdapter } from "@/lib/adapters/get-file-adapter";
+import { documentDisplayTitle } from "@/lib/document-display-title";
 import { generateHtmlReport } from "@/lib/export/export-html";
 import { captureCanvasIntoModel } from "@/lib/model-capture";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
@@ -7,6 +8,7 @@ import { useCanvasStore } from "@/stores/canvas-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import type { DocumentId } from "@/types/document";
 import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
 
 function todayString(): string {
@@ -49,16 +51,9 @@ function captureActiveCanvas(model: ThreatModel): ThreatModel {
 export function useFileOperations() {
 	const model = useModelStore((s) => s.model);
 	const filePath = useModelStore((s) => s.filePath);
-	const isDirty = useModelStore((s) => s.isDirty);
 	const setModel = useModelStore((s) => s.setModel);
 
 	const newModel = useCallback(async () => {
-		if (isDirty) {
-			const adapter = await getFileAdapter();
-			const discard = await adapter.confirmDiscard();
-			if (!discard) return;
-		}
-
 		const adapter = await getFileAdapter();
 		const identity = getAuthorIdentity();
 		const { authorName } = useSettingsStore.getState().settings;
@@ -68,21 +63,16 @@ export function useFileOperations() {
 			created.metadata.created_by = identity;
 		}
 
-		const registry = useDocumentRegistry.getState();
-		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
-		// New models use default positions, so there is no pending layout to apply.
-		// The new document owns its own file settings (seeded from metadata by createDocument).
-		registry.createDocument({ model: created, filePath: null, pendingLayout: null });
+		// Open in a new tab, leaving any open documents untouched (`#54` step 6). Creating a document
+		// is no longer destructive, so there is nothing to confirm. New models use default positions,
+		// so there is no pending layout to apply; createDocument seeds fileSettings from metadata.
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: created, filePath: null, pendingLayout: null });
 		// syncFromModel runs from the DfdCanvas effect once the new bundle is active.
-	}, [isDirty]);
+	}, []);
 
 	const openModel = useCallback(async () => {
-		if (isDirty) {
-			const adapter = await getFileAdapter();
-			const discard = await adapter.confirmDiscard();
-			if (!discard) return;
-		}
-
 		const adapter = await getFileAdapter();
 		let result: { model: ThreatModel; path: string | null } | null;
 		try {
@@ -110,12 +100,11 @@ export function useFileOperations() {
 			pendingLayout = null;
 		}
 
-		const registry = useDocumentRegistry.getState();
-		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
-		// createDocument seeds the new document's fileSettings from loaded.metadata.settings.
-		registry.createDocument({ model: loaded, filePath: path, pendingLayout });
+		// Open in a new tab, leaving any open documents untouched (`#54` step 6). createDocument
+		// seeds the new document's fileSettings from loaded.metadata.settings.
+		useDocumentRegistry.getState().createDocument({ model: loaded, filePath: path, pendingLayout });
 		// syncFromModel runs from the DfdCanvas effect once the new bundle is active.
-	}, [isDirty]);
+	}, []);
 
 	const saveModel = useCallback(async () => {
 		if (!model) return;
@@ -161,26 +150,37 @@ export function useFileOperations() {
 		syncActiveFileSettings(captured);
 	}, [model, setModel]);
 
-	const closeModel = useCallback(async () => {
-		if (isDirty) {
+	/**
+	 * Close one document by id, guarding its *own* unsaved changes and naming it in the prompt
+	 * (`#54` D6). Used for any tab — the active one or a background one — from the close button and
+	 * from `Delete` in the tab strip, so the dirty guard cannot be bypassed by closing a tab that is
+	 * not currently active. A declined confirmation leaves the document open.
+	 */
+	const closeDocumentById = useCallback(async (id: DocumentId) => {
+		const registry = useDocumentRegistry.getState();
+		const stores = registry.getDocumentStores(id);
+		if (!stores) return;
+		const state = stores.model.getState();
+		if (state.isDirty) {
 			const adapter = await getFileAdapter();
-			const discard = await adapter.confirmDiscard();
+			const discard = await adapter.confirmDiscard(
+				documentDisplayTitle(state.model, state.filePath),
+			);
 			if (!discard) return;
 		}
+		registry.closeDocument(id);
+	}, []);
+
+	const closeModel = useCallback(async () => {
 		const registry = useDocumentRegistry.getState();
-		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
+		const activeId = registry.activeDocumentId;
+		if (activeId) await closeDocumentById(activeId);
 		// With no active document the facades resolve to a fresh scratch bundle, so the canvas
 		// is empty by construction — no explicit syncFromModel needed. File settings are disposed
 		// with the closed document's session.
-	}, [isDirty]);
+	}, [closeDocumentById]);
 
 	const importModel = useCallback(async () => {
-		if (isDirty) {
-			const adapter = await getFileAdapter();
-			const discard = await adapter.confirmDiscard();
-			if (!discard) return;
-		}
-
 		const adapter = await getFileAdapter();
 		let result: { model: ThreatModel } | null;
 		try {
@@ -197,13 +197,13 @@ export function useFileOperations() {
 		// Build layout from inline positions (imported models carry no sidecar reference).
 		const pendingLayout = buildLayoutFromModel(imported);
 
-		const registry = useDocumentRegistry.getState();
-		if (registry.activeDocumentId) registry.closeDocument(registry.activeDocumentId);
-		// Imported models have no file path — user must Save As to create a .thf file.
-		// TM7 imports carry no ThreatForge file settings; createDocument seeds fileSettings to
-		// null from the absent metadata.settings.
-		registry.createDocument({ model: imported, filePath: null, pendingLayout });
-	}, [isDirty]);
+		// Open in a new tab, leaving any open documents untouched (`#54` step 6). Imported models
+		// have no file path — the user must Save As to create a .thf file. TM7 imports carry no
+		// ThreatForge file settings; createDocument seeds fileSettings to null.
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: imported, filePath: null, pendingLayout });
+	}, []);
 
 	const exportAsHtml = useCallback(async () => {
 		if (!model) return;
@@ -216,5 +216,14 @@ export function useFileOperations() {
 		await adapter.exportAsHtml(html, defaultName);
 	}, [model]);
 
-	return { newModel, openModel, importModel, saveModel, saveModelAs, closeModel, exportAsHtml };
+	return {
+		newModel,
+		openModel,
+		importModel,
+		saveModel,
+		saveModelAs,
+		closeModel,
+		closeDocumentById,
+		exportAsHtml,
+	};
 }

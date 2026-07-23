@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { documentDisplayTitle } from "@/lib/document-display-title";
 import { isTauri } from "@/lib/platform";
 import { useModelStore } from "@/stores/model-store";
 
@@ -24,13 +25,7 @@ export function useWindowTitle(): void {
 
 		let title = APP_NAME;
 		if (model) {
-			const name = filePath
-				? (filePath
-						.split(/[/\\]/)
-						.pop()
-						?.replace(/\.[^.]+$/, "") ?? model.metadata.title)
-				: model.metadata.title;
-			title = `${APP_NAME} - ${name}`;
+			title = `${APP_NAME} - ${documentDisplayTitle(model, filePath)}`;
 			if (isDirty) {
 				title += " *";
 			}

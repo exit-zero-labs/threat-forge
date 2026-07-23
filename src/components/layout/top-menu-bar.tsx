@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
+import { documentDisplayTitle } from "@/lib/document-display-title";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -29,15 +30,9 @@ export function TopMenuBar() {
 	const [editingTitle, setEditingTitle] = useState(false);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 
-	// Show file basename when saved, otherwise model title
-	const title = filePath
-		? (filePath
-				.split("/")
-				.pop()
-				?.replace(/\.[^.]+$/, "") ??
-			model?.metadata.title ??
-			"Threat Forge")
-		: (model?.metadata.title ?? "Threat Forge");
+	// Show file basename when saved, otherwise model title — from the shared helper so the tab,
+	// window title, and this menu-bar title cannot drift, and a Windows path resolves correctly.
+	const title = documentDisplayTitle(model, filePath);
 	const displayTitle = isDirty ? `${title} *` : title;
 	const isMac = navigator.platform.includes("Mac");
 	const modKey = isMac ? "\u2318" : "Ctrl+";

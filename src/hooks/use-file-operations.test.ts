@@ -105,7 +105,7 @@ describe("useFileOperations lifecycle through the document registry", () => {
 		expect(useHistoryStore.getState().past).toHaveLength(1);
 	});
 
-	it("Open after an edit starts a fresh document, dropping the previous canvas and history", async () => {
+	it("Open adds a new active tab and leaves the edited previous document open (#54 step 6)", async () => {
 		adapter.createNewModel.mockResolvedValue(makeModel("First"));
 		const { result } = renderHook(() => useFileOperations());
 
@@ -116,7 +116,6 @@ describe("useFileOperations lifecycle through the document registry", () => {
 		act(() => {
 			useCanvasStore.getState().addElement("web_server", { x: 0, y: 0 });
 		});
-		expect(useCanvasStore.getState().nodes.map((n) => n.id)).toContain("comp-1");
 		expect(useHistoryStore.getState().past).toHaveLength(1);
 
 		adapter.openThreatModel.mockResolvedValue({ model: makeModel("Second"), path: "/second.thf" });
@@ -125,17 +124,24 @@ describe("useFileOperations lifecycle through the document registry", () => {
 		});
 
 		const registry = useDocumentRegistry.getState();
+		// The opened document is a NEW active tab; the first document is untouched, not disposed.
+		expect(registry.openDocumentIds).toHaveLength(2);
+		expect(registry.documents[firstId]).toBeDefined();
 		expect(registry.activeDocumentId).not.toBe(firstId);
-		expect(registry.documents[firstId]).toBeUndefined();
 		expect(useModelStore.getState().model?.metadata.title).toBe("Second");
 		expect(useModelStore.getState().filePath).toBe("/second.thf");
+		// The active (new) document has its own empty canvas and history.
 		expect(useHistoryStore.getState().past).toEqual([]);
-		// The new document's canvas cannot contain the previous document's node.
 		expect(useCanvasStore.getState().nodes.map((n) => n.id)).not.toContain("comp-1");
-		expect(useCanvasStore.getState().nodes).toEqual([]);
+		// The first document keeps its node and undo depth on its own bundle.
+		const firstStores = registry.getDocumentStores(firstId);
+		expect(firstStores?.canvas.getState().nodes.map((n) => n.id)).toContain("comp-1");
+		expect(firstStores?.history.getState().past).toHaveLength(1);
+		// Opening is no longer destructive, so nothing is confirmed.
+		expect(adapter.confirmDiscard).not.toHaveBeenCalled();
 	});
 
-	it("Import starts a fresh unsaved document and disposes the previous one", async () => {
+	it("Import adds a new unsaved tab, leaving the previous document open (#54 step 6)", async () => {
 		adapter.createNewModel.mockResolvedValue(makeModel("First"));
 		const { result } = renderHook(() => useFileOperations());
 
@@ -150,10 +156,12 @@ describe("useFileOperations lifecycle through the document registry", () => {
 		});
 
 		const registry = useDocumentRegistry.getState();
-		expect(registry.documents[firstId]).toBeUndefined();
-		expect(registry.openDocumentIds).toHaveLength(1);
+		expect(registry.documents[firstId]).toBeDefined();
+		expect(registry.openDocumentIds).toHaveLength(2);
+		expect(registry.activeDocumentId).not.toBe(firstId);
 		expect(useModelStore.getState().model?.metadata.title).toBe("Imported");
 		expect(useModelStore.getState().filePath).toBeNull();
+		expect(adapter.confirmDiscard).not.toHaveBeenCalled();
 	});
 
 	it("Close disposes the active document and returns to an empty scratch view", async () => {
@@ -180,7 +188,7 @@ describe("useFileOperations lifecycle through the document registry", () => {
 		expect(useHistoryStore.getState().past).toEqual([]);
 	});
 
-	it("New keeps the current document when the discard confirmation is declined", async () => {
+	it("New opens a second tab without prompting, leaving a dirty first document intact (#54 step 6)", async () => {
 		adapter.createNewModel.mockResolvedValue(makeModel("First"));
 		const { result } = renderHook(() => useFileOperations());
 
@@ -188,22 +196,56 @@ describe("useFileOperations lifecycle through the document registry", () => {
 			await result.current.newModel();
 		});
 		const firstId = useDocumentRegistry.getState().openDocumentIds[0];
-		// Make the document dirty so the discard guard is exercised.
+		// Make the first document dirty with one undo step.
 		act(() => {
 			useCanvasStore.getState().addElement("web_server", { x: 0, y: 0 });
 		});
+		const firstStores = useDocumentRegistry.getState().getDocumentStores(firstId);
+		expect(firstStores?.model.getState().isDirty).toBe(true);
 
-		adapter.confirmDiscard.mockResolvedValue(false);
 		adapter.createNewModel.mockResolvedValue(makeModel("Second"));
 		await act(async () => {
 			await result.current.newModel();
 		});
 
 		const registry = useDocumentRegistry.getState();
-		expect(registry.openDocumentIds).toEqual([firstId]);
-		expect(registry.activeDocumentId).toBe(firstId);
-		expect(useModelStore.getState().model?.metadata.title).toBe("First");
-		expect(adapter.createNewModel).toHaveBeenCalledTimes(1);
+		// A second tab opened and is active; the first stays open — pre-change code prompted and
+		// closed the first, so this discriminates the new lifecycle.
+		expect(registry.openDocumentIds).toHaveLength(2);
+		expect(registry.openDocumentIds[0]).toBe(firstId);
+		expect(registry.activeDocumentId).not.toBe(firstId);
+		expect(adapter.confirmDiscard).not.toHaveBeenCalled();
+		expect(adapter.createNewModel).toHaveBeenCalledTimes(2);
+		// The first document is untouched: still dirty, still holding its node and undo depth.
+		expect(firstStores?.model.getState().isDirty).toBe(true);
+		expect(firstStores?.model.getState().model?.metadata.title).toBe("First");
+		expect(firstStores?.canvas.getState().nodes.map((n) => n.id)).toContain("comp-1");
+		expect(firstStores?.history.getState().past).toHaveLength(1);
+	});
+
+	it("closeModel prompts with the active document's title and keeps it open when declined (#54 step 6)", async () => {
+		adapter.createNewModel.mockResolvedValue(makeModel("Draft"));
+		const { result } = renderHook(() => useFileOperations());
+
+		await act(async () => {
+			await result.current.newModel();
+		});
+		const id = useDocumentRegistry.getState().activeDocumentId;
+		// Give the document a path (so its display title is the basename) and dirty it.
+		act(() => {
+			useModelStore.getState().setModel(makeModel("Draft"), "/reports/quarterly.thf");
+			useCanvasStore.getState().addElement("web_server", { x: 0, y: 0 });
+		});
+
+		adapter.confirmDiscard.mockResolvedValueOnce(false);
+		await act(async () => {
+			await result.current.closeModel();
+		});
+
+		// The prompt names the document by its basename, and declining leaves it open.
+		expect(adapter.confirmDiscard).toHaveBeenCalledWith("quarterly");
+		expect(useDocumentRegistry.getState().activeDocumentId).toBe(id);
+		expect(id && useDocumentRegistry.getState().documents[id]).toBeDefined();
 	});
 });
 
