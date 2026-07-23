@@ -96,10 +96,6 @@ export function StatusBar() {
 		activeDocumentId ? s.persistence[activeDocumentId] : undefined,
 	);
 
-	const elementCount = model?.elements.length ?? 0;
-	const threatCount = model?.threats.length ?? 0;
-	const flowCount = model?.data_flows.length ?? 0;
-
 	// The file save status and the local persistence status are distinct: one tracks the on-disk
 	// `.thf` file, the other the browser workspace copy.
 	const localPersistence = describeLocalPersistence(
@@ -122,18 +118,6 @@ export function StatusBar() {
 		>
 			{model ? (
 				<>
-					<span>
-						{elementCount} element{elementCount !== 1 ? "s" : ""}
-					</span>
-					<Separator />
-					<span>
-						{flowCount} flow{flowCount !== 1 ? "s" : ""}
-					</span>
-					<Separator />
-					<span>
-						{threatCount} threat{threatCount !== 1 ? "s" : ""}
-					</span>
-					<Separator />
 					<span>{renderSaveStatus()}</span>
 					{(pastLength > 0 || futureLength > 0) && (
 						<>
