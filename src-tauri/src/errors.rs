@@ -54,4 +54,13 @@ pub enum ThreatForgeError {
 
     #[error("Key storage error: {message}")]
     KeyStorage { message: String },
+
+    /// No credential is stored for a provider. Separate from
+    /// [`ThreatForgeError::KeyStorage`] because it is the one key-storage
+    /// failure a user can act on, and a caller at the IPC boundary has to tell
+    /// it apart from a genuine storage fault to say so. Neither `Display` is
+    /// user-safe: both name internal state, so the boundary authors its own
+    /// sentence.
+    #[error("No API key stored for provider '{provider}'")]
+    NoApiKey { provider: String },
 }

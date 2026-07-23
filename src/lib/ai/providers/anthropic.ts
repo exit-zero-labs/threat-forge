@@ -117,6 +117,27 @@ export function buildAnthropicRequestBody(request: ProviderChatRequest): Anthrop
 	return body;
 }
 
+/**
+ * Headers for a direct browser call to the Messages API.
+ *
+ * Browser-only. On desktop the equivalent set is built by `auth_headers` in
+ * `src-tauri/src/ai/providers.rs` so that the key never enters the webview.
+ *
+ * `anthropic-dangerous-direct-browser-access` is required for a keyed request
+ * made from a page context: without it Anthropic refuses to serve the
+ * cross-origin call at all. It is safe here only because ThreatForge is BYOK —
+ * the key belongs to the person typing in the browser, and no other origin can
+ * read it out of `localStorage`.
+ */
+export function buildAnthropicBrowserHeaders(apiKey: string): Record<string, string> {
+	return {
+		"Content-Type": "application/json",
+		"x-api-key": apiKey,
+		"anthropic-version": "2023-06-01",
+		"anthropic-dangerous-direct-browser-access": "true",
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Stream mapping
 // ---------------------------------------------------------------------------
