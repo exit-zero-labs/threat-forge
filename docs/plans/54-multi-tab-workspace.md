@@ -777,13 +777,19 @@ can produce.
 
 ## Specialist review
 
-- [ ] PR reviewer
-- [ ] Slop auditor
-- [ ] Security auditor — applies: the new `core:window:allow-destroy` capability, the
-      close-guard fail-open/fail-closed direction, and rendering `.thf`-sourced titles into the
-      UI and into a drag payload
-- [ ] Threat-model expert — applies narrowly: confirm no document id, tab order, or pin state
-      reaches a `.thf` file and that per-document save output is unchanged
+Ran to convergence on PR #174; verdicts and evidence in "Completion and validation" below.
+
+- [x] PR reviewer — merge-ready, 0 must-fix; one should-fix (desktop-WebKit drag-reorder) applied.
+- [x] Slop auditor — minor, 0 must-fix; one should-fix (stale `closeDocument` JSDoc) applied; the
+      five regenerated canvas-visual baselines were verified benign (pre-change PNGs extracted and
+      pixel-compared — a 36 px `fitView` reframe, tolerance unchanged), not a blessed regression.
+- [x] Security auditor — security-clean, 0 must-fix; `core:window:allow-destroy` is least-privilege
+      and reachable only from the close guard, the close guard is fail-closed, and `.thf`-sourced
+      titles render text-only (DOM ids are UUIDs, never derived from the title/path). One consider
+      (title bidi/length strip, pre-existing) → `#175`.
+- [x] Threat-model expert — narrow concern verified by inspection and the security lane rather than a
+      separate run: `#54` changes no `.thf` serializer and adds no schema field, so no document id,
+      tab order, or pin state reaches a `.thf` file and per-document save output is unchanged.
 
 ## Concurrent-work seams
 
@@ -817,6 +823,64 @@ Contention is expected on these files; the listed mitigation keeps conflicts mec
 - Designed narrow-window and responsive layout below `900px` — `#58`.
 - Shared browser-workspace E2E fixtures and multi-tab seeding helpers — `#65`.
 
+## Completion and validation (2026-07-23)
+
+Implementation is complete on `feat/54-multi-tab-workspace`, open as **PR #174**, with all three
+review lanes converged. This is the drive-to-`Done` record: verified evidence, the owner judgement
+that remains, and the linked follow-ups that let `#54` close without them. It appends to the plan
+and supersedes no decision above.
+
+### Acceptance criteria → evidence
+
+| Issue criterion | Status | Evidence |
+|---|---|---|
+| Create, open, switch, reorder, pin, close tabs | met | Steps 1–8. `document-registry.test.ts` (D1 close-activation, reorder clamp, pin, active-unchanged-on-non-active-close), `document-tab-strip.test.tsx` (drag + `Cmd/Ctrl+Shift+Arrow` reorder, incl. the desktop-WebKit empty-`getData` regression), `dfd-canvas.test.tsx` (step-7 activation viewport), `use-file-operations.test.ts` (open-in-a-new-tab). |
+| Title + dirty state per tab | met | `document-tab.tsx` reads each document's own model store; `document-tab.test.tsx` proves a background document's dirty state lands on its own tab. |
+| Storage + external-change state per tab | deferred by design (D2) | Nothing can truthfully drive them yet: the storage indicator waits on `#56`'s autosave writer; external-change detection has no issue and is to be filed under `#48`. Gated on owner-validation item 2. |
+| Closing one dirty tab prompts only for that document | met | `closeDocumentById` guards the *addressed* document's own store, so closing a dirty background tab still prompts; `use-file-operations.test.ts`. |
+| Closing app/window summarizes all dirty docs, no silent loss | met, security-verified | `use-close-guard.tsx`; `use-close-guard.test.tsx` (7 cases incl. the throw→`window.confirm` fail-safe). Security lane confirmed fail-closed — the window is never unclosable and never destroyed without asking. |
+| File / menu / palette / keyboard target the active tab | met | Step 6 rewire (`use-file-operations`, `use-native-menu`, `canvas`); `command-registry.ts` adds Close / Next / Previous / Switch-to-`<title>`; `command-registry.test.ts`. |
+| Overflow usable at ≥ 10 documents | met | D3 shrink-to-floor-then-scroll with command-palette discoverability; live usefulness is owner item 7. |
+| A11y: keyboard nav, focus visibility, labels, reduced-motion | met, with one gap | D4 ARIA tablist/tab/tabpanel, roving tabindex, manual activation, deterministic focus after close, `reduceMotion`; `document-tab.test.tsx`, `document-tab-strip.test.tsx`, `app-layout.test.tsx`. **Gap:** pin/unpin is pointer-only (D4 defines no pin key) — a keyboard/palette affordance is a follow-up under `#48`. |
+
+Five criteria are fully met and verified; the indicator criterion is a deliberate D2 partial (owner
+item 2 confirms `#54` may close with it partially met); accessibility is met with the pin-keyboard
+follow-up noted.
+
+### Verification evidence
+
+- `tsc` 0 · `biome` 0 · `vitest` 416 pass across the workspace and the integrated step-10 areas (full
+  suite 997 at implementation) · `playwright` 51 pass (incl. `document-tabs.spec.ts` and the rewritten
+  `dirty-state.spec.ts`) · `cargo check` (the Tauri ACL codegen validates `core:window:allow-destroy`)
+  · `npm run build:web`.
+- Deferred to CI / a release build, not run locally: full `npm run ci:local`, and
+  `scripts/ci-local.sh --build` — the packaged Tauri build is the only step that validates the
+  capability file at package time; `cargo check` covers the ACL codegen it depends on.
+
+### Remaining path to Done
+
+**Agent-drivable:**
+
+1. Land PR #174 once required CI is green — squash-merge under the authorized autonomous-run policy;
+   the PR body records what a reviewer could not verify.
+2. Deferred work is already linked, so `#54` can close: `#175` (title bidi/length hardening); the D2
+   storage indicator under `#56`; external-change detection and the pin-keyboard affordance to be
+   filed under `#48` (owner item 8); and the command-palette "Switch to:" staleness consider.
+
+**Owner validation** — deterministic checks cannot decide the eight items in "Owner validation"
+above (D1 right-neighbour feel, the D2 two-of-four indicators call, isolation-not-amnesia across
+pan/zoom/selection/undo, the replace-on-open habit change, unpersisted order/pin, close-guard
+proportionality, screen-reader quality at ten tabs, and the new-issue judgement). Two more the tests
+cannot reach:
+
+- A **live WKWebView / WebKitGTK desktop build** confirming drag-reorder end-to-end. The unit
+  regression pins the empty-`getData` contract WebKit exhibits; only a real build proves the platform.
+- The plan's observability artifacts: before/after screenshots at 1280 px and 900 px in both themes,
+  and the keyboard-only walkthrough capture.
+
+**Definition of Done:** PR #174 merged; owner-validation items 1–8 resolved; and the deferred items
+filed as linked issues under `#48`/`#56` per owner item 8. None of the deferred items block the close.
+
 ## Replan log
 
 Append changes; do not rewrite prior decisions.
@@ -825,3 +889,4 @@ Append changes; do not rewrite prior decisions.
 |------|--------|---------------------|
 | 2026-07-21 | Initial plan | Issue `#54`, parent `#48`, roadmap Phase 1, and repository evidence read on `main` @ `7b2e025`: registry actions and the provisional close fallback (`document-registry.ts:153-182`), the `isSwitch` invariant comment (`:96-100`) and viewport branch (`:135-144`), `useDocumentStores` (`:207-209`); close-then-create at every entry point (`use-file-operations.ts:121-125`, `:163-166`, `:250-255`, `use-native-menu.ts:24-27`, `canvas.tsx:54-57`); latched `initialSyncDone` (`dfd-canvas.tsx:107,113-132`) and `buildLayoutFromModel` returning `null` without inline positions (`model-layout-utils.ts:4-16`); argument-less `confirmDiscard` (`file-adapter.ts:25`, `browser-file-adapter.ts:80-82`, `tauri-file-adapter.ts:90-97`); no `beforeunload`/`CloseRequested` anywhere; `onCloseRequested` calling `destroy()` (`@tauri-apps/api/window.js:1632-1641`) against a capability set without `allow-destroy` (`capabilities/default.json`, `gen/schemas/acl-manifests.json`); zero production consumers of `workspace-store`; `WorkspaceManifestEntry` without `pinned` (`lib/persistence/types.ts:64-75`); no `role="tab"` anywhere in `src/`; no shadcn/Radix dependency; `minWidth: 900` (`tauri.conf.json:18`); panel minimums `180`/`260` (`ui-store.ts:21-25`); the canvas drop handler gated on `draggedType` (`dfd-canvas.tsx:204-210`); and `e2e/dirty-state.spec.ts` asserting a discard prompt on `Cmd+N`. |
 | 2026-07-23 | Implemented steps 1–10 | Executed on a worktree off `main` @ `84e7fb6`, which is **ahead of the `7b2e025` plan snapshot**: `#56` (IndexedDB persistence) has substantially landed — `hydrateDocument`, `useWorkspacePersistence` (which already flushes on `pagehide`/`visibilitychange` and deliberately avoids `beforeunload`), `useWorkspaceRestore`, the `workspace-store.persistence` producer, and the status-bar `#56` indicator all exist. Honored the plan against this newer reality: **D2** still ships only title+dirty — the per-tab storage indicator stays out of scope (the status bar already carries `#56`'s producer); **step 9** browser `beforeunload` is registered only-while-dirty and coexists with the existing `pagehide` flush; `hydrateDocument` now defaults `pinned` to `false`; `WorkspaceManifestEntry` is left unchanged. Three documented refinements: (1) `DocumentTab` uses `<div role="tab">` with the pin/close `<button>`s as **siblings** (not children) because a `tab` role makes its children presentational — a nested real button vanishes from the a11y tree — with the tab's accessible name set via `aria-label` so the state suffixes join it cleanly; (2) step 7's viewport rule is implemented as `hadPendingLayout OR (nodes>0 && non-default viewport) → restore, else fitView`, refining the plan's literal "restore when the document has nodes, otherwise fit" — a pure node-count rule cannot distinguish a freshly-imported document (nodes present, default viewport → must fit, per the plan's own test) from a revisited one (nodes present, flushed viewport → must restore); (3) the close guard is `use-close-guard.tsx` (not `.ts`) because the hook returns the desktop summary modal it must render. `closeDocumentById` was added to `use-file-operations` as the shared per-tab close guard that both the close button and `Delete` use (`closeModel` now delegates to it). |
+| 2026-07-23 | Preflight converged; completion plan added | Three lanes ran on PR #174 — pr-review *merge-ready*, slop *minor*, security *security-clean*; **0 must-fix**. Applied should-fixes: (1) desktop-WebKit drag-reorder now tracks the dragged id in a strip ref set on `onDragStart` (`document-tab.tsx`, `document-tab-strip.tsx`) instead of reading `dataTransfer.getData` — WKWebView returns an empty `getData()` for a custom MIME at `drop`, mirroring the palette's existing workaround — with a discriminating regression test; (2) the stale `closeDocument` JSDoc corrected to the D1 neighbour. Snapshot regeneration verified benign (pre-change PNGs pixel-compared). Deferred considers filed/linked: `#175` (title bidi/length hardening); pin-keyboard affordance and external-change detection to be filed under `#48`; the "Switch to:" staleness consider noted. Merged `main` @ `f449c84` (incl. `#61` step 10) into the branch conflict-free. Added the "Completion and validation" section mapping every acceptance criterion to evidence and the remaining owner-validation path. |
