@@ -10,7 +10,12 @@ import { useCanvasInstanceStore } from "./canvas-instance-store";
 import { useCanvasStore } from "./canvas-store";
 import { useChatStore } from "./chat-store";
 import { useClipboardStore } from "./clipboard-store";
-import { useDocumentRegistry } from "./document-registry";
+import {
+	applyPinnedOrder,
+	moveDocumentInOrder,
+	nextActiveDocumentId,
+	useDocumentRegistry,
+} from "./document-registry";
 import { createDocumentStores, getActiveStores, setActiveStores } from "./document-stores";
 import { useHistoryStore } from "./history-store";
 import { useModelStore } from "./model-store";
@@ -288,6 +293,162 @@ describe("closing documents", () => {
 		expect(state.openDocumentIds).toEqual([a]);
 		expect(state.activeDocumentId).toBe(a);
 		expect(getActiveStores()).toBe(before);
+	});
+});
+
+/**
+ * `#54` step 1 — the close-activation policy (D1) and its pure helper. Each case fails against the
+ * merged fallback, which activated `remainingIds[remainingIds.length - 1]` (the last open
+ * document) rather than the closed tab's neighbour.
+ */
+describe("close-activation policy (#54 D1)", () => {
+	/** Create A, B, C in order and make A the active document. */
+	function openThree(): { a: DocumentId; b: DocumentId; c: DocumentId } {
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: createTestModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const b = registry.createDocument({
+			model: createTestModel("B"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const c = registry.createDocument({
+			model: createTestModel("C"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(a);
+		return { a, b, c };
+	}
+
+	it("activates the right neighbour when a non-rightmost active tab closes", () => {
+		const { a, b, c } = openThree();
+		const registry = useDocumentRegistry.getState();
+
+		registry.closeDocument(a);
+
+		const state = useDocumentRegistry.getState();
+		// Right neighbour of A is B — the merged fallback would have activated C (the last open id).
+		expect(state.activeDocumentId).toBe(b);
+		expect(state.openDocumentIds).toEqual([b, c]);
+		expect(useModelStore.getState().model?.metadata.title).toBe("B");
+	});
+
+	it("activates the left neighbour when the rightmost active tab closes", () => {
+		const { a, b, c } = openThree();
+		const registry = useDocumentRegistry.getState();
+		registry.activateDocument(c);
+
+		registry.closeDocument(c);
+
+		const state = useDocumentRegistry.getState();
+		expect(state.activeDocumentId).toBe(b);
+		expect(state.openDocumentIds).toEqual([a, b]);
+	});
+
+	it("nextActiveDocumentId returns the right neighbour, the left when rightmost, and null when empty", () => {
+		const order = ["A", "B", "C"] as DocumentId[];
+		expect(nextActiveDocumentId(order, "A" as DocumentId)).toBe("B");
+		expect(nextActiveDocumentId(order, "B" as DocumentId)).toBe("C");
+		expect(nextActiveDocumentId(order, "C" as DocumentId)).toBe("B");
+		expect(nextActiveDocumentId(["only"] as DocumentId[], "only" as DocumentId)).toBeNull();
+		expect(nextActiveDocumentId(order, "missing" as DocumentId)).toBeNull();
+	});
+});
+
+/**
+ * `#54` step 1 — reorder and pin (D5). Pinning is ordering plus identity: pinned tabs lead, the
+ * two blocks never interleave, and neither action changes which document is active.
+ */
+describe("tab order and pinning (#54 D5)", () => {
+	function openThree(): { a: DocumentId; b: DocumentId; c: DocumentId } {
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: createTestModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const b = registry.createDocument({
+			model: createTestModel("B"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const c = registry.createDocument({
+			model: createTestModel("C"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		return { a, b, c };
+	}
+
+	it("moves a document to a new index within its block without changing the active document", () => {
+		const { a, b, c } = openThree();
+		const registry = useDocumentRegistry.getState();
+		expect(useDocumentRegistry.getState().activeDocumentId).toBe(c);
+
+		registry.reorderDocument(c, 0);
+
+		const state = useDocumentRegistry.getState();
+		expect(state.openDocumentIds).toEqual([c, a, b]);
+		expect(state.activeDocumentId).toBe(c);
+	});
+
+	it("clamps an unpinned tab so it cannot move ahead of the pinned block", () => {
+		const { a, b, c } = openThree();
+		const registry = useDocumentRegistry.getState();
+		registry.setDocumentPinned(a, true);
+		// Order is now [A(pinned), B, C]. Try to drag C to index 0 (into the pinned block).
+		registry.reorderDocument(c, 0);
+
+		const state = useDocumentRegistry.getState();
+		// C lands at the head of the unpinned block (index 1), never before the pinned A.
+		expect(state.openDocumentIds).toEqual([a, c, b]);
+	});
+
+	it("pins tabs into the leading block and unpins them behind the remaining pinned tabs, keeping the active pointer", () => {
+		const { a, b, c } = openThree();
+		const registry = useDocumentRegistry.getState();
+		// C is active from creation; pinning must never move the active pointer.
+		expect(useDocumentRegistry.getState().activeDocumentId).toBe(c);
+
+		registry.setDocumentPinned(b, true);
+		let state = useDocumentRegistry.getState();
+		expect(state.openDocumentIds).toEqual([b, a, c]);
+		expect(state.documents[b].pinned).toBe(true);
+		expect(state.activeDocumentId).toBe(c);
+
+		// Pin A too: both pinned tabs keep their relative order ahead of unpinned C.
+		registry.setDocumentPinned(a, true);
+		expect(useDocumentRegistry.getState().openDocumentIds).toEqual([b, a, c]);
+
+		// Unpinning B drops it into the unpinned block behind the still-pinned A.
+		registry.setDocumentPinned(b, false);
+		state = useDocumentRegistry.getState();
+		expect(state.openDocumentIds).toEqual([a, b, c]);
+		expect(state.documents[b].pinned).toBe(false);
+		expect(state.activeDocumentId).toBe(c);
+	});
+
+	it("applyPinnedOrder keeps each block's relative order; moveDocumentInOrder clamps to a block", () => {
+		const order = ["A", "B", "C", "D"] as DocumentId[];
+		expect(applyPinnedOrder(order, new Set(["C", "A"] as DocumentId[]))).toEqual([
+			"A",
+			"C",
+			"B",
+			"D",
+		]);
+		// Unpinned D (pinnedCount 1) cannot move before index 1.
+		expect(moveDocumentInOrder(order, "D" as DocumentId, 0, false, 1)).toEqual([
+			"A",
+			"D",
+			"B",
+			"C",
+		]);
+		// Pinned A (pinnedCount 2) cannot move into the unpinned block at index 3.
+		expect(moveDocumentInOrder(order, "A" as DocumentId, 3, true, 2)).toEqual(["B", "A", "C", "D"]);
 	});
 });
 
@@ -729,16 +890,15 @@ describe("canvas viewport on document switch", () => {
 		useUiStore.getState().setRightPanelTab("properties");
 	});
 
-	it("flushes the outgoing viewport and restores the incoming one on a real switch", () => {
+	it("flushes each outgoing document's live viewport into its own canvas store, and no longer drives the instance itself (#54 step 7)", () => {
 		const registry = useDocumentRegistry.getState();
 		const a = registry.createDocument({
 			model: createTestModel("A"),
 			filePath: "/a.thf",
 			pendingLayout: null,
 		});
-		// Give A a laid-out node so its restore pushes a viewport instead of fitting.
+		// Give A a laid-out node and simulate the user having panned and zoomed it on screen.
 		useCanvasStore.getState().addElement("web_server", { x: 0, y: 0 });
-		// Simulate the user having panned and zoomed A on screen.
 		live = { x: 120, y: -40, zoom: 2 };
 
 		// Creating B switches away from A, flushing A's live viewport into A's own canvas store.
@@ -752,43 +912,25 @@ describe("canvas viewport on document switch", () => {
 			y: -40,
 			zoom: 2,
 		});
-		// B has no nodes yet, so activation fits the view rather than pushing a viewport.
-		expect(rfFitView).toHaveBeenCalled();
 
 		// Work in B and simulate a distinct on-screen viewport for it.
 		useCanvasStore.getState().addElement("data_store", { x: 5, y: 5 });
 		live = { x: 7, y: 8, zoom: 3 };
 
-		// Returning to A flushes B's viewport and restores A's saved pan/zoom exactly.
+		// Returning to A flushes B's live viewport into B's own store.
 		registry.activateDocument(a);
 		expect(registry.getDocumentStores(b)?.canvas.getState().viewport).toEqual({
 			x: 7,
 			y: 8,
 			zoom: 3,
 		});
-		expect(rfSetViewport).toHaveBeenLastCalledWith({ x: 120, y: -40, zoom: 2 });
-	});
 
-	it("fits the view when returning to a document that has no laid-out nodes", () => {
-		const registry = useDocumentRegistry.getState();
-		const a = registry.createDocument({
-			model: createTestModel("A"),
-			filePath: null,
-			pendingLayout: null,
-		});
-		registry.createDocument({
-			model: createTestModel("B"),
-			filePath: null,
-			pendingLayout: null,
-		});
-
-		rfFitView.mockClear();
-		rfSetViewport.mockClear();
-		registry.activateDocument(a);
-
-		// A never received a node, so switching back fits rather than restoring a stored viewport.
-		expect(rfFitView).toHaveBeenCalledTimes(1);
+		// The incoming-viewport decision moved to the DfdCanvas effect (#54 step 7): activateDocument
+		// reads the live viewport to flush the outgoing document but never pushes or fits the instance
+		// itself — deciding here (pre-sync) would act on the outgoing document's stale geometry.
+		expect(rfGetViewport).toHaveBeenCalled();
 		expect(rfSetViewport).not.toHaveBeenCalled();
+		expect(rfFitView).not.toHaveBeenCalled();
 	});
 
 	it("keeps workspace UI state across a document switch (negative control)", () => {

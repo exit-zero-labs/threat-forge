@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { DocumentId } from "@/types/document";
 import { buildCommands, fuzzyMatch, searchCommands } from "./command-registry";
 
 describe("command-registry", () => {
@@ -36,6 +37,11 @@ describe("command-registry", () => {
 			saveModel: vi.fn(),
 			saveModelAs: vi.fn(),
 			hasModel: false,
+			closeDocument: vi.fn(),
+			nextDocument: vi.fn(),
+			previousDocument: vi.fn(),
+			switchToDocument: vi.fn(),
+			openDocuments: [],
 		};
 
 		it("returns non-empty command list", () => {
@@ -104,6 +110,40 @@ describe("command-registry", () => {
 			const componentIds = commands.filter((c) => c.category === "component").map((c) => c.id);
 			expect(new Set(componentIds).size).toBe(componentIds.length);
 		});
+
+		it("adds no document commands when no document is open", () => {
+			const commands = buildCommands({ ...mockDeps, openDocuments: [] });
+			expect(commands.some((c) => c.id.startsWith("file:switch-to:"))).toBe(false);
+			expect(commands.find((c) => c.id === "file:close-document")).toBeUndefined();
+			expect(commands.find((c) => c.id === "file:next-document")).toBeUndefined();
+		});
+
+		it("exposes exactly one Switch to: command per open document, plus Close and Next/Previous", () => {
+			const openDocuments = [
+				{ id: "doc-a" as DocumentId, title: "Alpha" },
+				{ id: "doc-b" as DocumentId, title: "Beta" },
+			];
+			const commands = buildCommands({ ...mockDeps, openDocuments });
+
+			const switchCommands = commands.filter((c) => c.id.startsWith("file:switch-to:"));
+			expect(switchCommands.map((c) => c.label)).toEqual(["Switch to: Alpha", "Switch to: Beta"]);
+			expect(commands.find((c) => c.id === "file:close-document")).toBeDefined();
+			expect(commands.find((c) => c.id === "file:next-document")).toBeDefined();
+			expect(commands.find((c) => c.id === "file:previous-document")).toBeDefined();
+
+			commands.find((c) => c.id === "file:switch-to:doc-b")?.action();
+			expect(mockDeps.switchToDocument).toHaveBeenCalledWith("doc-b");
+		});
+
+		it("omits Next/Previous with a single open document but keeps Close and Switch to:", () => {
+			const commands = buildCommands({
+				...mockDeps,
+				openDocuments: [{ id: "doc-a" as DocumentId, title: "Solo" }],
+			});
+			expect(commands.find((c) => c.id === "file:next-document")).toBeUndefined();
+			expect(commands.find((c) => c.id === "file:close-document")).toBeDefined();
+			expect(commands.filter((c) => c.id.startsWith("file:switch-to:"))).toHaveLength(1);
+		});
 	});
 
 	describe("searchCommands", () => {
@@ -114,6 +154,11 @@ describe("command-registry", () => {
 			saveModel: vi.fn(),
 			saveModelAs: vi.fn(),
 			hasModel: false,
+			closeDocument: vi.fn(),
+			nextDocument: vi.fn(),
+			previousDocument: vi.fn(),
+			switchToDocument: vi.fn(),
+			openDocuments: [],
 		};
 
 		it("returns all commands for empty query", () => {

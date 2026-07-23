@@ -77,8 +77,11 @@ export class BrowserFileAdapter implements FileAdapter {
 		return defaultName;
 	}
 
-	async confirmDiscard(): Promise<boolean> {
-		return window.confirm("You have unsaved changes. Discard them?");
+	async confirmDiscard(documentTitle?: string): Promise<boolean> {
+		const message = documentTitle
+			? `You have unsaved changes in "${documentTitle}". Discard them?`
+			: "You have unsaved changes. Discard them?";
+		return window.confirm(message);
 	}
 }
 

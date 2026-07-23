@@ -9,6 +9,13 @@ import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
+import type { DocumentId } from "@/types/document";
+
+/** One open document, as the palette's document commands need to see it. */
+export interface OpenDocumentCommandInfo {
+	id: DocumentId;
+	title: string;
+}
 
 export interface Command {
 	id: string;
@@ -49,6 +56,15 @@ export function buildCommands(deps: {
 	saveModel: () => void;
 	saveModelAs: () => void;
 	hasModel: boolean;
+	/** Close the active document (through its dirty guard). */
+	closeDocument: () => void;
+	/** Activate the next / previous open document in tab order. */
+	nextDocument: () => void;
+	previousDocument: () => void;
+	/** Activate a specific open document by id. */
+	switchToDocument: (id: DocumentId) => void;
+	/** The open documents, in tab order, for the `Switch to:` list. */
+	openDocuments: readonly OpenDocumentCommandInfo[];
 }): Command[] {
 	const commands: Command[] = [
 		// File commands
@@ -181,6 +197,49 @@ export function buildCommands(deps: {
 			action: () => useSettingsStore.getState().openSettingsDialog(),
 		},
 	];
+
+	// Document commands, built from the open set so the list tracks it (`#54` step 10). Inserted
+	// after the existing file commands so the palette renders one "File" group.
+	const documentCommands: Command[] = [];
+	if (deps.openDocuments.length > 0) {
+		documentCommands.push({
+			id: "file:close-document",
+			label: "Close Document",
+			category: "file",
+			action: deps.closeDocument,
+		});
+	}
+	if (deps.openDocuments.length > 1) {
+		documentCommands.push(
+			{
+				id: "file:next-document",
+				label: "Next Document",
+				category: "file",
+				action: deps.nextDocument,
+			},
+			{
+				id: "file:previous-document",
+				label: "Previous Document",
+				category: "file",
+				action: deps.previousDocument,
+			},
+		);
+	}
+	for (const doc of deps.openDocuments) {
+		documentCommands.push({
+			id: `file:switch-to:${doc.id}`,
+			label: `Switch to: ${doc.title}`,
+			category: "file",
+			action: () => deps.switchToDocument(doc.id),
+		});
+	}
+	if (documentCommands.length > 0) {
+		const lastFileIndex = commands.reduce(
+			(last, cmd, i) => (cmd.category === "file" ? i : last),
+			-1,
+		);
+		commands.splice(lastFileIndex + 1, 0, ...documentCommands);
+	}
 
 	// Component placement commands — only available when a model is open
 	if (deps.hasModel) {

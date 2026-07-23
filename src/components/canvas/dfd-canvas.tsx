@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import type { DfdEdge, DfdNode } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -59,6 +60,9 @@ export function DfdCanvas() {
 	const reconnectEdge = useCanvasStore((s) => s.reconnectEdge);
 	const syncFromModel = useCanvasStore((s) => s.syncFromModel);
 	const model = useModelStore((s) => s.model);
+	// Which document is active. A change is a tab switch (or a New/Open/Import/template, which now
+	// activate a new tab), and drives the once-per-activation viewport decision below (#54 step 7).
+	const activeDocumentId = useDocumentRegistry((s) => s.activeDocumentId);
 	const {
 		screenToFlowPosition,
 		setViewport: setReactFlowViewport,
@@ -103,33 +107,53 @@ export function DfdCanvas() {
 	// Track connection source for validation feedback
 	const connectingNodeId = useRef<string | null>(null);
 
-	// Track whether the initial sync has happened (file open / new model)
+	// Whether the viewport decision has already run for the current activation. Reset per activation
+	// (below) so it runs once each time a document becomes active, not once per component lifetime.
 	const initialSyncDone = useRef(false);
+	// The active document this canvas last ran the viewport decision for; a change is a real switch.
+	const lastActivatedIdRef = useRef(activeDocumentId);
 
-	// Sync canvas from model when it changes (new model loaded, file opened).
-	// `model` is intentionally in deps — syncFromModel reads from model-store internally,
-	// but we need the effect to re-run when the model reference changes.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: model triggers re-sync
+	// Sync the canvas from the model on every relevant change (edit, new model, file open, tab
+	// switch) and, once per activation, decide the incoming viewport after the nodes are synced.
+	// `model` and `activeDocumentId` are in deps to re-run on edits and on switches; everything else
+	// is read from store snapshots rather than subscribed.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: model/activeDocumentId trigger re-sync
 	useEffect(() => {
+		// A newly activated document must re-run the viewport decision even if the previous document
+		// had already latched it. This closes the hole (#54 step 7) where importing a model with no
+		// inline positions kept the latch set and rendered the import at the previous document's
+		// pan/zoom — a silent, off-screen visual regression.
+		if (lastActivatedIdRef.current !== activeDocumentId) {
+			lastActivatedIdRef.current = activeDocumentId;
+			initialSyncDone.current = false;
+		}
+
 		const hadPendingLayout = useCanvasStore.getState().pendingLayout != null;
-		// A pending layout means a file was just loaded — reset so we adjust viewport
+		// A pending layout means a file/layout was just loaded — reset so we apply its viewport.
 		if (hadPendingLayout) initialSyncDone.current = false;
 
 		syncFromModel();
 
-		// Only adjust viewport on initial load (file open / new model), not on property edits
+		// Decide the viewport only once per activation, and only after syncFromModel has populated
+		// this document's nodes — deciding before the sync would act on the outgoing document's
+		// geometry. Property edits re-run this effect with the latch still set and never move the view.
 		if (!initialSyncDone.current) {
 			initialSyncDone.current = true;
 			requestAnimationFrame(() => {
-				if (hadPendingLayout) {
-					const { viewport } = useCanvasStore.getState();
+				const { nodes, viewport } = useCanvasStore.getState();
+				const isDefaultViewport = viewport.x === 0 && viewport.y === 0 && viewport.zoom === 1;
+				if (hadPendingLayout || (nodes.length > 0 && !isDefaultViewport)) {
+					// Loaded from a file/layout (apply its stored viewport) or returning to a laid-out
+					// document (restore the viewport flushed when we left it).
 					setReactFlowViewport(viewport);
 				} else {
+					// A fresh new or imported document, or one sitting at the default viewport: frame
+					// its content instead of restoring a meaningless default pan/zoom.
 					fitViewFn();
 				}
 			});
 		}
-	}, [syncFromModel, model, setReactFlowViewport, fitViewFn]);
+	}, [syncFromModel, model, activeDocumentId, setReactFlowViewport, fitViewFn]);
 
 	const onConnect = useCallback(
 		(connection: Connection) => {

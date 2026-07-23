@@ -87,8 +87,11 @@ export class TauriFileAdapter implements FileAdapter {
 		return selected;
 	}
 
-	async confirmDiscard(): Promise<boolean> {
-		return confirm("You have unsaved changes. Discard them?", {
+	async confirmDiscard(documentTitle?: string): Promise<boolean> {
+		const message = documentTitle
+			? `You have unsaved changes in "${documentTitle}". Discard them?`
+			: "You have unsaved changes. Discard them?";
+		return confirm(message, {
 			title: "Unsaved Changes",
 			kind: "warning",
 			okLabel: "Discard",

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFileOperations } from "@/hooks/use-file-operations";
 import { buildCommands, type Command, searchCommands } from "@/lib/command-registry";
+import { documentDisplayTitle } from "@/lib/document-display-title";
+import { useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
+import type { DocumentId } from "@/types/document";
 
 interface CommandPaletteProps {
 	open: boolean;
@@ -23,8 +26,34 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 
-	const { newModel, openModel, importModel, saveModel, saveModelAs } = useFileOperations();
+	const { newModel, openModel, importModel, saveModel, saveModelAs, closeModel } =
+		useFileOperations();
 	const hasModel = useModelStore((s) => s.model !== null);
+	const openDocumentIds = useDocumentRegistry((s) => s.openDocumentIds);
+	const documents = useDocumentRegistry((s) => s.documents);
+
+	// The open documents, in tab order, with a display title read from each document's own store.
+	const openDocuments = useMemo(
+		() =>
+			openDocumentIds.map((id) => {
+				const model = documents[id]?.stores.model.getState();
+				return { id, title: documentDisplayTitle(model?.model ?? null, model?.filePath ?? null) };
+			}),
+		[openDocumentIds, documents],
+	);
+
+	const switchToDocument = useCallback((id: DocumentId) => {
+		useDocumentRegistry.getState().activateDocument(id);
+	}, []);
+
+	const stepDocument = useCallback((delta: 1 | -1) => {
+		const { openDocumentIds: ids, activeDocumentId } = useDocumentRegistry.getState();
+		if (ids.length < 2) return;
+		const current = activeDocumentId ? ids.indexOf(activeDocumentId) : 0;
+		useDocumentRegistry
+			.getState()
+			.activateDocument(ids[(current + delta + ids.length) % ids.length]);
+	}, []);
 
 	const allCommands = useMemo(
 		() =>
@@ -35,8 +64,24 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 				saveModel: () => void saveModel(),
 				saveModelAs: () => void saveModelAs(),
 				hasModel,
+				closeDocument: () => void closeModel(),
+				nextDocument: () => stepDocument(1),
+				previousDocument: () => stepDocument(-1),
+				switchToDocument,
+				openDocuments,
 			}),
-		[newModel, openModel, importModel, saveModel, saveModelAs, hasModel],
+		[
+			newModel,
+			openModel,
+			importModel,
+			saveModel,
+			saveModelAs,
+			hasModel,
+			closeModel,
+			stepDocument,
+			switchToDocument,
+			openDocuments,
+		],
 	);
 
 	const filtered = useMemo(() => searchCommands(allCommands, query), [allCommands, query]);

@@ -1,6 +1,6 @@
 import { addPaletteItem, createModel, expect, modKey, test } from "./fixtures";
 
-test.describe("Dirty State — Unsaved Changes Prompt", () => {
+test.describe("Dirty State — New opens a tab, Close still guards", () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto("/app");
 		await createModel(page);
@@ -10,62 +10,30 @@ test.describe("Dirty State — Unsaved Changes Prompt", () => {
 		await expect(page.getByTestId("status-bar")).toContainText("Unsaved changes");
 	});
 
-	test("shows confirmation dialog when creating new model with unsaved changes", async ({
+	test("Cmd+N with unsaved changes opens a second tab and prompts nothing (#54)", async ({
 		page,
 	}) => {
+		// After #54, New is non-destructive: it must not raise a discard dialog.
 		let dialogAppeared = false;
 		page.on("dialog", async (dialog) => {
-			expect(dialog.type()).toBe("confirm");
-			expect(dialog.message()).toContain("unsaved changes");
 			dialogAppeared = true;
 			await dialog.dismiss();
 		});
 
 		await page.keyboard.press(`${modKey}+n`);
 
-		// Give the dialog a moment to appear and be handled
-		await page.waitForTimeout(500);
-		expect(dialogAppeared).toBe(true);
-	});
-
-	test("dismissing dialog keeps the current model", async ({ page }) => {
-		page.on("dialog", async (dialog) => {
-			await dialog.dismiss();
-		});
-
-		// Verify node exists before attempting new model
-		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
-
-		await page.keyboard.press(`${modKey}+n`);
-
-		// Wait for the dialog to be handled
-		await page.waitForTimeout(500);
-
-		// Model should remain — element should still be on canvas
-		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
-		// Should still show unsaved changes
-		await expect(page.getByTestId("status-bar")).toContainText("Unsaved changes");
-	});
-
-	test("accepting dialog discards changes and creates new model", async ({ page }) => {
-		page.on("dialog", async (dialog) => {
-			await dialog.accept();
-		});
-
-		// Verify node exists before attempting new model
-		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
-
-		await page.keyboard.press(`${modKey}+n`);
-
-		// After accepting, a new empty model should be created — no elements
+		// A second tab opened and is now the active, empty document.
+		await expect(page.getByRole("tab")).toHaveCount(2);
+		await expect(page.getByRole("tab").nth(1)).toHaveAttribute("aria-selected", "true");
 		await expect(page.locator("[data-testid^='node-']")).toHaveCount(0);
-		// Canvas should still be visible (new model is active)
-		await expect(page.getByTestId("canvas-area")).toBeVisible();
-		// Should not show unsaved changes for the fresh model
-		await expect(page.getByTestId("status-bar")).not.toContainText("Unsaved changes");
+		expect(dialogAppeared).toBe(false);
+
+		// The first document's node is preserved on its own tab.
+		await page.getByRole("tab").nth(0).click();
+		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
 	});
 
-	test("toolbar new button also triggers confirmation dialog", async ({ page }) => {
+	test("toolbar New button opens a second tab and prompts nothing (#54)", async ({ page }) => {
 		let dialogAppeared = false;
 		page.on("dialog", async (dialog) => {
 			dialogAppeared = true;
@@ -74,18 +42,48 @@ test.describe("Dirty State — Unsaved Changes Prompt", () => {
 
 		await page.getByTestId("btn-new").click();
 
-		await page.waitForTimeout(500);
-		expect(dialogAppeared).toBe(true);
-
-		// Model should remain after dismissing
+		await expect(page.getByRole("tab")).toHaveCount(2);
+		expect(dialogAppeared).toBe(false);
+		// The first document still has its node.
+		await page.getByRole("tab").nth(0).click();
 		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
 	});
 
-	test("no dialog appears when model has no unsaved changes", async ({ page }) => {
-		// Start fresh — navigate to a clean state
+	test("Closing a dirty tab prompts, and dismissing keeps the document", async ({ page }) => {
+		let dialogMessage = "";
+		page.on("dialog", async (dialog) => {
+			expect(dialog.type()).toBe("confirm");
+			dialogMessage = dialog.message();
+			await dialog.dismiss();
+		});
+
+		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
+		await page.getByRole("button", { name: /^Close / }).click();
+
+		// The prompt names unsaved changes; dismissing leaves the document and its node in place.
+		expect(dialogMessage).toContain("unsaved changes");
+		await expect(page.getByRole("tab")).toHaveCount(1);
+		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
+		await expect(page.getByTestId("status-bar")).toContainText("Unsaved changes");
+	});
+
+	test("Closing a dirty tab and accepting discards it", async ({ page }) => {
+		page.on("dialog", async (dialog) => {
+			await dialog.accept();
+		});
+
+		await expect(page.locator("[data-testid^='node-']")).toHaveCount(1);
+		await page.getByRole("button", { name: /^Close / }).click();
+
+		// The only document closed: the empty launch view returns.
+		await expect(page.getByTestId("empty-canvas")).toBeVisible();
+		await expect(page.getByRole("tab")).toHaveCount(0);
+	});
+
+	test("no dialog appears when creating a new model from a clean document", async ({ page }) => {
+		// Start fresh — a clean single document.
 		await page.goto("/app");
 		await createModel(page);
-		// Do NOT add any elements — model is clean
 
 		let dialogAppeared = false;
 		page.on("dialog", async () => {
@@ -94,11 +92,9 @@ test.describe("Dirty State — Unsaved Changes Prompt", () => {
 
 		await page.keyboard.press(`${modKey}+n`);
 
-		// New model should be created directly without a dialog
-		await page.waitForTimeout(500);
+		// A second tab opens directly, with no dialog.
+		await expect(page.getByRole("tab")).toHaveCount(2);
 		expect(dialogAppeared).toBe(false);
-
-		// Canvas should still be active (new model replaced old empty model)
 		await expect(page.getByTestId("canvas-area")).toBeVisible();
 	});
 });

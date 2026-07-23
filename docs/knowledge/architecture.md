@@ -133,12 +133,62 @@ isolation suite (plan step 9); each case fails both for a leak and for the oppos
 wiping a document's state on switch. Case 10 lives in
 `src/components/layout/status-bar.test.tsx` and proves the facade re-subscribes through React.
 
+### Document tab workspace
+
+`#54` renders the registry as a tab strip (`src/components/layout/document-tab-strip.tsx` and
+`document-tab.tsx`), mounted inside `<main>` above the canvas. Each tab reads its own document's
+title and dirty state from that document's bundle (through the `stores` the strip passes), so a
+dirty background document updates its own tab without being activated. New/Open/Import/template and
+desktop file-association open each add a tab and activate it rather than replacing the current
+document, so opening is no longer destructive and prompts nothing.
+
+- **Close-activation (D1).** `closeDocument` activates the closed document's right neighbour in
+  rendered order, or its left neighbour when it was rightmost, via the pure
+  `nextActiveDocumentId(orderBeforeClose, closedId)` — derived entirely from `openDocumentIds`, with
+  no separate activation stack.
+- **Order and pinning (D5).** `openDocumentIds` is the single rendered order. `setDocumentPinned`
+  sorts pinned documents into a leading block (`applyPinnedOrder`) and `reorderDocument` clamps a
+  move into the document's own pinned/unpinned block (`moveDocumentInOrder`); the two blocks never
+  interleave, and neither action changes the active document. Pinning is ordering plus identity, not
+  close protection — pinned tabs stay closable. Tab order and pin state live in the session only and
+  are **not persisted by `#54`**; a reload loses them until `#56` (or its follow-up) persists
+  `order` and adds `pinned` to the manifest entry.
+- **Overflow (D3).** Tabs shrink to a `7rem` floor (`8rem` when pinned) and then the strip scrolls
+  horizontally (`overflow-x-auto`, `overscroll-x-contain`); focus and activation call
+  `scrollIntoView`, honouring `reduceMotion`. Discoverability past ten documents is the command
+  palette's `Switch to: <title>` / `Next Document` / `Previous Document` commands, not a dropdown.
+- **Accessibility (D4).** The strip is the WAI-ARIA APG tabs pattern with **manual activation**: a
+  `role="tablist"` (rendered only when at least one document is open) of `role="tab"` elements with a
+  roving `tabindex`; `Arrow`/`Home`/`End` move focus only, `Enter`/`Space` activate the focused tab,
+  and `Delete` closes it through the same dirty guard as the close button. Manual activation avoids a
+  storage read and canvas re-sync for every tab an arrow passes over (the `#56` lazy-hydration seam).
+  The close and pin controls are `tabindex="-1"` **siblings** of the `role="tab"` element — a `tab`
+  role makes its children presentational, so a nested control would vanish from the accessibility
+  tree — which keeps each tab a single tab stop. State lives in the accessible name (", unsaved
+  changes" / ", pinned"), never colour alone. Focus after a close lands on the newly active tab, or
+  the always-present new-document button when the last tab closes.
+- **Tabpanel relationship.** The canvas wrapper inside `<main>` carries `id="document-panel"`,
+  `role="tabpanel"`, and `aria-labelledby="tab-<activeDocumentId>"` only while a document is open;
+  the role goes on the wrapper, not on `<main>`, so the `main` landmark survives, and it takes no
+  `tabindex` because ReactFlow nodes are focusable.
+- **Viewport on activation (step 7).** `activateDocument` only flushes the outgoing document's live
+  viewport into its own canvas store; the incoming viewport is applied by the `DfdCanvas` effect once
+  per activation, after `syncFromModel` populates the document's nodes. A document loaded from a
+  file/layout or revisited restores its viewport, while a fresh new or imported document (which sits
+  at the default viewport) fits to view. Deciding before the sync would act on the outgoing
+  document's geometry — the defect that surfaced once creation stopped closing the previous document.
+- **Close guards (D6).** `useCloseGuard` registers a browser `beforeunload` listener only while at
+  least one document is dirty (preserving bfcache and the `#56` `pagehide` autosave flush) and, on
+  desktop, an `onCloseRequested` handler that prevents the close first, lists every dirty document by
+  title, and calls `getCurrentWindow().destroy()` only after confirmation — the single reason
+  `core:window:allow-destroy` is granted on the `main` window.
+
 ### Handoff seams
 
-- **`#54` (tab UX):** `useDocumentStores(id)` / `getDocumentStores(id)` expose a document's own
-  bundle so a tab can render its title and dirty indicator without activating it. When the active
-  document closes, `closeDocument` falls back to the most-recently-created remaining document; that
-  close-activation policy is deliberately provisional and belongs to `#54`.
+- **`#54` (tab UX):** shipped. `useDocumentStores(id)` / `getDocumentStores(id)` expose a document's
+  own bundle so a tab can render its title and dirty indicator without activating it. The
+  close-activation policy is now right-neighbour-then-left (D1, `nextActiveDocumentId`), replacing
+  the earlier provisional most-recently-created fallback; see "Document tab workspace" above.
 - **`#55` (browser recovery and export):** operates on the same registry sessions; it introduces no
   new document-identity concept.
 - **`#56` (IndexedDB persistence):** the `DocumentSession` is the persistence unit and holds no
