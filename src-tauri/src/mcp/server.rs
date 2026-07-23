@@ -140,7 +140,7 @@ struct GetModelRequest {}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AddElementRequest {
-    #[schemars(description = "Element type: process, data_store, or external_entity")]
+    #[schemars(description = "Element type: process, data_store, external_entity, or text")]
     element_type: String,
     #[schemars(description = "Human-readable element name")]
     name: String,
@@ -283,7 +283,7 @@ impl ThreatForgeServer {
     }
 
     #[tool(
-        description = "Add a new DFD element (process, data_store, or external_entity) to the threat model."
+        description = "Add a new DFD element (process, data_store, external_entity, or text) to the threat model."
     )]
     async fn add_element(
         &self,
