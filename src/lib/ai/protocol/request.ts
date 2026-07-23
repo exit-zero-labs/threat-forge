@@ -48,9 +48,9 @@ export interface PreflightRequest {
 export interface PreflightOutcome {
 	/**
 	 * True when the model id is not in the curated table. A text-only request is
-	 * still allowed, and the client surfaces this as a `capabilityUnknown` note on
-	 * `message_start` so the user learns their model id is stale without the turn
-	 * being blocked.
+	 * still allowed (that is today's behavior) rather than blocked. Reserved for a
+	 * future UI that would warn the user their model id is stale: the client does
+	 * not yet surface it, and `MessageStartEvent` carries no field for it.
 	 */
 	capabilityUnknown: boolean;
 }

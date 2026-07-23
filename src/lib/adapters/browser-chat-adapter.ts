@@ -1,19 +1,15 @@
 import { ProtocolException, redactProviderDetail } from "@/lib/ai/protocol/errors";
 import { createSseDecoder, type SseFrame } from "@/lib/ai/providers/sse";
-import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { userSafeProviderError } from "@/lib/ai-provider-errors";
-import type { AiProvider, ChatMessage } from "@/stores/chat-store";
-import type { ThreatModel } from "@/types/threat-model";
+import type { AiProvider } from "@/stores/chat-store";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import {
-	type ChatAdapter,
-	type ChatStreamCallbacks,
 	type ChatTransport,
 	missingApiKeyError,
 	type ProviderStreamRequest,
 	type TransportCallbacks,
 } from "./chat-adapter";
-import { PROVIDER_ENDPOINTS, providerEndpoint } from "./provider-endpoints";
+import { providerEndpoint } from "./provider-endpoints";
 
 /**
  * Total bytes one stream may decode before the transport fails closed. Mirrors
@@ -333,152 +329,4 @@ async function resolveBrowserApiKey(provider: AiProvider): Promise<string> {
 		throw missingApiKeyError(provider);
 	}
 	return apiKey;
-}
-
-/**
- * Browser chat adapter — direct fetch() to LLM APIs with SSE streaming.
- *
- * @deprecated The string-only chat path. Issue #61 step 10 moves the chat store
- * onto the protocol client over {@link BrowserChatTransport} and deletes this.
- */
-export class BrowserChatAdapter implements ChatAdapter {
-	async sendMessage(
-		provider: AiProvider,
-		messages: ChatMessage[],
-		model: ThreatModel,
-		callbacks: ChatStreamCallbacks,
-		modelId: string,
-		signal?: AbortSignal,
-	): Promise<void> {
-		const apiKey = await resolveBrowserApiKey(provider);
-
-		// No native tools yet (issue #61 steps 3–5); the empty list keeps the model
-		// on the fenced ` ```actions ` path that #62/#64 will replace.
-		const systemPrompt = buildSystemPrompt(model, { tools: [] });
-
-		if (provider === "anthropic") {
-			await streamAnthropic(apiKey, systemPrompt, messages, callbacks, modelId, signal);
-		} else {
-			await streamOpenAI(apiKey, systemPrompt, messages, callbacks, modelId, signal);
-		}
-	}
-}
-
-async function streamAnthropic(
-	apiKey: string,
-	systemPrompt: string,
-	messages: ChatMessage[],
-	callbacks: ChatStreamCallbacks,
-	modelId: string,
-	signal?: AbortSignal,
-): Promise<void> {
-	const endpoint = PROVIDER_ENDPOINTS.anthropic;
-	const response = await fetch(endpoint.url, {
-		method: "POST",
-		headers: endpoint.buildHeaders(apiKey),
-		body: JSON.stringify({
-			model: modelId,
-			max_tokens: 4096,
-			system: systemPrompt,
-			messages: messages.map((m) => ({ role: m.role, content: m.content })),
-			stream: true,
-		}),
-		redirect: NO_REDIRECT,
-		signal,
-	});
-
-	if (!response.ok) {
-		throw new Error(userSafeProviderError(endpoint.label, response.status));
-	}
-
-	await parseSSEStream(response, signal, (event, data) => {
-		if (event === "content_block_delta") {
-			const parsed = JSON.parse(data) as { delta?: { text?: string } };
-			if (parsed.delta?.text) {
-				callbacks.onChunk(parsed.delta.text);
-			}
-		} else if (event === "message_stop") {
-			callbacks.onDone();
-		} else if (event === "error") {
-			const parsed = JSON.parse(data) as { error?: { message?: string } };
-			callbacks.onError(parsed.error?.message ?? "Unknown Anthropic error");
-		}
-	});
-}
-
-async function streamOpenAI(
-	apiKey: string,
-	systemPrompt: string,
-	messages: ChatMessage[],
-	callbacks: ChatStreamCallbacks,
-	modelId: string,
-	signal?: AbortSignal,
-): Promise<void> {
-	const endpoint = PROVIDER_ENDPOINTS.openai;
-	const response = await fetch(endpoint.url, {
-		method: "POST",
-		headers: endpoint.buildHeaders(apiKey),
-		body: JSON.stringify({
-			model: modelId,
-			messages: [
-				{ role: "system", content: systemPrompt },
-				...messages.map((m) => ({ role: m.role, content: m.content })),
-			],
-			stream: true,
-		}),
-		redirect: NO_REDIRECT,
-		signal,
-	});
-
-	if (!response.ok) {
-		throw new Error(userSafeProviderError(endpoint.label, response.status));
-	}
-
-	await parseSSEStream(response, signal, (_event, data) => {
-		if (data === "[DONE]") {
-			callbacks.onDone();
-			return;
-		}
-
-		try {
-			const parsed = JSON.parse(data) as {
-				choices?: Array<{ delta?: { content?: string } }>;
-			};
-			const content = parsed.choices?.[0]?.delta?.content;
-			if (content) {
-				callbacks.onChunk(content);
-			}
-		} catch {
-			// Skip unparseable lines
-		}
-	});
-}
-
-async function parseSSEStream(
-	response: Response,
-	signal: AbortSignal | undefined,
-	onEvent: (event: string, data: string) => void,
-): Promise<void> {
-	const reader = response.body?.getReader();
-	if (!reader) throw new Error("No response body");
-
-	const decoder = createSseDecoder();
-
-	try {
-		for (;;) {
-			if (signal?.aborted) {
-				await reader.cancel();
-				return;
-			}
-
-			const { done, value } = await reader.read();
-			if (done) break;
-
-			for (const frame of decoder.decode(value)) {
-				onEvent(frame.event, frame.data);
-			}
-		}
-	} finally {
-		reader.releaseLock();
-	}
 }

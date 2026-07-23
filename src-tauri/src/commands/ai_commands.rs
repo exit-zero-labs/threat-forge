@@ -114,18 +114,6 @@ pub fn cancel_ai_stream(
     Ok(())
 }
 
-/// Deprecated single-stream cancel kept only for the legacy frontend adapter.
-///
-/// `src/lib/adapters/tauri-chat-adapter.ts` still invokes this command; issue
-/// #61 step 9 deletes that caller and this command together. The legacy UI
-/// runs at most one stream at a time, so cancelling every live stream
-/// preserves its observable behavior. New code must use `cancel_ai_stream`.
-#[tauri::command]
-pub fn cancel_chat_stream(registry: State<'_, AiStreamRegistry>) -> Result<(), String> {
-    registry.cancel_all();
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

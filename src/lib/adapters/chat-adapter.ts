@@ -2,40 +2,7 @@ import { ProtocolException } from "@/lib/ai/protocol/errors";
 import type { AnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import type { OpenAiRequestBody } from "@/lib/ai/providers/openai";
 import type { SseFrame } from "@/lib/ai/providers/sse";
-import type { AiProvider, ChatMessage } from "@/stores/chat-store";
-import type { ThreatModel } from "@/types/threat-model";
-
-/**
- * Callbacks for streaming AI chat responses.
- *
- * @deprecated The string-only chat contract. Superseded by {@link ChatTransport}
- * plus the shared decoder and mappers in `src/lib/ai/`; issue #61 step 10 moves
- * `src/stores/chat-store.ts` onto the protocol client and deletes this.
- */
-export interface ChatStreamCallbacks {
-	onChunk: (text: string) => void;
-	onDone: () => void;
-	onError: (error: string) => void;
-}
-
-/**
- * Adapter interface for AI chat communication.
- *
- * @deprecated Superseded by {@link ChatTransport}, which carries provider events
- * rather than pre-flattened text. Issue #61 step 10 removes this together with
- * its two implementations and `getChatAdapter`.
- */
-export interface ChatAdapter {
-	/** Send a chat message and stream the response via callbacks. */
-	sendMessage(
-		provider: AiProvider,
-		messages: ChatMessage[],
-		model: ThreatModel,
-		callbacks: ChatStreamCallbacks,
-		modelId: string,
-		signal?: AbortSignal,
-	): Promise<void>;
-}
+import type { AiProvider } from "@/stores/chat-store";
 
 /**
  * A provider-shaped streaming request body, exactly as one of the mappers in
