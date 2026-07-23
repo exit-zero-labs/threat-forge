@@ -9,10 +9,9 @@ pub mod models;
 mod stride;
 
 use commands::{
-    analyze_stride, cancel_ai_stream, cancel_chat_stream, check_for_update, create_new_model,
-    delete_api_key, get_api_key_status, import_threat_model, install_update, open_layout,
-    open_threat_model, save_layout, save_threat_model, set_api_key, start_ai_stream,
-    write_text_file,
+    analyze_stride, cancel_ai_stream, check_for_update, create_new_model, delete_api_key,
+    get_api_key_status, import_threat_model, install_update, open_layout, open_threat_model,
+    save_layout, save_threat_model, set_api_key, start_ai_stream, write_text_file,
 };
 use tauri::{Emitter, Manager};
 
@@ -78,7 +77,6 @@ pub fn run() {
             delete_api_key,
             start_ai_stream,
             cancel_ai_stream,
-            cancel_chat_stream,
             write_text_file,
             import_threat_model,
             check_for_update,

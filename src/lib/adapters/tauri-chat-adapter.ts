@@ -2,12 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { z } from "zod";
 import { ProtocolException } from "@/lib/ai/protocol/errors";
-import { buildSystemPrompt } from "@/lib/ai-prompt";
-import type { AiProvider, ChatMessage } from "@/stores/chat-store";
-import type { ThreatModel } from "@/types/threat-model";
 import {
-	type ChatAdapter,
-	type ChatStreamCallbacks,
 	type ChatTransport,
 	missingApiKeyError,
 	type ProviderStreamRequest,
@@ -293,91 +288,6 @@ export class TauriChatTransport implements ChatTransport {
 			}
 		} finally {
 			signal?.removeEventListener("abort", onAbort);
-			for (const unlisten of unlisteners) {
-				unlisten();
-			}
-		}
-	}
-}
-
-/**
- * Desktop chat adapter — the string-only chat path.
- *
- * @deprecated Superseded by {@link TauriChatTransport}. This path is already
- * inert: issue #61 step 8 replaced the `send_chat_message` command and the
- * `ai:stream-chunk`/`-done`/`-error` events with the relay, so the invoke below
- * has nothing to reach. It stays only because `src/stores/chat-store.ts` still
- * imports the adapter interface, and step 10 deletes both together with the
- * `cancel_chat_stream` command this is the last caller of.
- */
-export class TauriChatAdapter implements ChatAdapter {
-	async sendMessage(
-		provider: AiProvider,
-		messages: ChatMessage[],
-		model: ThreatModel,
-		callbacks: ChatStreamCallbacks,
-		modelId: string,
-		signal?: AbortSignal,
-	): Promise<void> {
-		const unlisteners: (() => void)[] = [];
-
-		// Listen for abort signal to cancel the stream on the Rust side
-		const onAbort = () => {
-			void invoke("cancel_chat_stream").catch(() => {});
-		};
-		if (signal) {
-			signal.addEventListener("abort", onAbort, { once: true });
-		}
-
-		try {
-			const unlisten1 = await listen<{ text: string }>("ai:stream-chunk", (event) => {
-				callbacks.onChunk(event.payload.text);
-			});
-			unlisteners.push(unlisten1);
-
-			const donePromise = new Promise<void>((resolve, reject) => {
-				listen("ai:stream-done", () => {
-					resolve();
-				}).then((unlisten) => unlisteners.push(unlisten));
-
-				listen<{ error: string }>("ai:stream-error", (event) => {
-					reject(new Error(event.payload.error));
-				}).then((unlisten) => unlisteners.push(unlisten));
-			});
-
-			const ipcMessages = messages.map((m) => ({
-				role: m.role,
-				content: m.content,
-			}));
-
-			// The prompt is built here, not in Rust: issue #61 step 5 made TypeScript
-			// the sole prompt owner and dropped the `ThreatModel` from the command, so
-			// the model is no longer serialized across the IPC boundary on every turn.
-			// No native tools yet, so the empty list keeps the fenced ` ```actions ` path.
-			const systemPrompt = buildSystemPrompt(model, { tools: [] });
-
-			await invoke("send_chat_message", {
-				provider,
-				messages: ipcMessages,
-				systemPrompt,
-				modelId,
-			});
-
-			await donePromise;
-
-			if (!signal?.aborted) {
-				callbacks.onDone();
-			}
-		} catch (err) {
-			// Don't treat abort as an error
-			if (signal?.aborted) return;
-			const errorMessage = err instanceof Error ? err.message : String(err);
-			callbacks.onError(errorMessage);
-			throw err;
-		} finally {
-			if (signal) {
-				signal.removeEventListener("abort", onAbort);
-			}
 			for (const unlisten of unlisteners) {
 				unlisten();
 			}
