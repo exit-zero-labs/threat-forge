@@ -1,0 +1,33 @@
+# Security headers for the deployed web build.
+#
+# Vite copies public/ into dist/, and Cloudflare Workers static assets honor this
+# _headers file, so the policy below is served for every route of the web app.
+#
+# The web build is the platform that needs a CSP: it holds the BYOK API key in
+# localStorage (webview-readable), whereas the desktop build keeps the key in Rust
+# and its CSP lives in src-tauri/tauri.conf.json. The primary key defense here is
+# script-src 'self' (with default-src 'self'): no inline or third-party script can
+# execute except the pinned analytics beacon, so an injected payload has no
+# foothold to read localStorage in the first place. connect-src is the
+# defense-in-depth second layer — it names only the hosts the app legitimately
+# talks to, none of them attacker-controlled:
+#
+#   api.anthropic.com, api.openai.com  the key-bearing provider endpoints; these
+#       must match the endpoint table (enforced by provider-endpoints.test.ts).
+#   cloudflareinsights.com  the Cloudflare Web Analytics beacon report endpoint
+#       (src/components/cloudflare-analytics.tsx, web build only), paired with the
+#       static.cloudflareinsights.com script origin. Carries no key.
+#   api.github.com  the read-only latest-release metadata the downloads page shows
+#       (src/hooks/use-latest-release.ts). Carries no key.
+#
+# If web analytics or the downloads release lookup is ever removed, drop its
+# origin(s) here too. See issue #156 for the full rationale.
+#
+# style-src 'unsafe-inline' is required for the app's runtime-injected styles
+# (ReactFlow, shadcn), matching the desktop CSP; inline styles cannot read the key.
+# object-src / base-uri / form-action / frame-ancestors close the plugin, base-tag,
+# form-hijack, and clickjacking vectors that default-src does not cover on its own.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://cloudflareinsights.com https://api.github.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
