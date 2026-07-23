@@ -170,6 +170,13 @@ describe("streamConversation orchestration", () => {
 					}),
 				});
 				cb.onFrame({ event: "content_block_stop", data: JSON.stringify({ index: 0 }) });
+				// A real tool-call turn still ends with a stop reason and message_stop;
+				// omitting them would trip truncation detection (see the truncation test).
+				cb.onFrame({
+					event: "message_delta",
+					data: JSON.stringify({ delta: { stop_reason: "tool_use" } }),
+				});
+				cb.onFrame({ event: "message_stop", data: "{}" });
 				cb.onClose("done");
 			}),
 			{ onEvent },
@@ -183,6 +190,63 @@ describe("streamConversation orchestration", () => {
 				id: "toolu_1",
 				name: "add_element",
 				input: { action: "add_element" },
+			},
+			{ type: "message_stop", stopReason: "tool_use" },
+		]);
+	});
+
+	it("surfaces a done close with no terminal event as malformed_stream, not a silent end", async () => {
+		// A stream that delivers text and then closes without a message_stop is
+		// truncated. Presenting it as a finished answer would be a success-shaped
+		// failure indistinguishable from a complete but short response.
+		const { events, onEvent } = collect();
+
+		await streamConversation(
+			anthropicRequest(),
+			scriptedTransport((cb) => {
+				cb.onFrame({
+					event: "content_block_delta",
+					data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "half a th" } }),
+				});
+				cb.onClose("done");
+			}),
+			{ onEvent },
+		);
+
+		expect(events).toEqual([
+			{ type: "text_delta", text: "half a th" },
+			{
+				type: "error",
+				error: { code: "malformed_stream", message: expect.stringContaining("ended before") },
+			},
+		]);
+	});
+
+	it("does not flag a done close as truncated when the provider already reported an error", async () => {
+		// An in-stream provider error is itself terminal; a truncation notice on top
+		// of it would be a second, redundant failure for the same turn.
+		const { events, onEvent } = collect();
+
+		await streamConversation(
+			anthropicRequest(),
+			scriptedTransport((cb) => {
+				cb.onFrame({
+					event: "error",
+					data: JSON.stringify({ error: { type: "overloaded_error", message: "Overloaded" } }),
+				});
+				cb.onClose("done");
+			}),
+			{ onEvent },
+		);
+
+		expect(events).toEqual([
+			{
+				type: "error",
+				error: {
+					code: "http_status",
+					message: "Anthropic reported an error while streaming the response.",
+					providerDetail: "overloaded_error: Overloaded",
+				},
 			},
 		]);
 	});
