@@ -31,6 +31,10 @@ export interface DocumentTabProps {
 	onClose: (id: DocumentId) => void;
 	/** Toggle this document's pinned state. */
 	onPin: (id: DocumentId, pinned: boolean) => void;
+	/** Record that this tab began a reorder drag (the strip tracks the dragged id out-of-band). */
+	onReorderStart?: (id: DocumentId) => void;
+	/** Clear the reorder drag once it ends, whether or not it produced a drop. */
+	onReorderEnd?: () => void;
 }
 
 /**
@@ -56,6 +60,8 @@ export function DocumentTab({
 	onActivate,
 	onClose,
 	onPin,
+	onReorderStart,
+	onReorderEnd,
 }: DocumentTabProps) {
 	const model = useStore(stores.model, (s) => s.model);
 	const filePath = useStore(stores.model, (s) => s.filePath);
@@ -72,9 +78,15 @@ export function DocumentTab({
 			data-testid={`document-tab-${documentId}`}
 			draggable
 			onDragStart={(e) => {
+				// The reorder id is tracked by the strip via `onReorderStart`, not read back from
+				// `dataTransfer`: WKWebView (desktop) returns an empty `getData()` for a custom MIME
+				// during `drop`, the same reason the palette carries its payload out-of-band (see the
+				// note in `dfd-canvas.tsx`). The MIME is still set for the drag cursor and non-WebKit.
+				onReorderStart?.(documentId);
 				e.dataTransfer.setData(TAB_DRAG_MIME, documentId);
 				e.dataTransfer.effectAllowed = "move";
 			}}
+			onDragEnd={() => onReorderEnd?.()}
 			className={cn(
 				"group relative flex h-full shrink-0 items-center border-r border-border",
 				"min-w-[7rem] max-w-[14rem]",

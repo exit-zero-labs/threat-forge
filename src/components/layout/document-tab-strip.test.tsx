@@ -208,6 +208,31 @@ describe("DocumentTabStrip reorder and pin (D5)", () => {
 		expect(useDocumentRegistry.getState().activeDocumentId).toBe(c);
 	});
 
+	it("reorders on desktop WebKit where dataTransfer.getData returns empty at drop", () => {
+		const { a, b, c } = openThree(); // order [A,B,C], active C
+		render(<DocumentTabStrip />);
+		layoutTabs();
+
+		// WKWebView (desktop) yields an empty `getData()` and empty `types` for a custom MIME during
+		// a drag, so a reorder that read the id back from `dataTransfer` would silently no-op there.
+		const webkitDt = {
+			setData() {},
+			getData: () => "",
+			get types() {
+				return [] as string[];
+			},
+			dropEffect: "none",
+			effectAllowed: "none",
+		} as unknown as DataTransfer;
+
+		fireEvent.dragStart(screen.getByTestId(`document-tab-${c}`), { dataTransfer: webkitDt });
+		dropAt(screen.getByRole("tablist"), webkitDt, 10);
+
+		// The tab still moves: the reorder read the dragged id from the strip's ref set on dragStart,
+		// not from the empty dataTransfer. With the old getData path this stays [A,B,C].
+		expect(useDocumentRegistry.getState().openDocumentIds).toEqual([c, a, b]);
+	});
+
 	it("clamps a tab dragged into the pinned block to the head of the unpinned block", () => {
 		const { a, b, c } = openThree();
 		render(<DocumentTabStrip />);

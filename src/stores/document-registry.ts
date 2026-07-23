@@ -111,9 +111,10 @@ interface DocumentRegistryState {
 	/** Point the store facades at a document's own bundle and mark it active. No-op if unknown. */
 	activateDocument: (id: DocumentId) => void;
 	/**
-	 * Dispose a document and its bundle. If it was active, activate the last remaining open
-	 * document, or install a fresh scratch bundle when none remain so nothing written while no
-	 * document is open can surface in a later document.
+	 * Dispose a document and its bundle. If it was active, activate the `#54` D1 neighbour — the
+	 * document to its right in rendered order, or the one to its left when it was rightmost
+	 * (`nextActiveDocumentId`) — or install a fresh scratch bundle when none remain so nothing
+	 * written while no document is open can surface in a later document.
 	 */
 	closeDocument: (id: DocumentId) => void;
 	/** Update a document's file-scoped settings. No-op if the id is unknown. */

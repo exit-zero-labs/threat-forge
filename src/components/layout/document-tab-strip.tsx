@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { DocumentId } from "@/types/document";
-import { DocumentTab, TAB_DRAG_MIME } from "./document-tab";
+import { DocumentTab } from "./document-tab";
 
 /**
  * The document tab strip (`#54` D3/D4).
@@ -27,6 +27,10 @@ export function DocumentTabStrip() {
 	const [focusedId, setFocusedId] = useState<DocumentId | null>(activeDocumentId);
 	const tablistRef = useRef<HTMLDivElement>(null);
 	const newDocumentButtonRef = useRef<HTMLButtonElement>(null);
+	// The tab currently being reordered. Tracked here rather than in `dataTransfer` because
+	// WKWebView (desktop) returns an empty `getData()` for a custom MIME during `drop`, so the
+	// desktop reorder would otherwise silently no-op.
+	const draggedIdRef = useRef<DocumentId | null>(null);
 
 	// A focusedId left pointing at a just-closed document would leave no tab holding tabindex 0
 	// for one render; fall back to the active document until the effect below resyncs.
@@ -149,16 +153,26 @@ export function DocumentTabStrip() {
 		[activeDocumentId],
 	);
 
+	const handleReorderStart = useCallback((id: DocumentId) => {
+		draggedIdRef.current = id;
+	}, []);
+
+	const handleReorderEnd = useCallback(() => {
+		draggedIdRef.current = null;
+	}, []);
+
 	const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-		// Only a tab drag is a reorder; a palette element drag must fall through unhandled.
-		if (e.dataTransfer.types.includes(TAB_DRAG_MIME)) {
+		// Only an in-progress tab drag is a reorder; a palette element drag falls through unhandled.
+		// The dragged id comes from the ref, not `dataTransfer.types`, which WKWebView leaves empty
+		// for a custom MIME.
+		if (draggedIdRef.current !== null) {
 			e.preventDefault();
 			e.dataTransfer.dropEffect = "move";
 		}
 	}, []);
 
 	const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-		const draggedId = e.dataTransfer.getData(TAB_DRAG_MIME) as DocumentId;
+		const draggedId = draggedIdRef.current;
 		const order = useDocumentRegistry.getState().openDocumentIds;
 		if (!draggedId || !order.includes(draggedId)) return;
 		e.preventDefault();
@@ -173,6 +187,7 @@ export function DocumentTabStrip() {
 			index++;
 		}
 		useDocumentRegistry.getState().reorderDocument(draggedId, index);
+		draggedIdRef.current = null;
 	}, []);
 
 	return (
@@ -203,6 +218,8 @@ export function DocumentTabStrip() {
 								onActivate={handleActivate}
 								onClose={(closeId) => void handleClose(closeId)}
 								onPin={handlePin}
+								onReorderStart={handleReorderStart}
+								onReorderEnd={handleReorderEnd}
 							/>
 						);
 					})}
