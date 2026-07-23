@@ -61,7 +61,7 @@ Backend (Rust + Tauri v2)
   → Models in src-tauri/src/models/
   → STRIDE engine in src-tauri/src/stride/
 
-Communication: Tauri IPC (JSON-RPC)
+Communication: Tauri command/event IPC
   → Frontend calls backend via invoke()
   → Backend emits events to frontend
 ```

@@ -1,7 +1,8 @@
 # Configuring release signing
 
 This runbook preserves the remaining owner and implementation work required to ship signed,
-notarized, and updater-verifiable ThreatForge desktop releases.
+notarized, and updater-verifiable ThreatForge desktop releases. These signing and updater gates
+are the exit criteria for [roadmap Phase 0 — Operational Foundation](../plans/roadmap.md#phase-0--operational-foundation).
 
 GitHub issues and Threat Forge Project 2 remain the live execution tracker. The ordered tasks here
 define the dependency sequence and evidence required to complete:

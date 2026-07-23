@@ -117,6 +117,7 @@ Add to your Cursor MCP configuration:
 - `process` — A software process or service
 - `data_store` — A database or persistent storage
 - `external_entity` — An external system or actor
+- `text` — A free-form text annotation
 
 ## STRIDE Categories
 
@@ -140,7 +141,7 @@ The MCP server:
 3. Writes changes back to disk after each mutation
 4. Communicates via JSON-RPC over stdin/stdout
 
-This file-based approach means the MCP server and the ThreatForge desktop app can work with the same file. The desktop app detects file changes and updates its canvas accordingly.
+This file-based approach means the MCP server and the ThreatForge desktop app can work with the same file. The desktop app must reopen the file to load MCP changes; there is no real-time synchronization.
 
 ## Cascading Deletes
 
@@ -153,3 +154,6 @@ When an element is deleted:
 - No real-time sync with the running desktop app (file-based sync only)
 - No undo/redo from MCP mutations (use the desktop app for undo)
 - Layout positions are preserved but not managed by MCP tools
+- MCP mutations re-serialize modeled Rust fields. Unknown or forward-compatible sections and
+  file comments are dropped on save, matching the desktop-writer limitation described in the
+  [file-format contract](file-format.md#residual-risk-downgrade-data-loss-on-the-desktop-writer).

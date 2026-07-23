@@ -10,7 +10,7 @@ permissions:
 jobs:
   dependency-review:
     name: Dependency Review
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","hostinger"]') || 'ubuntu-latest' }}
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:

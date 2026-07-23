@@ -5,6 +5,8 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useNativeMenu } from "@/hooks/use-native-menu";
 import { useOnboardingTriggers } from "@/hooks/use-onboarding-triggers";
 import { useWindowTitle } from "@/hooks/use-window-title";
+import { useWorkspacePersistence } from "@/hooks/use-workspace-persistence";
+import { useWorkspaceRestore } from "@/hooks/use-workspace-restore";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 import { checkOnLaunch } from "@/stores/update-store";
@@ -35,6 +37,10 @@ export function AppLayout() {
 	useKeyboardShortcuts();
 	useNativeMenu();
 	useAutosave();
+	// Browser workspace persistence: restore reads storage after first paint and marks
+	// availability; the autosave hook only writes once it reports available.
+	useWorkspaceRestore();
+	useWorkspacePersistence();
 	useOnboardingTriggers();
 	useWindowTitle();
 	useEffect(() => checkOnLaunch(), []);

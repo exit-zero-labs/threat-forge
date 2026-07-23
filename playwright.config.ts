@@ -10,10 +10,13 @@ export default defineConfig({
 	reporter: [
 		["html", { open: "never" }],
 		["list"],
-		// Machine-readable sibling of the HTML report, consumed by
-		// scripts/summarize-playwright.mjs to surface flaky/skipped outcomes in the CI
-		// run summary. Written after the HTML reporter regenerates the folder.
-		["json", { outputFile: "playwright-report/results.json" }],
+		// Machine-readable report consumed by scripts/summarize-playwright.mjs to
+		// surface flaky and skipped outcomes in the CI run summary. It lives under
+		// test-results/ rather than beside the HTML report because the HTML reporter
+		// deletes its own output folder at the start of onEnd, which would make
+		// correctness depend on reporter array order. test-results/ is gitignored and
+		// already uploaded with the HTML report on failure.
+		["json", { outputFile: "test-results/results.json" }],
 	],
 	use: {
 		baseURL: "http://localhost:3000",

@@ -1,7 +1,11 @@
+import { act, renderHook } from "@testing-library/react";
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
+import { useWorkspacePersistence } from "@/hooks/use-workspace-persistence";
 import { serializeThreatModelYaml } from "@/lib/thf-yaml";
+import { useDocumentRegistry } from "@/stores/document-registry";
+import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { DocumentId } from "@/types/document";
 import type { ThreatModel } from "@/types/threat-model";
@@ -80,7 +84,15 @@ async function dumpIndexedDb(): Promise<string> {
 beforeEach(() => {
 	globalThis.indexedDB = new IDBFactory();
 	localStorage.clear();
-	useWorkspaceStore.setState({ documents: [], activeDocumentId: null, persistence: {} });
+	useDocumentRegistry.setState({ documents: {}, openDocumentIds: [], activeDocumentId: null });
+	setActiveStores(createDocumentStores());
+	useWorkspaceStore.setState({
+		documents: [],
+		activeDocumentId: null,
+		persistence: {},
+		persistenceAvailable: false,
+		unavailableReason: null,
+	});
 });
 
 afterEach(() => {
@@ -101,6 +113,7 @@ describe("no key material reaches the workspace stores (D6)", () => {
 			title: model.metadata.title,
 			filePath: null,
 			order: 0,
+			createdAt: "2026-07-21T00:00:00.000Z",
 			updatedAt: "2026-07-21T00:00:00.000Z",
 		});
 
@@ -113,6 +126,36 @@ describe("no key material reaches the workspace stores (D6)", () => {
 			(localStorage.getItem(key) ?? "").includes(KEYCHAIN_CANARY),
 		);
 		expect(keysCarryingSecret).toEqual([KEYCHAIN_STORAGE_KEY]);
+	});
+
+	it("keeps a stored key out of both stores across a real autosave cycle", async () => {
+		// The same proof against the production writer rather than a hand-rolled persist: the
+		// autosave hook decides *what* is serialized, so it is what could leak a new field.
+		seedConfiguredKey();
+		const model = modelWithoutSecret();
+		model.metadata.settings = { grid_size: 20, default_element_fill: "#anthracite" };
+
+		const id = useDocumentRegistry
+			.getState()
+			.createDocument({ model, filePath: null, pendingLayout: null });
+		useWorkspaceStore.getState().setPersistenceAvailability(true);
+		renderHook(() => useWorkspacePersistence());
+
+		await act(async () => {
+			// Flush the pending write instead of waiting out the debounce.
+			window.dispatchEvent(new Event("pagehide"));
+			await vi.waitFor(() => {
+				if (useWorkspaceStore.getState().persistence[id]?.status !== "saved") {
+					throw new Error("write not committed");
+				}
+			});
+		});
+
+		// The document carries file settings, so the persisted body is a realistic one.
+		const dump = await dumpIndexedDb();
+		expect(dump).toContain("grid_size");
+		expect(dump).not.toContain(KEYCHAIN_CANARY);
+		expect(localStorage.getItem(WORKSPACE_STORAGE_NAMESPACE) ?? "").not.toContain(KEYCHAIN_CANARY);
 	});
 
 	it("never reads or writes a keychain key during a persist cycle", async () => {
@@ -130,6 +173,7 @@ describe("no key material reaches the workspace stores (D6)", () => {
 			title: "Payment Service",
 			filePath: null,
 			order: 0,
+			createdAt: "2026-07-21T00:00:00.000Z",
 			updatedAt: "2026-07-21T00:00:00.000Z",
 		});
 

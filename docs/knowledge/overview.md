@@ -2,21 +2,21 @@
 
 ## What It Is
 
-ThreatForge is an open-source, AI-enhanced, cross-platform desktop threat modeling application built with Tauri v2 + React + TypeScript. It fills the gap between Microsoft's free but Windows-only Threat Modeling Tool (opaque `.tm7` binaries, 2016-era UI) and enterprise platforms like ThreatModeler/IriusRisk ($20K+/year).
+ThreatForge is an open-source, AI-enhanced threat modeling application for the browser and Tauri desktop platforms. It fills the gap between Microsoft's free but Windows-only Threat Modeling Tool (opaque `.tm7` binaries and a legacy UI) and procurement-oriented enterprise platforms.
 
 ## Core Value Proposition
 
-> For developers and security architects who need to create threat models, ThreatForge is a free, open-source desktop app that makes threat modeling fast, AI-assisted, and git-native. Unlike Microsoft Threat Modeling Tool, ThreatForge runs on all platforms, produces human-readable files, and integrates AI to help identify threats you'd otherwise miss.
+> For developers and security architects who need to create threat models, ThreatForge is a free, open-source browser and desktop app that makes threat modeling fast, AI-assisted, and git-native. Unlike Microsoft Threat Modeling Tool, ThreatForge runs across supported platforms, produces human-readable files, and integrates AI to help identify threats you'd otherwise miss.
 
 ## Key Differentiators
 
-ThreatForge's differentiation is the combination of three things no other tool brings together:
+ThreatForge differentiates itself by combining three things:
 
-1. **UX gap filled** — A modern, keyboard-shortcut-driven interface with drag-and-drop canvas, 44 typed components + text annotations, custom themes, and resizable panes. The kind of experience developers expect from tools like Linear, Figma, or VS Code.
+1. **UX gap filled** — A modern, keyboard-shortcut-driven interface with drag-and-drop canvas, typed components and text annotations, custom themes, and resizable panes. The kind of experience developers expect from tools like Linear, Figma, or VS Code.
 
-2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is binary. Threat Dragon's JSON is verbose. Neither can be opened in a text editor and understood. ThreatForge can import `.tm7` files directly, converting them to `.thf` with all elements, flows, boundaries, and threats preserved.
+2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is binary, while Threat Dragon's JSON is comparatively verbose. ThreatForge can import `.tm7` files directly, converting them to `.thf` with elements, flows, boundaries, and threats preserved.
 
-3. **AI integration gap filled** — An integrated AI chat pane (BYOK) for conversational threat analysis and iterative model refinement. No other desktop tool combines interactive modeling with native AI assistance.
+3. **AI integration gap filled** — An integrated AI chat pane (BYOK) supports conversational threat analysis and iterative model refinement.
 
 ## JTBD Framework
 
@@ -34,19 +34,19 @@ ThreatForge's differentiation is the combination of three things no other tool b
 
 ## Status
 
-ThreatForge is production-ready. The core application is fully functional:
+ThreatForge's core application is functional. The following capabilities are shipped:
 
-- Modern diagramming canvas with 44 typed components, drag-and-drop, trust boundaries, text annotations
+- Modern diagramming canvas with typed components, drag-and-drop, trust boundaries, text annotations
 - STRIDE threat engine with auto-generated threats per element
 - AI chat pane (BYOK) with OpenAI + Anthropic support, model selector, persistent chat sessions, markdown rendering, stop generating
 - `.thf` YAML file format with clean git diffs
 - Import from Microsoft TMT `.tm7` files with full element, flow, boundary, and threat conversion
-- 13+ themes (light and dark), resizable panes, keyboard shortcuts, command palette
+- Light and dark themes, resizable panes, keyboard shortcuts, command palette
 - Onboarding system with interactive guides
-- 417+ frontend tests, 73+ Rust tests, 40+ E2E tests
-- Cross-platform via Tauri v2 (macOS, Windows, Linux)
+- Frontend (Vitest), Rust (cargo), and end-to-end (Playwright) test suites
+- Browser access plus Tauri v2 desktop builds for macOS, Windows, and Linux
 
-**Remaining for public launch:** Cross-platform CI builds + code signing, auto-updater, landing page/website, launch marketing.
+**Status: Planned** — public-launch work remains tracked in [roadmap Phase 0](../plans/roadmap.md#phase-0--operational-foundation) and [GitHub Project 2](https://github.com/orgs/exit-zero-labs/projects/2).
 
 ## Mission
 

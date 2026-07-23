@@ -80,4 +80,4 @@ Before a quality lens gates behavior:
 - visually clipped, low-contrast, or overlapping architecture
 - corrective multi-turn conversation after a rejected tool call
 
-Implementation belongs to the native AI tool runtime and agent-driven E2E roadmap phases.
+Implementation belongs to the native AI tool runtime and agent-driven E2E phases tracked in [the roadmap](../plans/roadmap.md).

@@ -126,6 +126,10 @@ Examples:
 6. Include before/after screenshots or traces for visible UI changes.
 7. List owner validation steps separately from automated verification.
 
+If a CI check goes red, triage it with
+[docs/runbooks/diagnosing-ci-failures.md](docs/runbooks/diagnosing-ci-failures.md) before
+rerunning anything.
+
 Commit, push, PR creation, approval, merge, and release each require explicit authorization.
 Tool permissions or repository ownership do not imply authorization. Required status checks
 and squash-only merging are never bypassed.
