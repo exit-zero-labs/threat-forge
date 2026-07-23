@@ -178,15 +178,6 @@ impl AiStreamRegistry {
         }
     }
 
-    /// Set every live stream's cancel flag. Exists only for the deprecated
-    /// `cancel_chat_stream` alias, whose legacy caller runs at most one stream
-    /// at a time; deleted with it in issue #61 step 10.
-    pub fn cancel_all(&self) {
-        for flag in self.lock().values() {
-            flag.store(true, Ordering::SeqCst);
-        }
-    }
-
     /// Forget a completed stream so its id can be reused and the map cannot
     /// grow without bound.
     pub fn remove(&self, stream_id: &str) {
@@ -885,16 +876,6 @@ mod tests {
         ));
         registry.remove("a");
         registry.register("a").expect("register after remove");
-    }
-
-    #[test]
-    fn cancel_all_sets_every_live_flag() {
-        let registry = AiStreamRegistry::default();
-        let flag_a = registry.register("a").expect("register a");
-        let flag_b = registry.register("b").expect("register b");
-        registry.cancel_all();
-        assert!(flag_a.load(Ordering::SeqCst));
-        assert!(flag_b.load(Ordering::SeqCst));
     }
 
     // --- endpoints and headers ----------------------------------------------

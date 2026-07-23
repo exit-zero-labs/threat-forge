@@ -438,13 +438,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				{ onEvent: applyEvent },
 				abortController.signal,
 			);
-		} catch (err) {
+		} catch {
 			// `streamConversation` resolves for every expected protocol failure (they
 			// arrive as `error` events applied above), so this only catches an
 			// unexpected throw — for example the transport module failing to load.
+			// Its raw message can name internal state (a module path or a build
+			// defect), so the banner gets an authored sentence rather than the raw
+			// text; the browser surfaces the underlying failure to the console.
 			if (!abortController.signal.aborted) {
-				const errorMessage = err instanceof Error ? err.message : String(err);
-				set({ error: errorMessage });
+				set({ error: "The AI request failed unexpectedly. Please try again." });
 			}
 		} finally {
 			currentAbortController = null;
