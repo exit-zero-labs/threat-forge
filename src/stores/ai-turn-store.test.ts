@@ -199,3 +199,89 @@ describe("stopGenerating integration", () => {
 		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
 	});
 });
+
+describe("resetTurn clears conversation context", () => {
+	const textTurn = (text: string): StreamEvent[] => [
+		{ type: "message_start", model: "m" },
+		{ type: "text_delta", text },
+		{ type: "message_stop", stopReason: "end_turn" },
+	];
+
+	it("clears the turn and in-memory history so the next request sends no prior messages", async () => {
+		script(textTurn("first reply"), textTurn("second reply"));
+		await useAiTurnStore.getState().submitTurn("first question", model);
+		await flush();
+		expect(useAiTurnStore.getState().turn?.outcome).toBe("completed");
+
+		useAiTurnStore.getState().resetTurn();
+		expect(useAiTurnStore.getState().turn).toBeNull();
+
+		await useAiTurnStore.getState().submitTurn("second question", model);
+		await flush();
+
+		const calls = streamConversationMock.mock.calls;
+		const lastRequest = calls[calls.length - 1][0];
+		const texts = lastRequest.messages
+			.flatMap((m: { content: Array<{ type: string; text?: string }> }) => m.content)
+			.filter((b: { type: string }) => b.type === "text")
+			.map((b: { text?: string }) => b.text);
+		expect(texts).toContain("second question");
+		expect(texts).not.toContain("first question");
+		expect(texts).not.toContain("first reply");
+	});
+
+	it("carries prior turn context into a follow-up turn when not reset (control)", async () => {
+		script(textTurn("first reply"), textTurn("second reply"));
+		await useAiTurnStore.getState().submitTurn("first question", model);
+		await flush();
+		await useAiTurnStore.getState().submitTurn("second question", model);
+		await flush();
+
+		const calls = streamConversationMock.mock.calls;
+		const lastRequest = calls[calls.length - 1][0];
+		const texts = lastRequest.messages
+			.flatMap((m: { content: Array<{ type: string; text?: string }> }) => m.content)
+			.filter((b: { type: string }) => b.type === "text")
+			.map((b: { text?: string }) => b.text);
+		// Without a reset, the follow-up continues the conversation.
+		expect(texts).toContain("first question");
+		expect(texts).toContain("second question");
+	});
+});
+
+describe("undoAvailability", () => {
+	it("is undoable after a committed turn and superseded after a later edit", async () => {
+		script(
+			[
+				{ type: "message_start", model: "m" },
+				{
+					type: "tool_call_complete",
+					id: "c1",
+					name: "add_element",
+					input: { action: "add_element", element: { type: "process", name: "Cache" } },
+				},
+				{ type: "message_stop", stopReason: "tool_use" },
+			],
+			[
+				{ type: "message_start", model: "m" },
+				{ type: "text_delta", text: "done" },
+				{ type: "message_stop", stopReason: "end_turn" },
+			],
+		);
+		await useAiTurnStore.getState().submitTurn("add a cache", model);
+		await flush();
+		useAiTurnStore.getState().approveCall("c1");
+		await flush();
+
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("undoable");
+
+		// A later unrelated edit supersedes the turn's single undo entry.
+		const current = useModelStore.getState().model;
+		if (current) useHistoryStore.getState().pushSnapshot(current);
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("superseded");
+	});
+
+	it("is already_undone before any turn has run", () => {
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("already_undone");
+	});
+});

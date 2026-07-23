@@ -14,7 +14,7 @@
  */
 
 import type { ProtocolError } from "@/lib/ai/protocol/errors";
-import type { StreamEvent, TokenUsage } from "@/lib/ai/protocol/events";
+import type { StreamEvent } from "@/lib/ai/protocol/events";
 import type { ContentBlock, ProtocolMessage, ToolResultBlock } from "@/lib/ai/protocol/messages";
 import {
 	type ApprovalGrant,
@@ -124,9 +124,6 @@ export interface TurnState {
 	readonly grants: readonly ApprovalGrant[];
 	readonly denials: readonly DenialRecord[];
 	readonly violations: readonly TurnViolationRecord[];
-	readonly usage: TokenUsage;
-	/** Model id the provider echoed at `message_start`. */
-	readonly modelId: string | null;
 	readonly outcome: TurnOutcome | null;
 	/** Informational bounded-turn notice; never an error banner. */
 	readonly notice: string | null;
@@ -174,8 +171,6 @@ export function createIdleTurnState(): TurnState {
 		grants: [],
 		denials: [],
 		violations: [],
-		usage: { inputTokens: 0, outputTokens: 0 },
-		modelId: null,
 		outcome: null,
 		notice: null,
 		error: null,
@@ -196,7 +191,7 @@ export function reduceTurn(state: TurnState, input: TurnInput): TurnState {
 		case "submit":
 			return onSubmit(state, input);
 		case "message_start":
-			return onMessageStart(state, input.model);
+			return onMessageStart(state);
 		case "text_delta":
 			return onTextDelta(state, input.text);
 		case "tool_call_start":
@@ -206,7 +201,8 @@ export function reduceTurn(state: TurnState, input: TurnInput): TurnState {
 		case "tool_call_complete":
 			return onToolCallComplete(state, input);
 		case "usage":
-			return onUsage(state, input.usage);
+			// Token usage is not surfaced (token display is a non-goal); accept and ignore it.
+			return state;
 		case "message_stop":
 			return onMessageStop(state, input.stopReason);
 		case "error":
@@ -263,13 +259,12 @@ function onSubmit(state: TurnState, input: Extract<TurnCommand, { type: "submit"
 	};
 }
 
-function onMessageStart(state: TurnState, model: string): TurnState {
+function onMessageStart(state: TurnState): TurnState {
 	if (state.phase !== "requesting") return state;
 	// Open a fresh assistant message for this iteration's output.
 	return {
 		...state,
 		phase: "streaming",
-		modelId: model,
 		messages: [...state.messages, { role: "assistant", content: [] }],
 	};
 }
@@ -277,16 +272,6 @@ function onMessageStart(state: TurnState, model: string): TurnState {
 function onTextDelta(state: TurnState, text: string): TurnState {
 	if (state.phase !== "streaming") return state;
 	return { ...state, messages: appendAssistantText(state.messages, text) };
-}
-
-function onUsage(state: TurnState, usage: TokenUsage): TurnState {
-	return {
-		...state,
-		usage: {
-			inputTokens: state.usage.inputTokens + usage.inputTokens,
-			outputTokens: state.usage.outputTokens + usage.outputTokens,
-		},
-	};
 }
 
 function onToolCallComplete(

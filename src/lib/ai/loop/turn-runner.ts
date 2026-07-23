@@ -26,12 +26,11 @@ import type { ThreatModel } from "@/types/threat-model";
 import { budgetExhaustion, type TurnLimits } from "./limits";
 import type { ToolOutcome, ToolRegistry } from "./tool-runtime";
 import {
-	type CommitInput,
-	type CommitOutcome,
+	commitToolOutcome,
 	createTurnUndoLedger,
-	commitToolOutcome as defaultCommit,
-	undoTurn as defaultUndoTurn,
-	type TurnUndoLedger,
+	turnUndoAvailability,
+	type UndoAvailability,
+	undoTurn as undoTurnTransaction,
 } from "./transaction";
 import {
 	createIdleTurnState,
@@ -54,7 +53,12 @@ export interface TurnConfig {
 	maxOutputTokens: number;
 }
 
-/** The effectful collaborators, all injectable so the runner is testable without a network. */
+/**
+ * The effectful collaborators. `stream` and `getDocument` differ between the
+ * store (real) and tests (a scripted fake), so they are injected; commit, undo,
+ * and the clock are the real implementations everywhere and are imported
+ * directly rather than threaded as seams.
+ */
 export interface TurnRunnerDeps {
 	/** Open a provider stream, dispatching each event, resolving at the terminal event. */
 	stream: (
@@ -64,12 +68,6 @@ export interface TurnRunnerDeps {
 	) => Promise<void>;
 	/** Read the live document immediately before a call runs. */
 	getDocument: () => ThreatModel | null;
-	/** Defaults to the real transaction commit. */
-	commit?: (outcome: ToolOutcome, input: CommitInput) => CommitOutcome;
-	/** Defaults to the real single-entry undo. */
-	undo?: (ledger: TurnUndoLedger) => boolean;
-	/** Defaults to `Date.now`. */
-	now?: () => number;
 	/** Notified after every state change so a store can mirror it. */
 	onState?: (state: TurnState) => void;
 }
@@ -81,6 +79,8 @@ function isTurnRetriable(code: ProtocolError["code"]): boolean {
 
 export interface TurnRunner {
 	getState(): TurnState;
+	/** Whether the settled turn's single undo entry is still at the top of the history stack. */
+	undoAvailability(): UndoAvailability;
 	/** Each command returns the drive promise, which resolves at the next approval pause or settlement. */
 	submit(config: TurnConfig): Promise<void>;
 	approveCall(id: string): Promise<void>;
@@ -92,9 +92,9 @@ export interface TurnRunner {
 
 /** Create a runner bound to one live turn. */
 export function createTurnRunner(deps: TurnRunnerDeps): TurnRunner {
-	const commit = deps.commit ?? defaultCommit;
-	const undoTurn = deps.undo ?? defaultUndoTurn;
-	const now = deps.now ?? (() => Date.now());
+	const commit = commitToolOutcome;
+	const undoTurn = undoTurnTransaction;
+	const now = () => Date.now();
 
 	let state = createIdleTurnState();
 	let config: TurnConfig | null = null;
@@ -233,6 +233,7 @@ export function createTurnRunner(deps: TurnRunnerDeps): TurnRunner {
 
 	return {
 		getState: () => state,
+		undoAvailability: () => turnUndoAvailability(ledger),
 
 		submit(cfg) {
 			if (state.phase !== "idle" && state.phase !== "settled") return Promise.resolve();

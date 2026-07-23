@@ -17,6 +17,7 @@ import { create } from "zustand";
 import { getChatTransport } from "@/lib/adapters/get-chat-transport";
 import { DEFAULT_TURN_LIMITS } from "@/lib/ai/loop/limits";
 import { createToolRegistry } from "@/lib/ai/loop/tool-runtime";
+import type { UndoAvailability } from "@/lib/ai/loop/transaction";
 import type { TurnState } from "@/lib/ai/loop/turn-machine";
 import { createTurnRunner, type TurnRunner } from "@/lib/ai/loop/turn-runner";
 import { streamConversation } from "@/lib/ai/protocol/client";
@@ -41,7 +42,17 @@ interface AiTurnState {
 	/** Cancel the live turn. Idempotent when idle or already settled. */
 	cancelActiveTurn: () => void;
 	undoTurn: () => void;
-	/** Clear the live turn and its in-memory history, e.g. when starting a new chat. */
+	/**
+	 * Whether the settled turn's single undo entry is still undoable, already
+	 * undone, or superseded by a later edit. Read at render time; the panel
+	 * subscribes to history depth to re-evaluate it as the user edits.
+	 */
+	undoAvailability: () => UndoAvailability;
+	/**
+	 * Clear the live turn and its in-memory history. Called by the panel when the
+	 * active document changes (so one document's conversation never bleeds into
+	 * another) and when the user starts or switches a chat session.
+	 */
 	resetTurn: () => void;
 }
 
@@ -130,6 +141,8 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 	undoTurn: () => {
 		activeRunner?.undo();
 	},
+
+	undoAvailability: () => activeRunner?.undoAvailability() ?? "already_undone",
 
 	resetTurn: () => {
 		if (isLive(activeRunner?.getState().phase)) activeRunner?.cancel();

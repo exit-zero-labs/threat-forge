@@ -6,7 +6,6 @@ import {
 	createToolRegistry,
 	defineExecutableTool,
 	type ToolExecutionContext,
-	type ToolOutcome,
 } from "./tool-runtime";
 
 const emptyModel: ThreatModel = {
@@ -133,10 +132,3 @@ describe("canonicalJson", () => {
 		expect(canonicalJson([{ b: 1, a: 2 }, "x"])).toBe('[{"a":2,"b":1},"x"]');
 	});
 });
-
-// Compile-time proof that run cannot execute a raw value: `execute` only ever
-// sees the validated, typed input, never `unknown`.
-function _typedExecuteOnly(): ToolOutcome {
-	return { status: "error", result: "unused" };
-}
-void _typedExecuteOnly;

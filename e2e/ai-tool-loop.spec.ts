@@ -126,6 +126,8 @@ test.describe("AI tool loop", () => {
 		await page.getByRole("button", { name: "Deny" }).click();
 
 		await expect(page.getByText("Declined", { exact: true })).toBeVisible();
+		// The turn continues after the denial: the model's follow-up renders.
+		await expect(page.getByText("Understood.")).toBeVisible();
 		await expect(nodes(page)).toHaveCount(0);
 	});
 

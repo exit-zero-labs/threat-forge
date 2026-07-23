@@ -32,6 +32,7 @@ import { useAiTurnStore } from "@/stores/ai-turn-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
+import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
@@ -57,12 +58,25 @@ export function AiChatTab() {
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
 	const migrateSessionKey = useChatStore((s) => s.migrateSessionKey);
 	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
+	const resetTurn = useAiTurnStore((s) => s.resetTurn);
 	const prevFilePathRef = useRef<string | null | undefined>(undefined);
 
 	// Check API key on mount
 	useEffect(() => {
 		void checkApiKey();
 	}, [checkApiKey]);
+
+	// The tool-loop turn is process-global and holds its conversation in memory
+	// (durable, per-document retention is #63). Reset it whenever the active
+	// document changes — and on mount — so the prior document's turn is never
+	// shown here and its transcript is never sent as `baseMessages` to the new
+	// document's provider request. Keyed on `activeDocumentId` only, so a Save As
+	// (a `filePath` change on the same document) does not discard a live turn.
+	// This runs entirely in the panel; `document-registry.ts` is unchanged.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on document switch, not on resetTurn identity
+	useEffect(() => {
+		resetTurn();
+	}, [activeDocumentId]);
 
 	// Load sessions when the active document changes; migrate on Save As. `activeDocumentId` is
 	// a dependency so a switch between two unsaved documents (both `filePath === null`) still
@@ -175,10 +189,27 @@ function SessionBar() {
 	const switchSession = useChatStore((s) => s.switchSession);
 	const deleteSession = useChatStore((s) => s.deleteSession);
 	const isStreaming = useChatStore((s) => s.isStreaming);
+	const resetTurn = useAiTurnStore((s) => s.resetTurn);
 	const [dropdownOpen, setDropdownOpen] = useState(false);
 
 	const activeSession = sessions.find((s) => s.id === activeSessionId);
 	const dropdownRef = useRef<HTMLDivElement>(null);
+
+	// A session change is a conversation-context change, so it clears the live
+	// turn: "New chat" starts fresh, and switching sessions shows that session's
+	// transcript instead of the previous turn.
+	const startNewSession = () => {
+		resetTurn();
+		newSession();
+	};
+	const goToSession = (id: string) => {
+		resetTurn();
+		switchSession(id);
+	};
+	const removeSession = (id: string) => {
+		resetTurn();
+		deleteSession(id);
+	};
 
 	// Close dropdown on click outside
 	useEffect(() => {
@@ -196,7 +227,7 @@ function SessionBar() {
 		<div className="flex items-center gap-1" ref={dropdownRef}>
 			<button
 				type="button"
-				onClick={newSession}
+				onClick={startNewSession}
 				disabled={isStreaming}
 				className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
 				title="New chat session"
@@ -221,7 +252,7 @@ function SessionBar() {
 								key={session.id}
 								type="button"
 								onClick={() => {
-									switchSession(session.id);
+									goToSession(session.id);
 									setDropdownOpen(false);
 								}}
 								className={cn(
@@ -239,7 +270,7 @@ function SessionBar() {
 			{activeSession && sessions.length > 0 && (
 				<button
 					type="button"
-					onClick={() => deleteSession(activeSession.id)}
+					onClick={() => removeSession(activeSession.id)}
 					disabled={isStreaming}
 					className="shrink-0 rounded p-1 text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50"
 					title="Delete this session"
@@ -298,6 +329,13 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	const approveBatch = useAiTurnStore((s) => s.approveBatch);
 	const denyCall = useAiTurnStore((s) => s.denyCall);
 	const undoTurn = useAiTurnStore((s) => s.undoTurn);
+	const undoAvailability = useAiTurnStore((s) => s.undoAvailability);
+	// Undo availability lives in the runner's ledger and depends on the history
+	// stack, which changes when the user edits or presses Cmd+Z after the turn
+	// without touching the turn. Selecting the stack depth re-renders this panel on
+	// those edits so the button's disabled state stays accurate; the depth itself
+	// is not otherwise needed, only its change.
+	const historyStackDepth = useHistoryStore((s) => s.past.length);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	// A tool-enabled turn reviews mutations through the approval ledger, so fenced
@@ -305,7 +343,12 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	const fencedEnabled = legacyFencedEnabledForTurn(turn.toolSet.list().length);
 	const isStreaming = turn.phase === "requesting" || turn.phase === "streaming";
 	const bubbles = turn.messages.filter(hasVisibleText);
-	const canUndo = turn.phase === "settled" && turn.calls.some((c) => c.status === "succeeded");
+	const hasApplied = turn.phase === "settled" && turn.calls.some((c) => c.status === "succeeded");
+	// Reading the stack depth above subscribes this panel so the button's disabled
+	// state updates on a post-turn edit; the value itself is only a change signal,
+	// and `undoAvailability()` reads the live stack when it recomputes below.
+	void historyStackDepth;
+	const availability = hasApplied ? undoAvailability() : "already_undone";
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the latest on any turn change
 	useEffect(() => {
@@ -353,11 +396,19 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 				</div>
 			)}
 
-			{canUndo && (
+			{hasApplied && (
 				<button
 					type="button"
 					onClick={undoTurn}
-					className="flex items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+					disabled={availability !== "undoable"}
+					title={
+						availability === "undoable"
+							? "Undo every change this turn applied"
+							: availability === "already_undone"
+								? "This turn has already been undone"
+								: "A later edit has superseded this turn, so it can no longer be undone in one step"
+					}
+					className="flex items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground"
 				>
 					<Undo2 className="h-2.5 w-2.5" /> Undo this turn
 				</button>

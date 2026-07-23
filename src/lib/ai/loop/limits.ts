@@ -25,7 +25,12 @@ export interface TurnLimits {
 	readonly maxToolCallsPerIteration: number;
 	/** Turn-wide retries, on top of the transport's per-request retry. */
 	readonly maxRetriesPerTurn: number;
-	/** Wall-clock ceiling from the turn's start, so a stalled turn still ends. */
+	/**
+	 * Wall-clock ceiling on cumulative turn time, checked at each iteration
+	 * boundary — so a turn that keeps iterating past it stops. A mid-stream stall
+	 * inside one request is bounded instead by the transport's read-gap timeout
+	 * (`browser-chat-adapter.ts` / the desktop relay), not by this field.
+	 */
 	readonly turnDeadlineMs: number;
 	/** Output tokens reserved from the model's window when budgeting history. */
 	readonly reserveOutputTokens: number;
@@ -50,8 +55,9 @@ export const DEFAULT_TURN_LIMITS: TurnLimits = Object.freeze({
 	// One turn-wide retry budget on top of the transport's per-request retry, so
 	// an eight-iteration turn cannot multiply into eight retry storms.
 	maxRetriesPerTurn: 3,
-	// Five minutes: long enough for a slow multi-iteration turn, short enough that
-	// a wedged turn cannot pend forever.
+	// Five minutes of cumulative turn time, evaluated at each iteration boundary:
+	// long enough for a slow multi-iteration turn, short enough that a turn cannot
+	// keep iterating indefinitely. Mid-request stalls are the transport's timeout.
 	turnDeadlineMs: 300_000,
 	// Matches the `max_tokens: 4096` the browser adapter already sends, so history
 	// budgeting reserves exactly what the answer may consume.
