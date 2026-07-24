@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ProtocolException } from "@/lib/ai/protocol/errors";
+import { LATEST_RELEASE_ENDPOINT } from "@/lib/github-releases";
 import webHeadersSource from "../../../public/_headers?raw";
 import rustRelaySource from "../../../src-tauri/src/ai/providers.rs?raw";
 import tauriConfigSource from "../../../src-tauri/tauri.conf.json?raw";
@@ -191,5 +192,21 @@ describe("the endpoint table as a trust boundary", () => {
 		expect(() => providerEndpoint("constructor")).toThrow(ProtocolException);
 		// @ts-expect-error as above.
 		expect(() => providerEndpoint("toString")).toThrow(ProtocolException);
+	});
+});
+
+describe("the release lookup stays same-origin under the web CSP", () => {
+	// Issue #172: the downloads page reads the latest release through the app's
+	// own Cloudflare Worker route, not GitHub directly, so the web CSP needs no
+	// `api.github.com` exception — that origin is a write-capable multi-tenant API
+	// and a poor thing to leave in the key-exfiltration backstop.
+	it("points the release lookup at the app origin, not a third-party API", () => {
+		expect(LATEST_RELEASE_ENDPOINT.startsWith("/")).toBe(true);
+		expect(LATEST_RELEASE_ENDPOINT).not.toContain("://");
+		expect(LATEST_RELEASE_ENDPOINT).not.toContain("api.github.com");
+	});
+
+	it("keeps api.github.com out of the web CSP connect-src", () => {
+		expect(connectSrcOrigins(webCsp())).not.toContain("https://api.github.com");
 	});
 });

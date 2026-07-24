@@ -51,3 +51,6 @@ screenshots/
 # `npm run ci:local` for anyone running a coding agent. Ignoring them also stops
 # a worktree being committed by accident.
 .claude/worktrees/
+
+# Wrangler startup profiling output (wrangler check startup)
+worker-startup.cpuprofile

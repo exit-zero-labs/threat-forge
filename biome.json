@@ -7,7 +7,15 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["src/**", "scripts/*.mjs", "*.ts", "*.json"]
+		"includes": [
+			"src/**",
+			"worker/index.ts",
+			"worker/latest-release.ts",
+			"worker/**/*.test.ts",
+			"scripts/*.mjs",
+			"*.ts",
+			"*.json"
+		]
 	},
 	"formatter": {
 		"enabled": true,

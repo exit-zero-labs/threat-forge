@@ -1,4 +1,12 @@
-const RELEASES_URL = "https://api.github.com/repos/exit-zero-labs/threat-forge/releases/latest";
+import { parseGithubRelease } from "./github-release-schema";
+
+/**
+ * Same-origin release endpoint served by the site's Cloudflare Worker
+ * (`worker/latest-release.ts`). The lookup goes through the app origin so it
+ * needs no `connect-src` exception — `api.github.com` stays out of the web CSP,
+ * where it would be an exfiltration drop for the BYOK key. See `public/_headers`.
+ */
+export const LATEST_RELEASE_ENDPOINT = "/api/latest-release";
 
 const CACHE_KEY = "tf-latest-release";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -73,7 +81,8 @@ interface CachedRelease {
 }
 
 /**
- * Fetch the latest release from GitHub. Caches in sessionStorage for 5 minutes.
+ * Fetch the latest release from the same-origin proxy route. Caches in
+ * sessionStorage for 5 minutes.
  */
 export async function fetchLatestRelease(): Promise<LatestRelease> {
 	// Check cache — wrap in try/catch in case stored JSON is malformed
@@ -89,17 +98,22 @@ export async function fetchLatestRelease(): Promise<LatestRelease> {
 		}
 	}
 
-	const response = await fetch(RELEASES_URL);
+	const response = await fetch(LATEST_RELEASE_ENDPOINT);
 	if (!response.ok) {
-		throw new Error(`GitHub API error: ${response.status}`);
+		throw new Error(`Release lookup failed: ${response.status}`);
 	}
 
-	const json = await response.json();
+	// The Worker already validated the upstream JSON; re-validate the response
+	// here so a malformed body fails closed instead of rendering "unknown".
+	const parsed = parseGithubRelease(await response.json());
+	if (!parsed) {
+		throw new Error("Release lookup returned malformed data");
+	}
 	const release: LatestRelease = {
-		version: json.tag_name ?? json.name ?? "unknown",
-		publishedAt: json.published_at ?? "",
-		releaseUrl: json.html_url ?? "",
-		assets: categorizeAssets(json.assets ?? []),
+		version: parsed.tag_name,
+		publishedAt: parsed.published_at ?? "",
+		releaseUrl: parsed.html_url,
+		assets: categorizeAssets(parsed.assets),
 	};
 
 	// Cache result
