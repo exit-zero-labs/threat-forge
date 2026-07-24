@@ -2,15 +2,30 @@ import { Handle, Position } from "@xyflow/react";
 import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 
 /**
- * Base handle style: small dot, hidden by default, smooth fade transition.
- * Visible on parent node hover or during connection drag (CSS handles hover,
- * `isConnecting` prop handles drag state).
+ * Base handle style: small dot, smooth fade transition. Opacity is deliberately
+ * excluded here — it is applied per-render below so the idle and connecting
+ * states never emit conflicting same-specificity utilities on the same element.
  *
- * The larger pointer-events hitbox (12×12) is maintained even when the visible
- * dot is small, ensuring easy click targeting.
+ * Pointer events remain enabled while the dot is transparent, so the handle
+ * stays available as a connection target in its idle state.
  */
 const HANDLE_STYLE =
-	"!w-1.5 !h-1.5 !border-none !bg-muted-foreground !opacity-0 transition-opacity duration-150 !pointer-events-auto";
+	"!w-1.5 !h-1.5 !border-none !bg-muted-foreground !pointer-events-auto transition-opacity duration-150";
+
+/**
+ * Idle visibility: hidden until the ancestor `.group` node wrapper is hovered.
+ * Plain (non-`!important`) utilities — `group-hover:opacity-100` naturally
+ * outranks a bare `opacity-0` in specificity (descendant + `:hover` vs. a single
+ * class), so no `!important` is needed to reveal handles on hover. See #134.
+ */
+const HANDLE_IDLE_CLASS = "opacity-0 group-hover:opacity-100";
+
+/**
+ * Connecting visibility: forces all handles visible during a connection drag.
+ * Applied instead of, never alongside, `HANDLE_IDLE_CLASS` so the two never
+ * compete for the same element at the same specificity.
+ */
+const HANDLE_CONNECTING_CLASS = "opacity-100";
 
 /**
  * Shared bidirectional handles for all DFD element nodes.
@@ -18,13 +33,12 @@ const HANDLE_STYLE =
  * Each point has both a source and target handle for bidirectional connections.
  *
  * Handles are invisible by default and appear on:
- * 1. Parent node hover (via CSS: `.react-flow__node:hover .react-flow__handle`)
+ * 1. Parent node hover (via `group-hover:opacity-100`, requires a `.group` ancestor)
  * 2. During connection drag (via `isConnecting` store state)
  */
 export function NodeHandles() {
 	const isConnecting = useCanvasInstanceStore((s) => s.isConnecting);
-	const visibleClass = isConnecting ? "!opacity-100" : "";
-	const cls = `${HANDLE_STYLE} ${visibleClass}`;
+	const cls = `${HANDLE_STYLE} ${isConnecting ? HANDLE_CONNECTING_CLASS : HANDLE_IDLE_CLASS}`;
 
 	return (
 		<>
