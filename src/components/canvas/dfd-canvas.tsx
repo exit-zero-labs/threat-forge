@@ -3,6 +3,7 @@ import {
 	BackgroundVariant,
 	type Connection,
 	Controls,
+	type HandleType,
 	MiniMap,
 	type OnConnectStart,
 	type OnNodeDrag,
@@ -171,11 +172,13 @@ export function DfdCanvas() {
 	const onConnectStart: OnConnectStart = useCallback((_event, params) => {
 		connectingNodeId.current = params.nodeId ?? null;
 		useCanvasInstanceStore.getState().setIsConnecting(true);
+		useCanvasInstanceStore.getState().setConnectingHandleType(params.handleType ?? null);
 	}, []);
 
 	const onConnectEnd = useCallback(() => {
 		connectingNodeId.current = null;
 		useCanvasInstanceStore.getState().setIsConnecting(false);
+		useCanvasInstanceStore.getState().setConnectingHandleType(null);
 	}, []);
 
 	const onReconnect = useCallback(
@@ -186,15 +189,17 @@ export function DfdCanvas() {
 	);
 
 	const onReconnectStart = useCallback(
-		(_event: React.MouseEvent, _edge: DfdEdge, _handleType: string) => {
+		(_event: React.MouseEvent, _edge: DfdEdge, handleType: HandleType) => {
 			useCanvasInstanceStore.getState().setIsConnecting(true);
+			useCanvasInstanceStore.getState().setConnectingHandleType(handleType);
 		},
 		[],
 	);
 
 	const onReconnectEnd = useCallback(
-		(_event: MouseEvent | TouchEvent, _edge: DfdEdge, _handleType: string) => {
+		(_event: MouseEvent | TouchEvent, _edge: DfdEdge, _handleType: HandleType) => {
 			useCanvasInstanceStore.getState().setIsConnecting(false);
+			useCanvasInstanceStore.getState().setConnectingHandleType(null);
 		},
 		[],
 	);

@@ -13,6 +13,7 @@ describe("canvas-instance-store", () => {
 			draggedIcon: null,
 			draggedName: null,
 			isConnecting: false,
+			connectingHandleType: null,
 			altDragActive: false,
 		});
 	});
@@ -102,6 +103,19 @@ describe("canvas-instance-store", () => {
 
 			useCanvasInstanceStore.getState().setIsConnecting(false);
 			expect(useCanvasInstanceStore.getState().isConnecting).toBe(false);
+		});
+
+		it("tracks which handle type a connection drag started from, defaulting to null", () => {
+			expect(useCanvasInstanceStore.getState().connectingHandleType).toBeNull();
+
+			useCanvasInstanceStore.getState().setConnectingHandleType("source");
+			expect(useCanvasInstanceStore.getState().connectingHandleType).toBe("source");
+
+			useCanvasInstanceStore.getState().setConnectingHandleType("target");
+			expect(useCanvasInstanceStore.getState().connectingHandleType).toBe("target");
+
+			useCanvasInstanceStore.getState().setConnectingHandleType(null);
+			expect(useCanvasInstanceStore.getState().connectingHandleType).toBeNull();
 		});
 
 		it("tracks Alt+drag so the canvas store can hand history to the Alt+drag handler", () => {
