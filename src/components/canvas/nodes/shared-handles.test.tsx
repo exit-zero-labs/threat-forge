@@ -37,7 +37,7 @@ function classTokens(id: string): string[] {
 }
 
 afterEach(() => {
-	useCanvasInstanceStore.setState({ isConnecting: false });
+	useCanvasInstanceStore.setState({ isConnecting: false, connectingHandleType: null });
 });
 
 describe("NodeHandles", () => {
@@ -101,6 +101,62 @@ describe("NodeHandles", () => {
 		]) {
 			expect(idleClasses).toContain(shared);
 			expect(connectingClasses).toContain(shared);
+		}
+	});
+
+	// #213: every connection point renders an overlapping target/source pair. While a drag is
+	// in progress, the handle sharing the drag-origin's type must stop receiving pointer
+	// events so the browser's `elementFromPoint` hit test resolves to the opposite-type
+	// handle underneath instead of whichever one happens to paint on top.
+	it("suppresses pointer events only on source handles while connecting from a source handle", () => {
+		render(<NodeHandles />);
+
+		act(() => {
+			useCanvasInstanceStore.setState({ isConnecting: true, connectingHandleType: "source" });
+		});
+
+		for (const id of HANDLE_IDS) {
+			const classes = classTokens(id);
+			if (id.endsWith("-source")) {
+				expect(classes).toContain("!pointer-events-none");
+				expect(classes).not.toContain("!pointer-events-auto");
+			} else {
+				expect(classes).toContain("!pointer-events-auto");
+				expect(classes).not.toContain("!pointer-events-none");
+			}
+		}
+	});
+
+	it("suppresses pointer events only on target handles while connecting from a target handle", () => {
+		render(<NodeHandles />);
+
+		act(() => {
+			useCanvasInstanceStore.setState({ isConnecting: true, connectingHandleType: "target" });
+		});
+
+		for (const id of HANDLE_IDS) {
+			const classes = classTokens(id);
+			if (id.endsWith("-target")) {
+				expect(classes).toContain("!pointer-events-none");
+				expect(classes).not.toContain("!pointer-events-auto");
+			} else {
+				expect(classes).toContain("!pointer-events-auto");
+				expect(classes).not.toContain("!pointer-events-none");
+			}
+		}
+	});
+
+	it("keeps every handle pointer-interactive when connecting without a known handle type", () => {
+		render(<NodeHandles />);
+
+		act(() => {
+			useCanvasInstanceStore.setState({ isConnecting: true, connectingHandleType: null });
+		});
+
+		for (const id of HANDLE_IDS) {
+			const classes = classTokens(id);
+			expect(classes).toContain("!pointer-events-auto");
+			expect(classes).not.toContain("!pointer-events-none");
 		}
 	});
 });
