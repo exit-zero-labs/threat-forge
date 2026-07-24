@@ -24,7 +24,7 @@ export interface ModelCapabilities {
 }
 
 export interface AiModelOption {
-	/** Model ID sent to the provider API (e.g., "claude-sonnet-4-20250514") */
+	/** Model ID sent to the provider API (e.g., "claude-sonnet-5") */
 	id: string;
 	/** Human-readable label for the dropdown */
 	label: string;
@@ -37,55 +37,91 @@ export interface AiModelOption {
 }
 
 /**
- * Every curated model streams and calls tools today; the differences are the
- * context window and, for the smaller models, no published guarantee of parallel
- * tool calls. Windows follow each provider's documented input limits.
+ * Every curated model streams, calls tools, and supports parallel tool calls
+ * today, so only the context window differs between them.
+ *
+ * Anthropic's Messages API documents the context window as the whole
+ * conversation budget — input plus the model's own response — matching how
+ * `maxInputTokens` is spent in `budgetMessages` (input is budgeted against it,
+ * then `reserveOutputTokens` is held back from the same figure). Opus 4.8 and
+ * Sonnet 5 publish a 1M-token window; Haiku 4.5 publishes 200k. Tool use
+ * (including `tool_choice` and parallel tool calls) and streaming are
+ * undifferentiated Messages API features with no per-model carve-out for any
+ * of the three.
+ *
+ * Evidence, retrieved 2026-07-24 while implementing issue #195:
+ * - Models overview (IDs, context windows, descriptions):
+ *   https://platform.claude.com/docs/en/about-claude/models/overview
+ * - Context-window behavior (1M is the default and needs no beta header):
+ *   https://platform.claude.com/docs/en/build-with-claude/context-windows
+ * - Tool use / parallel tool calls (`tool_choice` modes and
+ *   `disable_parallel_tool_use` apply the same way across Opus 4.8, Sonnet 5,
+ *   and Haiku 4.5, with no exclusion for any of them):
+ *   https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview
+ *   https://platform.claude.com/docs/en/agents-and-tools/tool-use/parallel-tool-use
  */
-const ANTHROPIC_CONTEXT_WINDOW = 200_000;
-const OPENAI_CONTEXT_WINDOW = 128_000;
+const ANTHROPIC_OPUS_SONNET_CONTEXT_WINDOW = 1_000_000;
+const ANTHROPIC_HAIKU_CONTEXT_WINDOW = 200_000;
+
+/**
+ * GPT-5.6 Sol, Terra, and Luna each publish the same 1,050,000-token context
+ * window and 128,000-token max output, and each model page lists "Streaming:
+ * Supported" and "Function calling: Supported" with no per-model exception.
+ * OpenAI's function-calling guide documents parallel tool calls as the default
+ * for any function-calling model (`parallel_tool_calls` defaults to true and
+ * disables the behavior when set to false); the one documented exception is an
+ * older `gpt-4.1-nano` snapshot, not any GPT-5.6 model.
+ *
+ * Evidence, retrieved 2026-07-24 while implementing issue #195:
+ * https://developers.openai.com/api/docs/models/gpt-5.6-sol
+ * https://developers.openai.com/api/docs/models/gpt-5.6-terra
+ * https://developers.openai.com/api/docs/models/gpt-5.6-luna
+ * https://developers.openai.com/api/docs/guides/function-calling
+ */
+const OPENAI_CONTEXT_WINDOW = 1_050_000;
 
 export const AI_MODELS: AiModelOption[] = [
 	{
-		id: "claude-opus-4-20250514",
-		label: "Claude Opus 4",
+		id: "claude-opus-4-8",
+		label: "Claude Opus 4.8",
 		provider: "anthropic",
-		description: "Most capable, best for complex analysis",
+		description: "Most capable, best for complex agentic work",
 		capabilities: {
 			toolCalling: true,
 			parallelToolCalls: true,
 			streaming: true,
-			maxInputTokens: ANTHROPIC_CONTEXT_WINDOW,
+			maxInputTokens: ANTHROPIC_OPUS_SONNET_CONTEXT_WINDOW,
 		},
 	},
 	{
-		id: "claude-sonnet-4-20250514",
-		label: "Claude Sonnet 4",
+		id: "claude-sonnet-5",
+		label: "Claude Sonnet 5",
 		provider: "anthropic",
 		description: "Balanced speed and capability",
 		capabilities: {
 			toolCalling: true,
 			parallelToolCalls: true,
 			streaming: true,
-			maxInputTokens: ANTHROPIC_CONTEXT_WINDOW,
+			maxInputTokens: ANTHROPIC_OPUS_SONNET_CONTEXT_WINDOW,
 		},
 	},
 	{
-		id: "claude-haiku-3-5-20241022",
-		label: "Claude 3.5 Haiku",
+		id: "claude-haiku-4-5-20251001",
+		label: "Claude Haiku 4.5",
 		provider: "anthropic",
-		description: "Fastest, good for quick tasks",
+		description: "Fastest, near-frontier intelligence for quick tasks",
 		capabilities: {
 			toolCalling: true,
 			parallelToolCalls: true,
 			streaming: true,
-			maxInputTokens: ANTHROPIC_CONTEXT_WINDOW,
+			maxInputTokens: ANTHROPIC_HAIKU_CONTEXT_WINDOW,
 		},
 	},
 	{
-		id: "gpt-4o",
-		label: "GPT-4o",
+		id: "gpt-5.6-sol",
+		label: "GPT-5.6 Sol",
 		provider: "openai",
-		description: "Most capable OpenAI model",
+		description: "Frontier model for complex professional work",
 		capabilities: {
 			toolCalling: true,
 			parallelToolCalls: true,
@@ -94,10 +130,22 @@ export const AI_MODELS: AiModelOption[] = [
 		},
 	},
 	{
-		id: "gpt-4o-mini",
-		label: "GPT-4o Mini",
+		id: "gpt-5.6-terra",
+		label: "GPT-5.6 Terra",
 		provider: "openai",
-		description: "Fast and affordable",
+		description: "Balances intelligence and cost",
+		capabilities: {
+			toolCalling: true,
+			parallelToolCalls: true,
+			streaming: true,
+			maxInputTokens: OPENAI_CONTEXT_WINDOW,
+		},
+	},
+	{
+		id: "gpt-5.6-luna",
+		label: "GPT-5.6 Luna",
+		provider: "openai",
+		description: "Optimized for cost-sensitive, high-volume workloads",
 		capabilities: {
 			toolCalling: true,
 			parallelToolCalls: true,
@@ -107,8 +155,12 @@ export const AI_MODELS: AiModelOption[] = [
 	},
 ];
 
-export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
-export const DEFAULT_OPENAI_MODEL = "gpt-4o";
+/**
+ * Defaults for new and reset settings (owner-selected, issue #195). Defined
+ * once here and reused by `DEFAULT_USER_SETTINGS` so the two never drift.
+ */
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5";
+export const DEFAULT_OPENAI_MODEL = "gpt-5.6-sol";
 
 /** Get models available for a specific provider. */
 export function getModelsForProvider(provider: AiProvider): AiModelOption[] {

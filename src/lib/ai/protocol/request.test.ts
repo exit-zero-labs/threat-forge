@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CapabilityResolution } from "@/lib/ai-models";
+import { type CapabilityResolution, DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
 import { ProtocolException } from "./errors";
 import { type CapabilityResolver, preflightRequest } from "./request";
 import type { ToolDescriptor } from "./tools";
@@ -7,7 +7,7 @@ import type { ToolDescriptor } from "./tools";
 const oneTool: ToolDescriptor[] = [{ name: "add_element", description: "Add an element." }];
 
 /** A curated, tool-capable Anthropic model id. */
-const KNOWN_MODEL = "claude-sonnet-4-20250514";
+const KNOWN_MODEL = DEFAULT_ANTHROPIC_MODEL;
 
 describe("preflightRequest", () => {
 	afterEach(() => {

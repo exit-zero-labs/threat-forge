@@ -65,6 +65,7 @@ import {
 	OPENAI_TOOL_STREAM,
 	OPENAI_TRUNCATED_STREAM,
 } from "@/lib/ai/providers/test-fixtures/openai-fixtures";
+import { AI_MODELS, DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/ai-models";
 import { type ConversationRequest, streamConversation } from "./client";
 import {
 	createRetryingTransport,
@@ -106,8 +107,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: relay.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: relay.listen }));
 
 const KNOWN_MODEL: Record<AiProvider, string> = {
-	anthropic: "claude-sonnet-4-20250514",
-	openai: "gpt-4o",
+	anthropic: DEFAULT_ANTHROPIC_MODEL,
+	openai: DEFAULT_OPENAI_MODEL,
 };
 
 const ANTHROPIC_KEY = "sk-ant-contract-test-key";
@@ -256,6 +257,57 @@ describe("provider and transport neutrality", () => {
 		expect(await runTauri("anthropic", ANTHROPIC_UNKNOWN_EVENT_STREAM)).toEqual(
 			EXPECTED_UNKNOWN_EVENT_EVENTS,
 		);
+	});
+});
+
+/**
+ * Every catalog id reaches the wire unchanged, on both platforms.
+ *
+ * `buildAnthropicRequestBody`/`buildOpenAiRequestBody` copy `modelId` onto the
+ * wire `model` field (issue #61 step 6), and neither transport inspects that
+ * field before sending it — the browser transport `JSON.stringify`s
+ * `request.body` straight into `fetch`, and the desktop transport hands it to
+ * `start_ai_stream` for the Rust relay to forward untouched. Driving the real
+ * client and both real transports (fixtures only, no network) is what proves
+ * that composed chain for the six ids ThreatForge actually offers, rather than
+ * re-asserting the builders' one-line copy in isolation.
+ */
+describe("catalog model ids reach the wire unchanged on both transports", () => {
+	it.each(AI_MODELS)("sends $provider model $id verbatim", async (model) => {
+		const textStream = model.provider === "anthropic" ? ANTHROPIC_TEXT_STREAM : OPENAI_TEXT_STREAM;
+		const conversationRequest: ConversationRequest = {
+			provider: model.provider,
+			modelId: model.id,
+			system: "system prompt",
+			messages: userTurn,
+			tools: [],
+			maxOutputTokens: 1024,
+		};
+
+		vi.mocked(fetch).mockResolvedValue(fakeStream(textStream));
+		await streamConversation(conversationRequest, new BrowserChatTransport(), {
+			onEvent: () => undefined,
+		});
+		const browserCall = vi.mocked(fetch).mock.calls[0];
+		if (!browserCall) throw new Error("expected the browser transport to call fetch");
+		const browserBody = browserCall[1]?.body;
+		if (typeof browserBody !== "string") throw new Error("expected a JSON browser request body");
+		const parsedBrowserBody: unknown = JSON.parse(browserBody);
+		expect(parsedBrowserBody).toMatchObject({ model: model.id });
+
+		const open = streamConversation(conversationRequest, new TauriChatTransport(), {
+			onEvent: () => undefined,
+		});
+		const streamId = await nthStreamId(1);
+		replayTauriFrames(relay, streamId, textStream);
+		await open;
+		const startCall = relay.invoke.mock.calls.find((call) => call[0] === "start_ai_stream");
+		if (!startCall) throw new Error("expected the desktop transport to invoke start_ai_stream");
+		const desktopArgs = startCall[1];
+		if (typeof desktopArgs !== "object" || desktopArgs === null || !("body" in desktopArgs)) {
+			throw new Error("expected a desktop request body");
+		}
+		expect(desktopArgs.body).toMatchObject({ model: model.id });
 	});
 });
 

@@ -18,6 +18,7 @@ import type {
 	TransportCallbacks,
 } from "@/lib/adapters/chat-adapter";
 import { TauriChatTransport } from "@/lib/adapters/tauri-chat-adapter";
+import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
 import { type ConversationRequest, streamConversation } from "./client";
 import { ProtocolException } from "./errors";
 import type { StreamEvent } from "./events";
@@ -53,7 +54,7 @@ const relay = vi.hoisted(() => {
 vi.mock("@tauri-apps/api/core", () => ({ invoke: relay.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: relay.listen }));
 
-const KNOWN_MODEL = "claude-sonnet-4-20250514";
+const KNOWN_MODEL = DEFAULT_ANTHROPIC_MODEL;
 
 const userTurn: ProtocolMessage[] = [{ role: "user", content: [{ type: "text", text: "hi" }] }];
 

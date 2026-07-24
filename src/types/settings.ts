@@ -5,6 +5,8 @@
  * File settings are stored alongside the threat model.
  */
 
+import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/ai-models";
+
 /** Font size preference for the application UI */
 export type FontSize = "small" | "default" | "large";
 
@@ -67,8 +69,8 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
 	authorName: "",
 	authorEmail: "",
 	fontSize: "default",
-	aiModelAnthropic: "claude-sonnet-4-20250514",
-	aiModelOpenai: "gpt-4o",
+	aiModelAnthropic: DEFAULT_ANTHROPIC_MODEL,
+	aiModelOpenai: DEFAULT_OPENAI_MODEL,
 };
 
 /** Mapping from font size preference to CSS font-size value on <html> */

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
+import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
 import { useAiTurnStore } from "@/stores/ai-turn-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
@@ -67,7 +68,7 @@ beforeEach(() => {
 	setActiveStores(createDocumentStores());
 	useAiTurnStore.getState().resetTurn();
 	useSettingsStore.setState((state) => ({
-		settings: { ...state.settings, aiModelAnthropic: "claude-sonnet-4-20250514" },
+		settings: { ...state.settings, aiModelAnthropic: DEFAULT_ANTHROPIC_MODEL },
 	}));
 	useChatStore.setState({
 		sessions: [],

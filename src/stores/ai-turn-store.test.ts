@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import type { StreamEvent } from "@/lib/ai/protocol/events";
+import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -76,7 +77,7 @@ beforeEach(() => {
 	useHistoryStore.getState().clear();
 	useChatStore.setState({ provider: "anthropic" });
 	useSettingsStore.setState((state) => ({
-		settings: { ...state.settings, aiModelAnthropic: "claude-sonnet-4-20250514" },
+		settings: { ...state.settings, aiModelAnthropic: DEFAULT_ANTHROPIC_MODEL },
 	}));
 });
 
