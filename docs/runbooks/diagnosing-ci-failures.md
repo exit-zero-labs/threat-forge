@@ -241,7 +241,9 @@ a saturated runner defeats.
   node that is never added still has to fail.
 
 Hook-level tests cover guide auto-start timers, eligibility, and the `welcome` guide's StrictMode
-replay. Real-browser auto-start coverage remains tracked in #141.
+replay. `e2e/onboarding-auto-start.spec.ts` (#141) covers real-browser auto-start: it imports the
+plain `@playwright/test` `test` rather than this fixture, seeds only what each case's contract
+calls for, and dismisses each guide through its rendered UI.
 
 ### A test that stays flaky gets quarantined, visibly
 

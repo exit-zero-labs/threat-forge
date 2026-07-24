@@ -3,14 +3,12 @@ import { type Page, expect, test as base } from "@playwright/test";
 /** Platform-aware modifier key: Meta on macOS, Control elsewhere */
 export const modKey = process.platform === "darwin" ? "Meta" : "Control";
 
-/** Dismiss the "What's New" overlay if it is visible (blocks interactions on first launch) */
+/** Wait for and dismiss the first-launch "What's New" overlay through its rendered UI. */
 export async function dismissWhatsNew(page: Page) {
 	const overlay = page.getByTestId("whats-new-overlay");
-	const isVisible = await overlay.isVisible().catch(() => false);
-	if (isVisible) {
-		await overlay.locator("button", { hasText: "Got it" }).click();
-		await overlay.waitFor({ state: "hidden" });
-	}
+	await expect(overlay).toBeVisible();
+	await overlay.getByRole("button", { name: "Got it" }).click();
+	await expect(overlay).toBeHidden();
 }
 
 /**
@@ -83,9 +81,11 @@ const AUTO_START_GUIDE_IDS = ["welcome", "dfd-basics"];
  *    cleanup cancels the first timer and effect replay schedules its replacement. Seeding the
  *    guide id prevents that replacement from blocking E2E interaction.
  *
- * This removes E2E coverage of guide auto-start. Hook-level tests cover the timers, StrictMode
- * replay, live eligibility checks, and What's New suppression; real-browser auto-start coverage
- * remains tracked in #141.
+ * This intentionally removes guide auto-start from every spec built on this fixture. Hook-level
+ * tests cover the timers, StrictMode replay, live eligibility checks, and What's New suppression;
+ * dedicated real-browser auto-start coverage lives in `e2e/onboarding-auto-start.spec.ts` (#141),
+ * which imports the plain `@playwright/test` `test` instead of this fixture so it is not
+ * suppressed away.
  */
 export async function suppressFirstRunOverlays(page: Page) {
 	await page.addInitScript((guideIds: string[]) => {
