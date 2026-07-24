@@ -84,12 +84,22 @@ impl KeyStorage {
     }
 
     /// Store an API key for a provider.
+    ///
+    /// Transactional: the mutation is staged on a clone that is encrypted and
+    /// flushed to disk first, and only committed into the in-memory map once the
+    /// file write and atomic rename succeed. On any serialization/encryption/write/
+    /// rename failure the in-memory map is left exactly at its pre-call value.
+    /// The mutex is held across the flush so concurrent mutations cannot reorder
+    /// their file commits.
     pub fn store_key(&self, provider: &AiProvider, key: &str) -> Result<(), ThreatForgeError> {
         let mut map = self.keys.lock().map_err(|e| ThreatForgeError::KeyStorage {
             message: format!("Lock poisoned: {e}"),
         })?;
-        map.insert(provider.keychain_key().to_string(), key.to_string());
-        self.flush(&map)
+        let mut staged = map.clone();
+        staged.insert(provider.keychain_key().to_string(), key.to_string());
+        self.flush(&staged)?;
+        *map = staged;
+        Ok(())
     }
 
     /// Check whether an API key exists for a provider.
@@ -113,12 +123,19 @@ impl KeyStorage {
     }
 
     /// Delete an API key for a provider.
+    ///
+    /// Transactional in the same way as [`store_key`]: the removal is staged on
+    /// a clone and flushed to disk before it is committed into the in-memory
+    /// map, so a failed flush leaves the prior key present in memory.
     pub fn delete_key(&self, provider: &AiProvider) -> Result<(), ThreatForgeError> {
         let mut map = self.keys.lock().map_err(|e| ThreatForgeError::KeyStorage {
             message: format!("Lock poisoned: {e}"),
         })?;
-        map.remove(provider.keychain_key());
-        self.flush(&map)
+        let mut staged = map.clone();
+        staged.remove(provider.keychain_key());
+        self.flush(&staged)?;
+        *map = staged;
+        Ok(())
     }
 
     /// Encrypt the key map and write atomically (tmp + rename).
@@ -510,5 +527,134 @@ mod tests {
         fs::write(tmp.path().join("keys.enc"), [0u8; NONCE_LEN - 1]).unwrap();
 
         assert!(KeyStorage::new(tmp.path().to_path_buf()).is_err());
+    }
+
+    /// Copy the on-disk key files out of `dir` so the last committed state can be
+    /// inspected from a fresh `KeyStorage` after the writable directory is
+    /// destroyed to force a flush failure.
+    fn snapshot_store_files(dir: &std::path::Path) -> tempfile::TempDir {
+        let backup = tempfile::tempdir().unwrap();
+        for name in ["keys.dat", "keys.enc"] {
+            let src = dir.join(name);
+            if src.exists() {
+                fs::copy(&src, backup.path().join(name)).unwrap();
+            }
+        }
+        backup
+    }
+
+    /// Removing the data directory makes every subsequent tmp-file write and
+    /// rename fail with a real filesystem error, exercising the flush-failure
+    /// path through the public API rather than a mock.
+    fn break_writes(dir: &std::path::Path) {
+        fs::remove_dir_all(dir).expect("removing the data dir must succeed");
+    }
+
+    /// A failed overwrite must leave the prior key's value intact in memory: the
+    /// staged new value is only committed once the atomic file replacement succeeds.
+    #[test]
+    fn a_failed_overwrite_keeps_the_prior_in_memory_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = make_storage(tmp.path());
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-original")
+            .unwrap();
+
+        break_writes(tmp.path());
+
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-replacement")
+            .expect_err("overwriting into a removed data dir must fail");
+
+        assert_eq!(
+            storage.get_key(&AiProvider::Anthropic).unwrap(),
+            "sk-ant-original",
+            "a failed overwrite must not leave the new value usable in memory"
+        );
+    }
+
+    /// A failed store into an empty store must leave no key behind in memory.
+    #[test]
+    fn a_failed_new_store_leaves_no_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = make_storage(tmp.path());
+
+        break_writes(tmp.path());
+
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-never-committed")
+            .expect_err("storing into a removed data dir must fail");
+
+        assert!(
+            !storage.has_key(&AiProvider::Anthropic).unwrap(),
+            "a failed store must not leave a key present in memory"
+        );
+        assert!(matches!(
+            storage.get_key(&AiProvider::Anthropic),
+            Err(ThreatForgeError::NoApiKey { .. })
+        ));
+    }
+
+    /// A failed delete must leave the prior key present in memory: the staged
+    /// removal is only committed once the atomic file replacement succeeds.
+    #[test]
+    fn a_failed_delete_keeps_the_prior_in_memory_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = make_storage(tmp.path());
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-keep")
+            .unwrap();
+
+        break_writes(tmp.path());
+
+        storage
+            .delete_key(&AiProvider::Anthropic)
+            .expect_err("deleting through a removed data dir must fail");
+
+        assert!(
+            storage.has_key(&AiProvider::Anthropic).unwrap(),
+            "a failed delete must not remove the key from memory"
+        );
+        assert_eq!(
+            storage.get_key(&AiProvider::Anthropic).unwrap(),
+            "sk-ant-keep"
+        );
+    }
+
+    /// After a failed mutation the in-memory state must agree with the last committed
+    /// on-disk state: a store reopened from the pre-failure bytes still
+    /// holds exactly the committed value, matching the rolled-back memory.
+    #[test]
+    fn a_reopened_store_agrees_with_the_unchanged_on_disk_state_after_a_failed_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let storage = make_storage(tmp.path());
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-committed")
+            .unwrap();
+
+        // `break_writes` removes the original directory, so snapshot the last committed bytes first.
+        // Reopening this snapshot cross-checks the rolled-back in-memory value against the same
+        // pre-failure state a fresh process would read; it is not a same-directory rename test.
+        let backup = snapshot_store_files(tmp.path());
+
+        break_writes(tmp.path());
+
+        storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-rolled-back")
+            .expect_err("storing into a removed data dir must fail");
+
+        // In-memory state rolled back to the committed value.
+        assert_eq!(
+            storage.get_key(&AiProvider::Anthropic).unwrap(),
+            "sk-ant-committed"
+        );
+
+        // A fresh store opened from the captured on-disk files agrees with it.
+        let reopened = make_storage(backup.path());
+        assert_eq!(
+            reopened.get_key(&AiProvider::Anthropic).unwrap(),
+            "sk-ant-committed",
+            "the on-disk file must still hold the committed value, matching memory"
+        );
     }
 }
