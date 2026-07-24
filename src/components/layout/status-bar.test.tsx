@@ -77,6 +77,20 @@ describe("StatusBar across a document switch (plan step 9)", () => {
 		expect(bar).toHaveTextContent("Undo: 3 / Redo: 0");
 		expect(bar).toHaveTextContent("/a.thf");
 	});
+
+	it("strips bidi controls from the displayed file path and tooltip (#175)", () => {
+		useDocumentRegistry.getState().createDocument({
+			model: createTestModel("Path display"),
+			filePath: "/home/jane/secret\u202Efolder/payments.thf",
+			pendingLayout: null,
+		});
+
+		render(<StatusBar />);
+
+		const displayedPath = screen.getByTitle("/home/jane/secretfolder/payments.thf");
+		expect(displayedPath).toHaveTextContent("/home/jane/secretfolder/payments.thf");
+		expect(displayedPath.getAttribute("title")).not.toContain("\u202E");
+	});
 });
 
 /**

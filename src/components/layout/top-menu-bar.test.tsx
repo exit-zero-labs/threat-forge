@@ -57,6 +57,19 @@ describe("TopMenuBar title", () => {
 
 		expect(screen.getByText("Draft *")).toBeInTheDocument();
 	});
+
+	it("strips a bidi override from a hostile metadata title (#175)", () => {
+		useDocumentRegistry.getState().createDocument({
+			model: createTestModel("Evil\u202Etitle"),
+			filePath: null,
+			pendingLayout: null,
+		});
+
+		render(<TopMenuBar />);
+
+		expect(screen.getByText("Eviltitle")).toBeInTheDocument();
+		expect(screen.queryByText(/\u202E/)).not.toBeInTheDocument();
+	});
 });
 
 describe("TopMenuBar canvas count badge", () => {

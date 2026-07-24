@@ -168,6 +168,24 @@ describe("useCloseGuard desktop guard", () => {
 		expect(tauriWindow.destroy).toHaveBeenCalledTimes(1);
 	});
 
+	it("lists a dirty document's sanitized title, not a raw bidi override, in the close summary (#175)", async () => {
+		const hostile = open("Evil\u202Etitle");
+		act(() => {
+			requireStores(hostile).model.getState().markDirty();
+		});
+
+		render(<Harness />);
+		await waitFor(() => expect(tauriWindow.getHandler()).toBeTruthy());
+
+		await act(async () => {
+			await tauriWindow.getHandler()?.({ preventDefault: vi.fn() });
+		});
+
+		const modal = screen.getByTestId("close-guard-modal");
+		expect(within(modal).getByText("Eviltitle")).toBeInTheDocument();
+		expect(within(modal).queryByText(/\u202E/)).not.toBeInTheDocument();
+	});
+
 	it("cancels the close without destroying the window", async () => {
 		const a = open("Alpha");
 		act(() => {

@@ -1,3 +1,4 @@
+import { sanitizeDisplayText } from "@/lib/document-display-title";
 import type { DocumentPersistenceState, WorkspaceUnavailableReason } from "@/lib/persistence/types";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useHistoryStore } from "@/stores/history-store";
@@ -103,6 +104,7 @@ export function StatusBar() {
 		unavailableReason,
 		persistenceState,
 	);
+	const displayFilePath = filePath ? sanitizeDisplayText(filePath) : null;
 
 	function renderSaveStatus() {
 		if (isDirty) {
@@ -154,11 +156,11 @@ export function StatusBar() {
 				{localPersistence?.attention ? localPersistence.detail : ""}
 			</span>
 
-			{model && filePath && (
+			{model && displayFilePath && (
 				<>
 					<div className="flex-1" />
-					<span className="truncate max-w-64 text-right" title={filePath}>
-						{filePath}
+					<span className="truncate max-w-64 text-right" title={displayFilePath}>
+						{displayFilePath}
 					</span>
 				</>
 			)}
