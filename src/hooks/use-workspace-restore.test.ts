@@ -133,6 +133,73 @@ describe("boot restore", () => {
 		expect(restoredCanvas.pendingLayout).toMatchObject({ viewport: { x: 5, y: 6, zoom: 1.5 } });
 	});
 
+	it("rejects an unsupported stored schema version instead of hydrating it", async () => {
+		const futureModel = { ...createTestModel("Future format"), version: "2.0" };
+		const id = await seedPersistedDocument(
+			"Future format",
+			0,
+			serializeThreatModelYaml(futureModel),
+		);
+		useWorkspaceStore.getState().setActiveDocumentId(id);
+
+		await restore(() =>
+			expect(useWorkspaceStore.getState().persistence[id]?.status).toBe("corrupt"),
+		);
+
+		expect(useDocumentRegistry.getState().documents[id]).toBeUndefined();
+		expect(useDocumentRegistry.getState().activeDocumentId).toBeNull();
+		expect(useModelStore.getState().model).toBeNull();
+	});
+
+	it("falls back to the first manifest document when stale metadata has no active pointer", async () => {
+		const first = await seedPersistedDocument("First viable", 0);
+		await seedPersistedDocument("Second", 1);
+
+		await restore(() => expect(useDocumentRegistry.getState().activeDocumentId).toBe(first));
+
+		expect(useModelStore.getState().model?.metadata.title).toBe("First viable");
+		expect(useWorkspaceStore.getState().activeDocumentId).toBe(first);
+		// Lazy restore still reads only the one document it activates.
+		expect(useDocumentRegistry.getState().openDocumentIds).toEqual([first]);
+	});
+
+	it("does not let a slower boot read override a tab the user activated meanwhile", async () => {
+		const first = await seedPersistedDocument("Persisted active", 0);
+		const chosen = await seedPersistedDocument("User choice", 1);
+		useWorkspaceStore.getState().setActiveDocumentId(first);
+
+		const originalRead = IndexeddbWorkspaceStorage.prototype.readDocumentBody;
+		let releaseFirst!: () => void;
+		const firstGate = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const read = vi
+			.spyOn(IndexeddbWorkspaceStorage.prototype, "readDocumentBody")
+			.mockImplementation(async function (
+				this: IndexeddbWorkspaceStorage,
+				id: DocumentId,
+			): Promise<string | null> {
+				if (id === first) await firstGate;
+				return originalRead.call(this, id);
+			});
+
+		renderHook(() => useWorkspaceRestore());
+		await act(async () => {
+			await vi.waitFor(() => expect(read).toHaveBeenCalledWith(first));
+			expect(await hydrateDocumentById(chosen, { activate: false })).toBe(true);
+			useDocumentRegistry.getState().activateDocument(chosen);
+		});
+
+		await act(async () => {
+			releaseFirst();
+			await vi.waitFor(() => expect(useWorkspaceStore.getState().persistenceAvailable).toBe(true));
+		});
+
+		expect(useDocumentRegistry.getState().activeDocumentId).toBe(chosen);
+		expect(useWorkspaceStore.getState().activeDocumentId).toBe(chosen);
+		expect(useModelStore.getState().model?.metadata.title).toBe("User choice");
+	});
+
 	it("reads only the active document's body and leaves siblings un-hydrated", async () => {
 		const first = await seedPersistedDocument("First", 0);
 		const active = await seedPersistedDocument("Second", 1);

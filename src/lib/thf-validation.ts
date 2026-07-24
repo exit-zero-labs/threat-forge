@@ -100,13 +100,13 @@ export function readThreatModelText(text: string): ThreatModel {
  * Exported so the semantic layer can be exercised directly, independently of YAML parsing.
  */
 export function validateThreatModel(model: ThreatModel): ThreatModel {
-	validateVersion(requireString(model.version, "version"));
+	validateThreatModelVersion(requireString(model.version, "version"));
 	validateReferences(model);
 	return model;
 }
 
 /** Exact-match version gate. Mirrors `validate_version` (`reader.rs`) and ADR-009's fail-closed rule. */
-function validateVersion(version: string): void {
+export function validateThreatModelVersion(version: string): void {
 	if (!SUPPORTED_VERSIONS.includes(version as (typeof SUPPORTED_VERSIONS)[number])) {
 		throw new ThfValidationError(
 			"unsupported-version",

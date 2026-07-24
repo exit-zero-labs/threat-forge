@@ -159,6 +159,41 @@ describe("debounced autosave", () => {
 		expect(state.activeDocumentId).toBe(id);
 	});
 
+	it("derives a new document's manifest order from the live registry order, not tail append", async () => {
+		// Doc A is written first, so the manifest lists [A].
+		const idA = useDocumentRegistry.getState().createDocument({
+			model: createTestModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		useWorkspaceStore.getState().setPersistenceAvailability(true);
+		const { unmount } = renderHook(() => useWorkspacePersistence());
+		await runDebounce();
+		expect(useWorkspaceStore.getState().documents.map((e) => e.id)).toEqual([idA]);
+
+		// Doc B is created and then reordered to the front of the registry *before* its first write.
+		let idB!: DocumentId;
+		act(() => {
+			idB = useDocumentRegistry.getState().createDocument({
+				model: createTestModel("B"),
+				filePath: null,
+				pendingLayout: null,
+			});
+			useDocumentRegistry.getState().reorderDocument(idB, 0);
+		});
+		expect(useDocumentRegistry.getState().openDocumentIds).toEqual([idB, idA]);
+
+		await runDebounce();
+
+		// B's first write derives order 0 from its live registry position, so the persisted manifest
+		// reflects the reorder ([B, A]) rather than appending B to the tail ([A, B]). Array position
+		// and the `order` field stay coherent.
+		const documents = useWorkspaceStore.getState().documents;
+		expect(documents.map((e) => e.id)).toEqual([idB, idA]);
+		expect(documents.map((e) => e.order)).toEqual([0, 1]);
+		unmount();
+	});
+
 	it("does not touch the file-save dirty flag", async () => {
 		mountWithDocument("Dirty");
 		act(() => {
@@ -252,7 +287,7 @@ describe("seeding and rebinding", () => {
 		expect(useWorkspaceStore.getState().activeDocumentId).toBe(id);
 	});
 
-	it("clears the persisted active pointer when the last document is closed", async () => {
+	it("clears the persisted active pointer when the registry becomes empty", async () => {
 		const { id } = mountWithDocument("Closing");
 		await runDebounce();
 		expect(useWorkspaceStore.getState().activeDocumentId).toBe(id);
@@ -261,9 +296,123 @@ describe("seeding and rebinding", () => {
 			useDocumentRegistry.getState().closeDocument(id);
 		});
 
-		// A reload must not reopen a document the user closed; its stored body is kept for #55.
+		// This directly exercises the hook's empty-registry projection. Product close paths also
+		// remove the open-manifest entry through closeDocumentById (covered separately), while the
+		// stored body remains available to #55.
 		expect(useWorkspaceStore.getState().activeDocumentId).toBeNull();
 		expect(useWorkspaceStore.getState().documents.map((entry) => entry.id)).toEqual([id]);
+	});
+
+	it("does not re-add a closed document when its teardown flush finishes later", async () => {
+		const { id } = mountWithDocument("Closing with pending edit");
+		await runDebounce();
+
+		const originalWrite = IndexeddbWorkspaceStorage.prototype.writeDocumentBody;
+		let releaseWrite!: () => void;
+		const writeGate = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		const write = vi
+			.spyOn(IndexeddbWorkspaceStorage.prototype, "writeDocumentBody")
+			.mockImplementation(async function (
+				this: IndexeddbWorkspaceStorage,
+				documentId: DocumentId,
+				thf: string,
+			): Promise<void> {
+				await writeGate;
+				return originalWrite.call(this, documentId, thf);
+			});
+
+		act(() => {
+			useModelStore.getState().updateMetadata({ title: "Pending close edit" });
+			// Product close paths remove the live session and its open-manifest entry. The hook's
+			// teardown flush still retains the body as a recoverable orphan for #55.
+			useDocumentRegistry.getState().closeDocument(id);
+			useWorkspaceStore.getState().removeManifestEntry(id);
+		});
+		await act(async () => {
+			await vi.waitFor(() => expect(write).toHaveBeenCalledOnce());
+		});
+		expect(useWorkspaceStore.getState().documents).toEqual([]);
+
+		await act(async () => {
+			releaseWrite();
+			await vi.waitFor(() =>
+				expect(useWorkspaceStore.getState().persistence[id]?.status).toBe("saved"),
+			);
+		});
+
+		// The late flush wrote the latest body but did not resurrect the closed tab in the manifest.
+		expect(await readStoredBody(id)).toContain("Pending close edit");
+		expect(useWorkspaceStore.getState().documents).toEqual([]);
+	});
+
+	it("does not let a slower outgoing write steal the active pointer from the switched-to tab", async () => {
+		// Both A and B are already durable (known manifest documents), so activating either records
+		// the persisted pointer synchronously and neither seeds a write on bind.
+		const idA = useDocumentRegistry.getState().createDocument({
+			model: createTestModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const idB = useDocumentRegistry.getState().createDocument({
+			model: createTestModel("B"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		for (const [id, title, order] of [
+			[idA, "A", 0],
+			[idB, "B", 1],
+		] as const) {
+			useWorkspaceStore.getState().upsertManifestEntry({
+				id,
+				title,
+				filePath: null,
+				order,
+				createdAt: "2026-07-01T00:00:00.000Z",
+				updatedAt: "2026-07-01T00:00:00.000Z",
+			});
+		}
+
+		// Gate A's body write so it can be made to resolve *after* the switch to B.
+		let releaseWrite!: () => void;
+		const writeGate = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		vi.spyOn(IndexeddbWorkspaceStorage.prototype, "writeDocumentBody").mockImplementation(
+			async () => {
+				await writeGate;
+			},
+		);
+
+		// Bind the autosave hook to the active A, then edit A so a debounced write is scheduled.
+		useDocumentRegistry.getState().activateDocument(idA);
+		useWorkspaceStore.getState().setPersistenceAvailability(true);
+		renderHook(() => useWorkspacePersistence());
+		expect(useWorkspaceStore.getState().activeDocumentId).toBe(idA);
+		act(() => {
+			useModelStore.getState().updateMetadata({ title: "A edited" });
+		});
+
+		// Switch A -> B. The effect cleanup flushes A (its write is now in flight, gated), and the
+		// rebind records B as the persisted active tab synchronously.
+		act(() => {
+			useDocumentRegistry.getState().activateDocument(idB);
+		});
+		expect(useWorkspaceStore.getState().activeDocumentId).toBe(idB);
+
+		// A's slower write finally resolves. It must NOT overwrite the pointer back to A, because A
+		// is no longer the registry's active document — the production A->B race.
+		await act(async () => {
+			releaseWrite();
+			await vi.waitFor(() => {
+				if (useWorkspaceStore.getState().persistence[idA]?.status !== "saved") {
+					throw new Error("A's write has not settled");
+				}
+			});
+		});
+
+		expect(useWorkspaceStore.getState().activeDocumentId).toBe(idB);
 	});
 
 	it("writes nothing while local persistence is unavailable", async () => {

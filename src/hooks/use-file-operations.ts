@@ -4,12 +4,15 @@ import { documentDisplayTitle } from "@/lib/document-display-title";
 import { generateHtmlReport } from "@/lib/export/export-html";
 import { captureCanvasIntoModel } from "@/lib/model-capture";
 import { buildLayoutFromModel } from "@/lib/model-layout-utils";
+import { mergeWorkspaceTabs } from "@/lib/workspace-tabs";
 import { useCanvasStore } from "@/stores/canvas-store";
-import { useDocumentRegistry } from "@/stores/document-registry";
+import { nextActiveDocumentId, useDocumentRegistry } from "@/stores/document-registry";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { DocumentId } from "@/types/document";
 import type { DiagramLayout, ThreatModel } from "@/types/threat-model";
+import { hydrateDocumentById } from "./use-workspace-restore";
 
 function todayString(): string {
 	return new Date().toISOString().split("T")[0];
@@ -46,6 +49,22 @@ function syncActiveFileSettings(model: ThreatModel): void {
 /** Capture the active document's live canvas geometry into a model about to be written. */
 function captureActiveCanvas(model: ThreatModel): ThreatModel {
 	return captureCanvasIntoModel(model, useCanvasStore.getState());
+}
+
+/**
+ * The D1 neighbour a close should activate, computed across the **full merged tab order** rather
+ * than the registry alone (`#56`). After a reload the registry holds only the active document, so
+ * `nextActiveDocumentId` over `openDocumentIds` sees no neighbour even though restored manifest
+ * tabs remain on screen; merging the registry with the manifest first lets a still-un-hydrated
+ * sibling become active when the last hydrated tab closes.
+ */
+function mergedCloseNeighbor(id: DocumentId): DocumentId | null {
+	const registry = useDocumentRegistry.getState();
+	const manifest = useWorkspaceStore.getState().documents;
+	const openDocumentIds = registry.openDocumentIds;
+	const pinnedIds = new Set(openDocumentIds.filter((docId) => registry.documents[docId]?.pinned));
+	const merged = mergeWorkspaceTabs(manifest, openDocumentIds, pinnedIds).map((tab) => tab.id);
+	return nextActiveDocumentId(merged, id);
 }
 
 export function useFileOperations() {
@@ -152,9 +171,18 @@ export function useFileOperations() {
 
 	/**
 	 * Close one document by id, guarding its *own* unsaved changes and naming it in the prompt
-	 * (`#54` D6). Used for any tab — the active one or a background one — from the close button and
-	 * from `Delete` in the tab strip, so the dirty guard cannot be bypassed by closing a tab that is
-	 * not currently active. A declined confirmation leaves the document open.
+	 * (`#54` D6). Used for any tab — the active one or a background one — from the close button, the
+	 * File menu, the command palette, the native/keyboard menu, and `Delete` in the tab strip, so
+	 * neither the dirty guard nor the manifest cleanup can be bypassed by a caller that closes a tab
+	 * some other way. A declined confirmation leaves the document open and changes nothing.
+	 *
+	 * On success the document's localStorage manifest entry is dropped here — at the shared close
+	 * boundary rather than in the tab strip — so a closed live document can never remain in the
+	 * manifest and resurrect on the next reload, whatever surface closed it. Its durable IndexedDB
+	 * body is untouched; recovery and export of a closed document are `#55`'s job, not a close's.
+	 * When the closed document was active and the registry has no live neighbour left (the common
+	 * post-reload state), its D1 neighbour is computed over the full merged tab order and hydrated
+	 * so a restored sibling becomes active instead of dropping to an empty scratch view.
 	 */
 	const closeDocumentById = useCallback(async (id: DocumentId) => {
 		const registry = useDocumentRegistry.getState();
@@ -168,7 +196,41 @@ export function useFileOperations() {
 			);
 			if (!discard) return;
 		}
-		registry.closeDocument(id);
+
+		const wasActive = useDocumentRegistry.getState().activeDocumentId === id;
+		// Resolve the neighbour over the full merged order *before* the close mutates either store.
+		const neighborId = wasActive ? mergedCloseNeighbor(id) : null;
+		// If the neighbour is a persisted-but-un-hydrated tab, read its body first (without
+		// activating) so it enters the registry at its persisted slot and the close can select it as
+		// the live neighbour — never a blank scratch document. A failed read leaves it un-hydrated;
+		// the registry then falls back to its own neighbour selection below.
+		if (neighborId && !useDocumentRegistry.getState().documents[neighborId]) {
+			await hydrateDocumentById(neighborId, { activate: false });
+		}
+
+		// Hydration is asynchronous. If the user selected another document while the neighbour was
+		// loading, that later selection wins; otherwise the merged-order neighbour remains the close
+		// target even when registry-only close policy would choose differently.
+		const closingDocumentStillActive = useDocumentRegistry.getState().activeDocumentId === id;
+		useDocumentRegistry.getState().closeDocument(id);
+		// Drop the manifest entry after the close commits so the fast-render projection never lists a
+		// document the session no longer holds. A no-op on desktop, where there is no manifest.
+		const workspace = useWorkspaceStore.getState();
+		workspace.removeManifestEntry(id);
+
+		// Prefer the merged-order neighbour when it hydrated: `closeDocument` picks over registry
+		// order alone, which omits still-restored tabs and would otherwise land on the wrong sibling.
+		if (
+			closingDocumentStillActive &&
+			neighborId &&
+			useDocumentRegistry.getState().documents[neighborId]
+		) {
+			useDocumentRegistry.getState().activateDocument(neighborId);
+		}
+		// Persist the settled active pointer synchronously at the shared close boundary. Waiting for
+		// the React autosave effect would leave a pagehide-sized window where reload could see null
+		// (or the just-closed id) despite another document already being active.
+		workspace.setActiveDocumentId(useDocumentRegistry.getState().activeDocumentId);
 	}, []);
 
 	const closeModel = useCallback(async () => {

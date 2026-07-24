@@ -18,15 +18,30 @@ import type { DocumentId } from "@/types/document";
 export const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 1000;
 
 /**
- * The manifest fields a write must carry forward rather than recompute: order (a new document
- * appends to the end) and creation time (taken from the live session the first time).
+ * The manifest fields a write must carry forward rather than recompute: order and creation time.
+ *
+ * An existing entry keeps its persisted order. A document being written for the first time derives
+ * its order from the **live registry order** — the count of documents that both precede it in
+ * `openDocumentIds` and already have a manifest entry — so a new tab reordered before its first
+ * write is inserted at its real position instead of always being appended to the tail. Creation
+ * time is taken from the live session the first time.
  */
 function manifestIdentityFor(id: DocumentId): { order: number; createdAt: string } {
 	const { documents } = useWorkspaceStore.getState();
 	const existing = documents.find((entry) => entry.id === id);
 	if (existing) return { order: existing.order, createdAt: existing.createdAt };
+
+	const manifestIds = new Set(documents.map((entry) => entry.id));
+	const openDocumentIds = useDocumentRegistry.getState().openDocumentIds;
+	let order = documents.length;
+	const registryIndex = openDocumentIds.indexOf(id);
+	if (registryIndex !== -1) {
+		order = openDocumentIds
+			.slice(0, registryIndex)
+			.filter((docId) => manifestIds.has(docId)).length;
+	}
 	const session = useDocumentRegistry.getState().documents[id];
-	return { order: documents.length, createdAt: session?.createdAt ?? new Date().toISOString() };
+	return { order, createdAt: session?.createdAt ?? new Date().toISOString() };
 }
 
 /**
@@ -92,6 +107,11 @@ async function persistDocument(id: DocumentId, stores: DocumentStores): Promise<
 	const persistedAt = new Date().toISOString();
 	const workspace = useWorkspaceStore.getState();
 	workspace.setPersistenceState(id, { status: "saved", lastPersistedAt: persistedAt });
+	// A close tears this effect down and flushes its pending write. The body may still finish
+	// committing as a recoverable orphan for #55, but the closed session must not re-add itself to
+	// the open-document manifest after closeDocumentById removed it. Comparing the exact store
+	// bundle also rejects a stale write if the same persisted id was rebuilt concurrently.
+	if (useDocumentRegistry.getState().getDocumentStores(id) !== stores) return;
 	// The manifest entry is written only after the body commits, so the fast-render projection
 	// never advertises a document IndexedDB does not have.
 	workspace.upsertManifestEntry({
@@ -101,7 +121,16 @@ async function persistDocument(id: DocumentId, stores: DocumentStores): Promise<
 		...manifestIdentityFor(id),
 		updatedAt: persistedAt,
 	});
-	workspace.setActiveDocumentId(id);
+	// Record this document as the persisted active tab only when it is *still* the registry's
+	// active document. A body write is async, so a flush of the outgoing document (A) can resolve
+	// after the user has switched to B — and B has already recorded itself active synchronously in
+	// the effect below. Writing the pointer back to A unconditionally here is a real production
+	// race that would reopen the wrong tab on reload; it is not merely a StrictMode dev artifact.
+	// Known-document activation still updates the pointer synchronously in the effect, so a plain
+	// tab switch settles immediately without waiting for a write.
+	if (useDocumentRegistry.getState().activeDocumentId === id) {
+		workspace.setActiveDocumentId(id);
+	}
 }
 
 /**

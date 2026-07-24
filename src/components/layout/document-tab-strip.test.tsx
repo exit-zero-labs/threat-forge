@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { DocumentId } from "@/types/document";
 import type { ThreatModel } from "@/types/threat-model";
 import { DocumentTabStrip } from "./document-tab-strip";
@@ -48,6 +49,10 @@ function tabIds(): string[] {
 
 beforeEach(() => {
 	useDocumentRegistry.setState({ documents: {}, openDocumentIds: [], activeDocumentId: null });
+	// The strip now merges the registry with the workspace manifest; keep the manifest empty here so
+	// these live-only cases are isolated from any persisted state (the restore seam is covered by
+	// document-tab-strip.restore.test.tsx).
+	useWorkspaceStore.setState({ documents: [], activeDocumentId: null });
 	setActiveStores(createDocumentStores());
 	useSettingsStore.getState().updateSetting("reduceMotion", false);
 	// jsdom does not implement scrollIntoView; give every test a spyable stub.
