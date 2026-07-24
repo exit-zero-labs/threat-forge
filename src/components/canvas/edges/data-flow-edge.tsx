@@ -241,6 +241,7 @@ export function DataFlowEdge({
 				id={id}
 				path={edgePath}
 				markerEnd={markerEnd}
+				data-testid={`edge-${id}`}
 				className={cn(
 					"!stroke-2 transition-colors",
 					hasCustomColor
