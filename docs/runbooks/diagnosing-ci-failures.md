@@ -180,20 +180,26 @@ The counts line reports `passed`, `failed`, `timed out`, `flaky`, `skipped`, and
 - **"No usable JSON report at `test-results/results.json`"** means the run did not get far
   enough to write a report at all. Go to the job log.
 
-The summary is advisory: it always exits 0 and can never turn the job red. A write failure
-prints a `::warning::` rather than failing.
+Writing the Markdown summary is advisory: a failure there prints a `::warning::` rather than
+turning the job red. The same script also writes a trusted `has-flaky=true|false` step output.
+That output controls evidence retention, so its write fails closed: if GitHub cannot receive the
+output, the summarize step fails and the upload step's independent `failure()` branch preserves
+the diagnostic bundle.
 
-### Artifacts, and the gap you need to know about
+### Artifacts for failed and flaky runs
 
-The `playwright-report` artifact is uploaded **only on failure** (`if: failure()` on the upload
-step), contains both `playwright-report/` (the HTML report) and `test-results/` (traces,
-screenshots, videos, and `results.json`), and is retained for **7 days**. `playwright.config.ts`
-sets `trace: "on-first-retry"`, `screenshot: "only-on-failure"`, and `video: "retain-on-failure"`.
+The `playwright-report` artifact is uploaded when the job failed **or** the parsed report contains
+any flaky test. The upload condition combines `failure()` with the summary step's `has-flaky`
+output, so a missing or failed summary cannot suppress evidence from a red run. The artifact
+contains both `playwright-report/` (the HTML report) and `test-results/` (traces, screenshots,
+videos, and `results.json`) and is retained for **7 days**. `playwright.config.ts` sets
+`trace: "on-first-retry"`, `screenshot: "only-on-failure"`, and `video: "retain-on-failure"`.
 
-The gap: **a flaky run is green, so no artifact is uploaded.** `trace: "on-first-retry"` did
-record a trace for the retried test, but it was written to `test-results/` on the runner and
-discarded with it. When you see a flaky row, the summary table is all the evidence you get after
-the fact. Reproduce it locally:
+When the summary contains a flaky row, download `playwright-report` from that run and inspect the
+retry trace before rerunning. If the row exists but the artifact does not, inspect the
+`Summarize E2E results` and `Upload Playwright report` step logs first; that indicates the output
+or upload contract failed. Local repetition is still useful after preserving the original
+evidence:
 
 ```bash
 npx playwright test e2e/<spec>.spec.ts --repeat-each=10 --workers=1
