@@ -1,109 +1,287 @@
+import { act, renderHook } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useModelStore } from "@/stores/model-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
+import type { ThreatModel } from "@/types/threat-model";
+import { useOnboardingTriggers } from "./use-onboarding-triggers";
 
-// We test the trigger logic by simulating state changes directly,
-// since the hook relies on React effects that are hard to test in isolation.
+const WHATS_NEW_STORAGE_KEY = "threatforge-last-seen-version";
 
-describe("onboarding trigger logic", () => {
+const mockModel: ThreatModel = {
+	version: "1.0",
+	metadata: {
+		title: "Test Model",
+		author: "Test Author",
+		created: "2026-03-15",
+		modified: "2026-03-15",
+		description: "",
+	},
+	elements: [],
+	data_flows: [],
+	trust_boundaries: [],
+	threats: [],
+	diagrams: [{ id: "main-dfd", name: "Level 0 DFD" }],
+};
+
+/** Marks the What's New overlay as already seen, so it does not block the welcome guide. */
+function markWhatsNewSeen(): void {
+	localStorage.setItem(WHATS_NEW_STORAGE_KEY, "1.0.0");
+}
+
+// Zustand shallow-merges action spies into later snapshots, so restoreAllMocks cannot restore
+// this action. Capture the implementation once and install a fresh wrapper per test.
+const realStartGuide = useOnboardingStore.getState().startGuide;
+
+function spyOnStartGuide(): ReturnType<typeof vi.fn> {
+	const spy = vi.fn(realStartGuide);
+	useOnboardingStore.setState({ startGuide: spy });
+	return spy;
+}
+
+describe("useOnboardingTriggers", () => {
 	beforeEach(() => {
+		vi.useFakeTimers();
 		localStorage.clear();
 		useOnboardingStore.getState().resetAll();
-		useModelStore.getState().clearModel();
+		useOnboardingStore.setState({ startGuide: realStartGuide });
+		useModelStore.setState({ model: null, filePath: null });
 	});
 
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.restoreAllMocks();
 	});
 
-	it("welcome guide can be started when never seen before", () => {
-		const { completedGuideIds, dismissedGuideIds } = useOnboardingStore.getState();
-		expect(completedGuideIds).not.toContain("welcome");
-		expect(dismissedGuideIds).not.toContain("welcome");
+	describe("welcome guide", () => {
+		it("starts exactly once, 500ms after an ordinary (non-StrictMode) mount", () => {
+			markWhatsNewSeen();
+			const startGuideSpy = spyOnStartGuide();
 
-		useOnboardingStore.getState().startGuide("welcome");
-		expect(useOnboardingStore.getState().activeGuide?.id).toBe("welcome");
+			renderHook(() => useOnboardingTriggers());
+
+			expect(useOnboardingStore.getState().activeGuide).toBeNull();
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).toHaveBeenCalledOnce();
+			expect(startGuideSpy).toHaveBeenCalledWith("welcome");
+			expect(useOnboardingStore.getState().activeGuide?.id).toBe("welcome");
+		});
+
+		it("replays under StrictMode's mount -> cleanup -> remount and still starts exactly once", () => {
+			markWhatsNewSeen();
+			const startGuideSpy = spyOnStartGuide();
+
+			// StrictMode synchronously mounts, cleans up, and remounts on the initial commit.
+			// The first effect run's timer must be cancelled by that cleanup, and the replay
+			// must schedule a replacement — not silently skip scheduling.
+			renderHook(() => useOnboardingTriggers(), { wrapper: StrictMode });
+
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).toHaveBeenCalledOnce();
+			expect(startGuideSpy).toHaveBeenCalledWith("welcome");
+			expect(useOnboardingStore.getState().activeGuide?.id).toBe("welcome");
+		});
+
+		it("does not fire again well past the delay, under StrictMode", () => {
+			markWhatsNewSeen();
+			const startGuideSpy = spyOnStartGuide();
+
+			renderHook(() => useOnboardingTriggers(), { wrapper: StrictMode });
+
+			act(() => {
+				vi.advanceTimersByTime(5000);
+			});
+
+			expect(startGuideSpy).toHaveBeenCalledOnce();
+		});
+
+		it("does not fire when the welcome guide was already completed", () => {
+			markWhatsNewSeen();
+			useOnboardingStore.setState({ completedGuideIds: ["welcome"] });
+			const startGuideSpy = spyOnStartGuide();
+
+			renderHook(() => useOnboardingTriggers());
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).not.toHaveBeenCalled();
+			expect(useOnboardingStore.getState().activeGuide).toBeNull();
+		});
+
+		it("does not fire when the welcome guide was already dismissed", () => {
+			markWhatsNewSeen();
+			useOnboardingStore.setState({ dismissedGuideIds: ["welcome"] });
+			const startGuideSpy = spyOnStartGuide();
+
+			renderHook(() => useOnboardingTriggers());
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).not.toHaveBeenCalled();
+		});
+
+		it("does not fire while the What's New overlay is visible", () => {
+			// beforeEach clears localStorage, so threatforge-last-seen-version is absent and
+			// isWhatsNewVisible() is true — the exact interaction that caused #111.
+			const startGuideSpy = spyOnStartGuide();
+
+			renderHook(() => useOnboardingTriggers());
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).not.toHaveBeenCalled();
+			expect(useOnboardingStore.getState().activeGuide).toBeNull();
+		});
+
+		it("does not fire when another guide is already active at effect setup", () => {
+			markWhatsNewSeen();
+			useOnboardingStore.getState().startGuide("stride-analysis");
+			const startGuideSpy = spyOnStartGuide();
+
+			renderHook(() => useOnboardingTriggers());
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).not.toHaveBeenCalledWith("welcome");
+			expect(useOnboardingStore.getState().activeGuide?.id).toBe("stride-analysis");
+		});
+
+		it("re-checks live state at fire time: a guide activated mid-delay is not overwritten", () => {
+			markWhatsNewSeen();
+			renderHook(() => useOnboardingTriggers());
+
+			// Halfway through the welcome delay, something else starts a different guide.
+			act(() => {
+				vi.advanceTimersByTime(250);
+			});
+			act(() => {
+				useOnboardingStore.getState().startGuide("ai-assistant");
+			});
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(useOnboardingStore.getState().activeGuide?.id).toBe("ai-assistant");
+		});
+
+		it("re-checks live state at fire time: a completion mid-delay suppresses the stale schedule", () => {
+			markWhatsNewSeen();
+			renderHook(() => useOnboardingTriggers());
+
+			act(() => {
+				vi.advanceTimersByTime(250);
+			});
+			act(() => {
+				useOnboardingStore.setState({ completedGuideIds: ["welcome"] });
+			});
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(useOnboardingStore.getState().activeGuide).toBeNull();
+		});
+
+		it("cancels the pending timer on a real unmount and never starts the guide", () => {
+			markWhatsNewSeen();
+			const startGuideSpy = spyOnStartGuide();
+
+			const { unmount } = renderHook(() => useOnboardingTriggers());
+			unmount();
+
+			act(() => {
+				vi.advanceTimersByTime(5000);
+			});
+
+			expect(startGuideSpy).not.toHaveBeenCalled();
+		});
 	});
 
-	it("welcome guide is blocked after completion", () => {
-		useOnboardingStore.getState().startGuide("welcome");
-		// Walk through all steps to complete it
-		const guide = useOnboardingStore.getState().activeGuide;
-		if (guide) {
-			for (let i = 0; i < guide.steps.length; i++) {
-				useOnboardingStore.getState().nextStep();
-			}
-		}
-		expect(useOnboardingStore.getState().completedGuideIds).toContain("welcome");
+	describe("dfd-basics guide", () => {
+		it("starts 800ms after the model transitions from null to non-null", () => {
+			renderHook(() => useOnboardingTriggers());
 
-		// Try to start again — should be blocked because showOnce: true
-		useOnboardingStore.getState().startGuide("welcome");
-		expect(useOnboardingStore.getState().activeGuide).toBeNull();
-	});
+			act(() => {
+				useModelStore.setState({ model: mockModel, filePath: null });
+			});
+			act(() => {
+				vi.advanceTimersByTime(800);
+			});
 
-	it("welcome guide is blocked after dismissal", () => {
-		useOnboardingStore.getState().startGuide("welcome");
-		useOnboardingStore.getState().dismissGuide();
-		expect(useOnboardingStore.getState().dismissedGuideIds).toContain("welcome");
+			expect(useOnboardingStore.getState().activeGuide?.id).toBe("dfd-basics");
+		});
 
-		useOnboardingStore.getState().startGuide("welcome");
-		expect(useOnboardingStore.getState().activeGuide).toBeNull();
-	});
+		it("does not fire again on a later model change once already handled", () => {
+			renderHook(() => useOnboardingTriggers());
 
-	it("dfd-basics guide can be started when model is created", () => {
-		useOnboardingStore.getState().startGuide("dfd-basics");
-		expect(useOnboardingStore.getState().activeGuide?.id).toBe("dfd-basics");
-	});
+			act(() => {
+				useModelStore.setState({ model: mockModel, filePath: null });
+			});
+			act(() => {
+				vi.advanceTimersByTime(800);
+			});
+			useOnboardingStore.getState().dismissGuide();
 
-	it("stride-analysis guide can be restarted (showOnce: false)", () => {
-		useOnboardingStore.getState().startGuide("stride-analysis");
-		// Complete it
-		const guide = useOnboardingStore.getState().activeGuide;
-		if (guide) {
-			for (let i = 0; i < guide.steps.length; i++) {
-				useOnboardingStore.getState().nextStep();
-			}
-		}
-		expect(useOnboardingStore.getState().completedGuideIds).toContain("stride-analysis");
+			const startGuideSpy = spyOnStartGuide();
+			act(() => {
+				useModelStore.setState({
+					model: { ...mockModel, metadata: { ...mockModel.metadata, title: "Renamed" } },
+					filePath: null,
+				});
+			});
+			act(() => {
+				vi.advanceTimersByTime(800);
+			});
 
-		// Can start again because showOnce: false
-		useOnboardingStore.getState().startGuide("stride-analysis");
-		expect(useOnboardingStore.getState().activeGuide?.id).toBe("stride-analysis");
-	});
+			expect(startGuideSpy).not.toHaveBeenCalled();
+		});
 
-	it("ai-assistant guide can be restarted (showOnce: false)", () => {
-		useOnboardingStore.getState().startGuide("ai-assistant");
-		expect(useOnboardingStore.getState().activeGuide?.id).toBe("ai-assistant");
+		it("re-checks live state at fire time: a guide activated during its 800ms delay is not overwritten", () => {
+			renderHook(() => useOnboardingTriggers());
 
-		// Dismiss it
-		useOnboardingStore.getState().dismissGuide();
+			act(() => {
+				useModelStore.setState({ model: mockModel, filePath: null });
+			});
 
-		// Can start again because showOnce: false
-		useOnboardingStore.getState().startGuide("ai-assistant");
-		expect(useOnboardingStore.getState().activeGuide?.id).toBe("ai-assistant");
-	});
+			// Halfway through the dfd-basics delay, something else takes the active guide slot.
+			act(() => {
+				vi.advanceTimersByTime(400);
+			});
+			act(() => {
+				useOnboardingStore.getState().startGuide("stride-analysis");
+			});
+			act(() => {
+				vi.advanceTimersByTime(400);
+			});
 
-	it("ALL_GUIDES contains all 4 guides", async () => {
-		const { ALL_GUIDES } = await import("@/lib/onboarding/guides");
-		expect(ALL_GUIDES).toHaveLength(4);
-		expect(ALL_GUIDES.map((g) => g.id)).toEqual([
-			"welcome",
-			"dfd-basics",
-			"stride-analysis",
-			"ai-assistant",
-		]);
-	});
+			expect(useOnboardingStore.getState().activeGuide?.id).toBe("stride-analysis");
+		});
 
-	it("STRIDE analysis guide has 3 steps targeting threats tab", async () => {
-		const { STRIDE_ANALYSIS_GUIDE } = await import("@/lib/onboarding/guides");
-		expect(STRIDE_ANALYSIS_GUIDE.steps).toHaveLength(3);
-		expect(STRIDE_ANALYSIS_GUIDE.steps[0].targetSelector).toContain("tab-threats");
-		expect(STRIDE_ANALYSIS_GUIDE.steps[1].targetSelector).toContain("btn-stride-analyze");
-	});
+		it.each(["completedGuideIds", "dismissedGuideIds"] as const)(
+			"does not fire when dfd-basics is recorded in %s",
+			(stateKey) => {
+				useOnboardingStore.setState({ [stateKey]: ["dfd-basics"] });
+				const startGuideSpy = spyOnStartGuide();
 
-	it("AI assistant guide has 3 steps targeting AI tab", async () => {
-		const { AI_ASSISTANT_GUIDE } = await import("@/lib/onboarding/guides");
-		expect(AI_ASSISTANT_GUIDE.steps).toHaveLength(3);
-		expect(AI_ASSISTANT_GUIDE.steps[0].targetSelector).toContain("tab-ai");
+				renderHook(() => useOnboardingTriggers());
+				act(() => {
+					useModelStore.setState({ model: mockModel, filePath: null });
+				});
+				act(() => {
+					vi.advanceTimersByTime(800);
+				});
+
+				expect(startGuideSpy).not.toHaveBeenCalled();
+			},
+		);
 	});
 });

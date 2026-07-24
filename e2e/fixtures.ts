@@ -53,11 +53,11 @@ export async function addPaletteItem(page: Page, testId: string) {
 /**
  * The guides that have auto-start triggers, and can therefore block a test.
  *
- * `use-onboarding-triggers.ts:42,63` computes `alreadySeen` from `completedGuideIds` /
- * `dismissedGuideIds` and skips scheduling the timer at all, so seeding an id here suppresses
- * that guide regardless of its `showOnce` value. (`showOnce` gates `startGuide`, which governs
- * only *manual* starts from the guide picker — it is not part of auto-start suppression.) Add
- * any new auto-start guide id here; nothing else is required.
+ * `use-onboarding-triggers.ts` checks `completedGuideIds` and `dismissedGuideIds` before
+ * scheduling and before starting a guide, so seeding an id here suppresses that guide regardless
+ * of its `showOnce` value. (`showOnce` gates `startGuide`, which governs only *manual* starts from
+ * the guide picker — it is not part of auto-start suppression.) Add any new auto-start guide id
+ * here; nothing else is required.
  *
  * `stride-analysis` and `ai-assistant` have no auto-start trigger and are deliberately absent.
  */
@@ -79,16 +79,13 @@ const AUTO_START_GUIDE_IDS = ["welcome", "dfd-basics"];
  *    remove. Measured against the pre-fix seeding: after `New Model`, `guide-overlay` is
  *    present and `palette-item-generic.dblclick()` times out.
  *
- *    `welcome` (500ms after mount) is seeded too, but is inert in this environment: `main.tsx`
- *    enables StrictMode, whose double-invoked effect cancels the 500ms timer while the
- *    `firstLaunchChecked` ref prevents rescheduling. It is suppressed anyway because that is a
- *    dev-only accident, not a guarantee — a production-like build would fire it, since seeding
- *    the What's New key makes `isWhatsNewVisible()` return false and thereby *enables* it.
+ *    `welcome` (500ms after mount) is also active in this environment. Under StrictMode, effect
+ *    cleanup cancels the first timer and effect replay schedules its replacement. Seeding the
+ *    guide id prevents that replacement from blocking E2E interaction.
  *
- * This does remove E2E coverage of guide auto-start, and that behavior is not covered by unit
- * tests either: `guide-overlay.test.tsx` tests only the presentational component, and
- * `use-onboarding-triggers.test.ts` calls `startGuide` directly rather than rendering the hook.
- * The timers and `isWhatsNewVisible()` are untested in both lanes. Tracked in #141.
+ * This removes E2E coverage of guide auto-start. Hook-level tests cover the timers, StrictMode
+ * replay, live eligibility checks, and What's New suppression; real-browser auto-start coverage
+ * remains tracked in #141.
  */
 export async function suppressFirstRunOverlays(page: Page) {
 	await page.addInitScript((guideIds: string[]) => {

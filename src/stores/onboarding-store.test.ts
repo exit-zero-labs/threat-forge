@@ -100,6 +100,27 @@ describe("onboarding-store", () => {
 		expect(useOnboardingStore.getState().activeGuide).toBeNull();
 	});
 
+	it("re-shows a completed showOnce:false guide (stride-analysis)", () => {
+		useOnboardingStore.getState().startGuide("stride-analysis");
+		const steps = useOnboardingStore.getState().activeGuide?.steps.length ?? 0;
+		for (let i = 0; i < steps; i++) {
+			useOnboardingStore.getState().nextStep();
+		}
+		expect(useOnboardingStore.getState().completedGuideIds).toContain("stride-analysis");
+
+		useOnboardingStore.getState().startGuide("stride-analysis");
+		expect(useOnboardingStore.getState().activeGuide?.id).toBe("stride-analysis");
+	});
+
+	it("re-shows a dismissed showOnce:false guide (ai-assistant)", () => {
+		useOnboardingStore.getState().startGuide("ai-assistant");
+		useOnboardingStore.getState().dismissGuide();
+		expect(useOnboardingStore.getState().dismissedGuideIds).toContain("ai-assistant");
+
+		useOnboardingStore.getState().startGuide("ai-assistant");
+		expect(useOnboardingStore.getState().activeGuide?.id).toBe("ai-assistant");
+	});
+
 	it("resets a specific guide", () => {
 		useOnboardingStore.setState({
 			completedGuideIds: ["welcome", "dfd-basics"],
