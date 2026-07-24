@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import licenseRaw from "../../LICENSE?raw";
+import noticeRaw from "../../NOTICE?raw";
 import { PageShell } from "./shared/page-shell";
 
 const LAST_UPDATED = "March 3, 2026";
@@ -25,6 +27,16 @@ export function TermsPage() {
 							. You are free to use, modify, and distribute the software in accordance with the
 							license terms.
 						</p>
+						<details className="rounded-md border border-border/60 bg-muted/20 p-4">
+							<summary className="cursor-pointer font-medium text-foreground">
+								Open-source and third-party license notices
+							</summary>
+							<pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap text-xs">
+								{licenseRaw}
+								{"\n\n"}
+								{noticeRaw}
+							</pre>
+						</details>
 					</Section>
 
 					<Section title="Use at Your Own Risk">

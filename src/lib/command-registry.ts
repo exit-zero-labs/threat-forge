@@ -3,7 +3,7 @@
  * Each command has an id, label, category, optional shortcut, and action callback.
  */
 
-import { getAllComponents } from "@/lib/component-library";
+import { listComponents } from "@/lib/registry/registry";
 import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useClipboardStore } from "@/stores/clipboard-store";
@@ -243,7 +243,8 @@ export function buildCommands(deps: {
 
 	// Component placement commands — only available when a model is open
 	if (deps.hasModel) {
-		for (const comp of getAllComponents()) {
+		for (const comp of listComponents()) {
+			if (comp.id === "generic") continue;
 			commands.push({
 				id: `component:${comp.id}`,
 				label: `Add ${comp.label}`,
@@ -251,7 +252,7 @@ export function buildCommands(deps: {
 				action: () => {
 					const position = getViewportCenter();
 					useCanvasStore.getState().addElement(comp.id, position, {
-						icon: comp.icon,
+						icon: comp.iconId,
 						name: comp.label,
 					});
 				},

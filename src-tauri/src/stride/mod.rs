@@ -729,4 +729,45 @@ mod tests {
             "Total threat count should not change when adding a text element"
         );
     }
+
+    /// STRIDE role parity with the TypeScript registry.
+    ///
+    /// Reads the shared table `tests/fixtures/registry/stride-roles.json` and asserts that
+    /// `stride_category_for_type` agrees with it for every component ID. The TypeScript side
+    /// asserts the same table in `src/lib/registry/stride-role-parity.test.ts`, so the two
+    /// engines cannot silently diverge on any listed ID.
+    ///
+    /// Honest residual gap: this proves the two agree for every ID in the table, but it cannot
+    /// prove the table covers every Rust match arm, because `stride_category_for_type` is a
+    /// hand-written `match`. Making the Rust side enumerable is a linked follow-up.
+    #[test]
+    fn stride_roles_match_shared_table() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../tests/fixtures/registry/stride-roles.json"
+        );
+        let raw = std::fs::read_to_string(path).expect("read stride-roles.json");
+        let table: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(&raw).expect("parse stride-roles.json");
+
+        for (id, expected) in &table {
+            let actual = match stride_category_for_type(id) {
+                ComponentStrideCategory::Service => "service",
+                ComponentStrideCategory::Store => "store",
+                ComponentStrideCategory::Actor => "actor",
+                ComponentStrideCategory::Annotation => "none",
+            };
+            assert_eq!(
+                actual, expected,
+                "STRIDE role for `{id}` diverges: Rust says `{actual}`, table says `{expected}`"
+            );
+        }
+
+        // The legacy DFD types whose divergence this parity check closes.
+        assert_eq!(table.get("data_store").map(String::as_str), Some("store"));
+        assert_eq!(
+            table.get("external_entity").map(String::as_str),
+            Some("actor")
+        );
+    }
 }

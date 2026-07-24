@@ -1,53 +1,62 @@
 import { useReactFlow } from "@xyflow/react";
-import { Box, Search, ShieldAlert, Type } from "lucide-react";
+import { Search, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
+import { IconRenderer } from "@/components/icons/icon-renderer";
 import {
-	COMPONENT_CATEGORIES,
-	COMPONENT_LIBRARY,
-	type ComponentDefinition,
-	getComponentsByCategory,
-	getIconComponent,
+	listCategories,
+	listComponents,
+	resolveElementIcon,
 	searchComponents,
-} from "@/lib/component-library";
+} from "@/lib/registry/registry";
+import type { ComponentCategory, ComponentEntry } from "@/lib/registry/types";
 import { cn } from "@/lib/utils";
 import { useCanvasInstanceStore } from "@/stores/canvas-instance-store";
 import { useCanvasStore } from "@/stores/canvas-store";
+
+/** Sentinel category slug for "show every library component". */
+const ALL_CATEGORIES = "all";
+
+/** Library components exclude the generic default type (it lives in the Generic section). */
+function isLibraryComponent(component: ComponentEntry): boolean {
+	return component.category !== "generic";
+}
 
 /** Generic palette items (always visible at top) */
 const GENERIC_ITEMS = [
 	{
 		type: "generic" as const,
 		label: "Component",
-		icon: Box,
 		description: "Generic component",
 	},
 	{
 		type: "trust_boundary" as const,
 		label: "Boundary",
-		icon: ShieldAlert,
 		description: "Trust zone boundary",
 	},
 	{
 		type: "text" as const,
 		label: "Text",
-		icon: Type,
 		description: "Text annotation",
 	},
 ];
 
 export function ComponentPalette() {
 	const [searchQuery, setSearchQuery] = useState("");
-	const [activeCategory, setActiveCategory] = useState("All");
+	const [activeCategory, setActiveCategory] = useState<ComponentCategory | typeof ALL_CATEGORIES>(
+		ALL_CATEGORIES,
+	);
 
 	const filteredComponents = useMemo(() => {
 		if (searchQuery.trim()) {
-			return searchComponents(searchQuery);
+			return searchComponents(searchQuery).filter(isLibraryComponent);
 		}
-		if (activeCategory !== "All") {
-			return getComponentsByCategory(activeCategory);
+		if (activeCategory !== ALL_CATEGORIES) {
+			return listComponents({ category: activeCategory }).filter(isLibraryComponent);
 		}
-		return COMPONENT_LIBRARY.filter((c) => c.category !== "Generic");
+		return listComponents().filter(isLibraryComponent);
 	}, [searchQuery, activeCategory]);
+
+	const categories = listCategories();
 
 	return (
 		<div data-testid="component-palette" className="flex h-full flex-col">
@@ -63,7 +72,6 @@ export function ComponentPalette() {
 						<GenericPaletteItem
 							key={item.type}
 							type={item.type}
-							icon={item.icon}
 							label={item.label}
 							description={item.description}
 						/>
@@ -89,7 +97,7 @@ export function ComponentPalette() {
 						value={searchQuery}
 						onChange={(e) => {
 							setSearchQuery(e.target.value);
-							if (e.target.value) setActiveCategory("All");
+							if (e.target.value) setActiveCategory(ALL_CATEGORIES);
 						}}
 						className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-tf-signal focus:outline-none"
 					/>
@@ -101,15 +109,15 @@ export function ComponentPalette() {
 				<div className="flex gap-0.5 overflow-x-auto px-2 pb-2 scrollbar-none">
 					<CategoryTab
 						label="All"
-						active={activeCategory === "All"}
-						onClick={() => setActiveCategory("All")}
+						active={activeCategory === ALL_CATEGORIES}
+						onClick={() => setActiveCategory(ALL_CATEGORIES)}
 					/>
-					{COMPONENT_CATEGORIES.map((cat) => (
+					{categories.map((cat) => (
 						<CategoryTab
-							key={cat}
-							label={cat}
-							active={activeCategory === cat}
-							onClick={() => setActiveCategory(cat)}
+							key={cat.id}
+							label={cat.label}
+							active={activeCategory === cat.id}
+							onClick={() => setActiveCategory(cat.id)}
 						/>
 					))}
 				</div>
@@ -184,17 +192,16 @@ function setDragGhost(e: React.DragEvent, label: string) {
 
 /** Generic items: Component (generic) and Boundary. No subtype. */
 function GenericPaletteItem({
-	icon: Icon,
 	label,
 	type,
 	description,
 }: {
-	icon: React.ComponentType<{ className?: string }>;
 	label: string;
 	type: string;
 	description: string;
 }) {
 	const { screenToFlowPosition } = useReactFlow();
+	const icon = type === "trust_boundary" ? undefined : resolveElementIcon({ type });
 
 	const handleDoubleClick = () => {
 		const position = getCanvasCenter(screenToFlowPosition);
@@ -237,7 +244,11 @@ function GenericPaletteItem({
 			}}
 		>
 			<div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-secondary">
-				<Icon className="h-4 w-4 text-muted-foreground" />
+				{icon ? (
+					<IconRenderer icon={icon} className="h-4 w-4 text-muted-foreground" />
+				) : (
+					<ShieldAlert className="h-4 w-4 text-muted-foreground" />
+				)}
 			</div>
 			<div className="min-w-0">
 				<p className="text-sm font-medium leading-tight">{label}</p>
@@ -248,15 +259,15 @@ function GenericPaletteItem({
 }
 
 /** Library items: specific typed components. */
-function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
+function LibraryPaletteItem({ component }: { component: ComponentEntry }) {
 	const { screenToFlowPosition } = useReactFlow();
-	const Icon = getIconComponent(component.icon);
+	const icon = resolveElementIcon({ type: component.id });
 
 	const handleDoubleClick = () => {
 		const position = getCanvasCenter(screenToFlowPosition);
 		useCanvasStore
 			.getState()
-			.addElement(component.id, position, { icon: component.icon, name: component.label });
+			.addElement(component.id, position, { icon: component.iconId, name: component.label });
 	};
 
 	return (
@@ -271,7 +282,7 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 				setDragGhost(e, component.label);
 				useCanvasInstanceStore.getState().setDraggedComponent({
 					type: component.id,
-					icon: component.icon,
+					icon: component.iconId,
 					name: component.label,
 				});
 			}}
@@ -287,15 +298,11 @@ function LibraryPaletteItem({ component }: { component: ComponentDefinition }) {
 				const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
 				useCanvasStore
 					.getState()
-					.addElement(draggedType, position, { icon: component.icon, name: component.label });
+					.addElement(draggedType, position, { icon: component.iconId, name: component.label });
 			}}
 		>
 			<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-secondary">
-				{Icon ? (
-					<Icon className="h-3.5 w-3.5 text-muted-foreground" />
-				) : (
-					<Box className="h-3.5 w-3.5 text-muted-foreground" />
-				)}
+				<IconRenderer icon={icon} className="h-3.5 w-3.5 text-muted-foreground" />
 			</div>
 			<p className="min-w-0 text-xs font-medium leading-tight truncate">{component.label}</p>
 		</div>

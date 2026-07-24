@@ -74,6 +74,7 @@ compatibility boundary — is documented in
 | **ADR-009** | Additive schema growth keeps `version: "1.0"` | Additive optional fields break nothing, so bumping would make every already-shipped build refuse to open every new file; `validate_version` stays exact-match and fail-closed. Full argument in [`file-format.md`](file-format.md#schema-versioning-policy) | An older desktop build that opens and saves a newer document silently discards the sections it does not know |
 | **ADR-010** | Per-document state lives in swapped store bundles, not copied checkpoints | Each open document owns real model/canvas/history store instances; activation repoints the store facades at that document's bundle. Nothing is copied on switch, so no field can be forgotten and leak across documents, and every future document field is per-document by construction. Full rationale in [`docs/plans/53-document-registry.md`](../plans/53-document-registry.md) | `activateDocument` has no production caller until the tab UI (`#54`) renders more than one document at a time |
 | **ADR-011** | One undo entry per AI turn, not per accepted call or batch | A multi-iteration tool turn can apply many mutations; a per-call rule would evict more than half of the 20-entry history for a single turn. One lazily-pushed snapshot per turn means a single `Cmd+Z` reverts the whole turn. Full rationale in [`ai-tool-loop.md`](ai-tool-loop.md) and [`docs/plans/62-bounded-tool-loop.md`](../plans/62-bounded-tool-loop.md) | Call 3 of 5 cannot be undone individually; the turn is the atomic unit of undo |
+| **ADR-012** | Icon artwork ships as validated path data with lockfile-pinned provenance | A typed registry (`src/lib/registry/`) is the single source of truth for the component taxonomy and icon catalogue. No SVG is parsed at runtime; `.thf`/AI strings only select a bundled glyph, and an unknown value renders an inert fallback. Bundled geometry is constrained path data derived from a pinned upstream source and rendered as React-set attributes. Full rationale in [`docs/knowledge/component-registry.md`](component-registry.md) | Every icon ID requires a manifest line; bundled-path artwork also requires a byte-identical source fixture, and a new attribution or trademark set requires `NOTICE` updates. Permanent IDs mean the registry only ever grows |
 
 ## Document registry and per-document state scope
 
@@ -290,8 +291,9 @@ threat-forge/
 │   ├── hooks/                  # Custom React hooks
 │   ├── lib/                    # Shared utilities
 │   │   ├── adapters/           # File system adapters (Tauri, browser)
+│   │   ├── registry/           # Typed component/icon registry (taxonomy, icons, SVG validator)
 │   │   ├── themes/             # Theme presets and engine
-│   │   └── ...                 # Component library, STRIDE engine, commands
+│   │   └── ...                 # STRIDE engine, command registry, utilities
 │   ├── stores/                 # Zustand stores
 │   ├── types/                  # TypeScript type definitions
 │   └── App.tsx                 # App root
@@ -310,6 +312,7 @@ threat-forge/
 ├── e2e/                        # Playwright E2E tests
 ├── docs/                       # Documentation
 │   ├── knowledge/              # Reference docs (architecture, format, etc.)
+│   ├── runbooks/               # Operational runbooks (adding an icon, CI triage)
 │   └── plans/                  # Todo tracking and roadmap
 └── public/                     # Static assets
 ```

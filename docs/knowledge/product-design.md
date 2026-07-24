@@ -22,7 +22,7 @@
 | STRIDE threat engine | Auto-generated threats per element type, rule-based |
 | AI chat pane (BYOK) | OpenAI + Anthropic support; model selector; chat sessions (persisted per file); markdown rendering; stop generating; enhanced STRIDE prompts |
 | Cross-platform | Browser plus macOS, Windows, and Linux desktop builds via Tauri v2 |
-| Component library | Typed components across 10 categories (incl. Annotations) with lucide icons, defined in `src/lib/component-library.ts` |
+| Component library | Typed components across 10 categories (incl. Annotations) in `src/lib/registry/`, rendered through `src/components/icons/icon-renderer.tsx` |
 | Themes | Built-in light and dark themes with separate light/dark selection (`src/lib/themes/presets.ts`) |
 | Keyboard shortcuts | Keyboard shortcuts with Cmd+K command palette (`src/lib/command-registry.ts`) |
 | Resizable panes | Draggable left/right panels with min/max constraints |
