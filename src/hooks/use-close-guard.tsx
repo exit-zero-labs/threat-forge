@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { documentDisplayTitle } from "@/lib/document-display-title";
 import { isTauri } from "@/lib/platform";
 import { useDocumentRegistry } from "@/stores/document-registry";
@@ -8,6 +8,13 @@ import type { DocumentId } from "@/types/document";
 interface DirtyDocument {
 	id: DocumentId;
 	title: string;
+}
+
+/** A pending close/quit decision awaiting user confirmation in the summary modal. */
+interface PendingClose {
+	documents: DirtyDocument[];
+	confirmLabel: string;
+	confirm: () => Promise<void>;
 }
 
 /**
@@ -26,24 +33,32 @@ function currentDirtyDocuments(): DirtyDocument[] {
 	return dirty;
 }
 
+/** Confirm an application quit that has cleared the dirty-document guard. */
+async function confirmQuit(): Promise<void> {
+	const { invoke } = await import("@tauri-apps/api/core");
+	await invoke<void>("confirm_quit");
+}
+
 /**
- * Window and application close guards (`#54` D6 / step 9). Mounted once in the app shell; returns
- * the desktop close-summary modal (or `null`), which the shell renders.
+ * Window and application close guards (`#54` D6 / step 9, `#143` quit). Mounted once in the app
+ * shell; returns the desktop close-summary modal (or `null`), which the shell renders.
  *
  * - **Browser:** a `beforeunload` listener is registered **only while at least one document is
  *   dirty** and removed as soon as none are. Browsers replace any custom string with their own, so
  *   the handler only calls `preventDefault`. Conditional registration keeps bfcache and the
  *   `#56` `pagehide` autosave flush intact — an always-registered handler would disable bfcache.
- * - **Desktop:** `onCloseRequested` calls `preventDefault()` **first** (the Tauri API destroys the
- *   window if the handler throws before preventing — the default is fail-open, and fail-open here
- *   means data loss), then either closes immediately when nothing is dirty or shows an in-app
- *   summary listing every dirty document. Any failure falls back to `window.confirm` so the window
- *   is never left unclosable and is never destroyed without asking.
+ * - **Desktop window close:** `onCloseRequested` calls `preventDefault()` **first** (the Tauri API
+ *   destroys the window if the handler throws before preventing — the default is fail-open, and
+ *   fail-open here means data loss), then either closes immediately when nothing is dirty or shows
+ *   an in-app summary listing every dirty document. Any failure falls back to `window.confirm` so
+ *   the window is never left unclosable and is never destroyed without asking.
+ * - **Desktop quit:** platform menu items emit `quit-requested` instead of exiting. The same
+ *   summary decides: clean state quits immediately via `confirm_quit`, dirty state prompts,
+ *   cancel keeps the app open, and confirmation quits.
  */
 export function useCloseGuard(): ReactNode {
 	const [dirtyCount, setDirtyCount] = useState(0);
-	const [pendingDocuments, setPendingDocuments] = useState<DirtyDocument[] | null>(null);
-	const destroyWindowRef = useRef<(() => Promise<void>) | null>(null);
+	const [pending, setPending] = useState<PendingClose | null>(null);
 
 	// Track the dirty count by subscribing to the registry (open set) and to each open document's
 	// own model store, re-subscribing as documents open and close.
@@ -103,7 +118,7 @@ export function useCloseGuard(): ReactNode {
 			try {
 				const { getCurrentWindow } = await import("@tauri-apps/api/window");
 				const win = getCurrentWindow();
-				destroyWindowRef.current = () => win.destroy();
+
 				const un = await win.onCloseRequested(async (event) => {
 					try {
 						// Prevent first: the API fails open (destroys the window) if the handler throws
@@ -114,7 +129,11 @@ export function useCloseGuard(): ReactNode {
 							await win.destroy();
 							return;
 						}
-						setPendingDocuments(dirty);
+						setPending({
+							documents: dirty,
+							confirmLabel: "Discard and close",
+							confirm: () => win.destroy(),
+						});
 					} catch {
 						// Never lose data silently, never leave the window unclosable.
 						if (window.confirm("You have unsaved changes. Discard them and close?")) {
@@ -136,36 +155,80 @@ export function useCloseGuard(): ReactNode {
 		return () => {
 			cancelled = true;
 			unlisten?.();
-			destroyWindowRef.current = null;
 		};
 	}, []);
 
-	const cancelClose = useCallback(() => setPendingDocuments(null), []);
-	const discardAndClose = useCallback(async () => {
-		setPendingDocuments(null);
-		try {
-			await destroyWindowRef.current?.();
-		} catch {
-			// Nothing further can be done safely if the window API rejects.
-		}
+	// Desktop: decide a native application quit that Rust has already prevented.
+	useEffect(() => {
+		if (!isTauri()) return;
+		let unlisten: (() => void) | undefined;
+		let cancelled = false;
+
+		void (async () => {
+			try {
+				const { listen } = await import("@tauri-apps/api/event");
+				const un = await listen<void>("quit-requested", () => {
+					void (async () => {
+						try {
+							const dirty = currentDirtyDocuments();
+							if (dirty.length === 0) {
+								await confirmQuit();
+								return;
+							}
+							setPending({
+								documents: dirty,
+								confirmLabel: "Discard and quit",
+								confirm: confirmQuit,
+							});
+						} catch {
+							// The exit was already prevented; doing nothing leaves the app open.
+						}
+					})();
+				});
+				if (cancelled) un();
+				else unlisten = un;
+			} catch {
+				// Event API unavailable: the prevented exit remains fail-closed.
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+			unlisten?.();
+		};
 	}, []);
 
-	if (!pendingDocuments) return null;
+	const cancelClose = useCallback(() => setPending(null), []);
+	const confirmClose = useCallback(() => {
+		if (!pending) return;
+		// Capture the action before clearing the modal, then run it outside the state updater so it
+		// fires exactly once (a side effect inside an updater would run twice under StrictMode).
+		const { confirm } = pending;
+		setPending(null);
+		void confirm().catch(() => {
+			// The window/IPC call is the last safe step; nothing further can be done on failure.
+		});
+	}, [pending]);
+
+	if (!pending) return null;
 	return (
 		<CloseSummaryModal
-			documents={pendingDocuments}
+			documents={pending.documents}
+			confirmLabel={pending.confirmLabel}
 			onCancel={cancelClose}
-			onConfirm={() => void discardAndClose()}
+			onConfirm={confirmClose}
 		/>
 	);
 }
 
 function CloseSummaryModal({
 	documents,
+	confirmLabel,
 	onCancel,
 	onConfirm,
 }: {
 	documents: DirtyDocument[];
+	confirmLabel: string;
 	onCancel: () => void;
 	onConfirm: () => void;
 }) {
@@ -206,7 +269,7 @@ function CloseSummaryModal({
 						onClick={onConfirm}
 						className="rounded-md bg-destructive px-3 py-1.5 text-sm text-destructive-foreground hover:bg-destructive/90"
 					>
-						Discard and close
+						{confirmLabel}
 					</button>
 				</div>
 			</div>
