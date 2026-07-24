@@ -31,6 +31,13 @@ export interface HydrateDocumentInput extends CreateDocumentInput {
 	createdAt: string;
 	/** Whether to make this document active. Restore hydrates siblings without activating them. */
 	activate: boolean;
+	/**
+	 * Where to place the rebuilt session in `openDocumentIds`. Restore appends in persisted order,
+	 * but activating an un-hydrated tab later must land the document at its *persisted* slot rather
+	 * than at the end, so the rendered tab order does not jump when a restored tab is opened (`#56`).
+	 * Clamped into range; omitted or out-of-range values append.
+	 */
+	insertIndex?: number;
 }
 
 /**
@@ -174,7 +181,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		return id;
 	},
 
-	hydrateDocument: ({ id, model, filePath, pendingLayout, createdAt, activate }) => {
+	hydrateDocument: ({ id, model, filePath, pendingLayout, createdAt, activate, insertIndex }) => {
 		if (get().documents[id]) {
 			// Already hydrated. The live bundle wins over stored text, so nothing is re-seeded;
 			// the caller's activation request is still honored because activating an existing
@@ -201,10 +208,20 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 			pinned: false,
 		};
 
-		set((state) => ({
-			documents: { ...state.documents, [id]: session },
-			openDocumentIds: [...state.openDocumentIds, id],
-		}));
+		set((state) => {
+			// Insert at the persisted slot when a valid index is given, otherwise append. Splicing a
+			// copy keeps the update immutable.
+			const openDocumentIds = [...state.openDocumentIds];
+			const at =
+				insertIndex !== undefined && insertIndex >= 0 && insertIndex <= openDocumentIds.length
+					? insertIndex
+					: openDocumentIds.length;
+			openDocumentIds.splice(at, 0, id);
+			return {
+				documents: { ...state.documents, [id]: session },
+				openDocumentIds,
+			};
+		});
 
 		if (activate) get().activateDocument(id);
 	},

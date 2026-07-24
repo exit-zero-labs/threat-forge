@@ -7,6 +7,7 @@ import {
 	type WorkspaceUnavailableReason,
 } from "@/lib/persistence/types";
 import { isTauri } from "@/lib/platform";
+import { validateThreatModelVersion } from "@/lib/thf-validation";
 import { parseThreatModelYaml } from "@/lib/thf-yaml";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useWorkspaceStore } from "@/stores/workspace-store";
@@ -59,6 +60,11 @@ export async function hydrateDocumentById(
 	}
 
 	const entry = useWorkspaceStore.getState().documents.find((candidate) => candidate.id === id);
+	// Whether this document was a manifest tab when the read began. A document that is *not* in the
+	// manifest is an explicit orphan recovery (D5) and is always allowed through; a document that
+	// *is* must still be a manifest tab when its body finishes loading, so closing its tab mid-read
+	// cannot resurrect it below.
+	const hadManifestEntry = entry !== undefined;
 
 	let thf: string | null;
 	try {
@@ -70,9 +76,26 @@ export async function hydrateDocumentById(
 	}
 	if (thf === null) return false;
 
+	// The read is async, so re-read the current state now that it has resolved.
+	const current = useDocumentRegistry.getState();
+	if (current.documents[id]) {
+		// A concurrent hydration already rebuilt this session; do not read stored text over it.
+		if (options.activate) current.activateDocument(id);
+		return true;
+	}
+	if (hadManifestEntry && !useWorkspaceStore.getState().documents.some((c) => c.id === id)) {
+		// The tab was closed while its body was being read. Its manifest entry is gone, so
+		// re-adding it now would resurrect a document the user just closed. Refuse.
+		return false;
+	}
+
 	let model: ThreatModel;
 	try {
 		model = parseThreatModelYaml(thf);
+		// Workspace bodies are app-authored in-progress models, so restore deliberately does not
+		// re-run full reference validation. It must still enforce ADR-009's exact schema-version
+		// gate: an older cached build may not hydrate and later rewrite a newer-format body.
+		validateThreatModelVersion(model.version);
 	} catch {
 		// Unparseable stored text is a corrupt record: mark it, keep it, and let the caller move
 		// on. The parser's own message describes the document, so only the typed state is kept.
@@ -92,8 +115,33 @@ export async function hydrateDocumentById(
 		// the session now, so "now" is the honest creation time for it.
 		createdAt: entry?.createdAt ?? new Date().toISOString(),
 		activate: options.activate,
+		insertIndex: persistedSlotIndex(id),
 	});
 	return true;
+}
+
+/**
+ * The index in `openDocumentIds` a newly hydrated document should occupy so the rendered tab order
+ * keeps its persisted position instead of jumping to the end (`#56`). It is the count of
+ * already-hydrated documents that precede this one in the localStorage manifest, floored past any
+ * pinned block so an unpinned restored tab never lands inside it. A document the manifest does not
+ * list (a recovered orphan) appends.
+ */
+function persistedSlotIndex(id: DocumentId): number {
+	const registry = useDocumentRegistry.getState();
+	const manifestOrder = useWorkspaceStore.getState().documents.map((entry) => entry.id);
+	const myRank = manifestOrder.indexOf(id);
+	const openDocumentIds = registry.openDocumentIds;
+	if (myRank === -1) return openDocumentIds.length;
+
+	let slot = 0;
+	let pinnedCount = 0;
+	for (const openId of openDocumentIds) {
+		if (registry.documents[openId]?.pinned) pinnedCount += 1;
+		const rank = manifestOrder.indexOf(openId);
+		if (rank !== -1 && rank < myRank) slot += 1;
+	}
+	return Math.max(slot, pinnedCount);
 }
 
 /**
@@ -133,17 +181,35 @@ export function useWorkspaceRestore(): void {
 			workspace.reconcile(storedIds);
 
 			const state = useWorkspaceStore.getState();
-			if (state.activeDocumentId) {
-				// Try the persisted active document first, then fall back through the remaining
-				// manifest order, so one unreadable document cannot cost the user the whole workspace.
-				const candidates = [
-					state.activeDocumentId,
-					...state.documents.map((entry) => entry.id).filter((id) => id !== state.activeDocumentId),
-				];
-				for (const id of candidates) {
-					if (cancelled) return;
-					if (await hydrateDocumentById(id, { activate: true })) break;
+			// Try the persisted active document first, or the first manifest document when stale
+			// metadata left no active pointer. Fall back through the remaining manifest order so one
+			// unreadable document cannot cost the user the whole workspace.
+			const candidates = state.activeDocumentId
+				? [
+						state.activeDocumentId,
+						...state.documents
+							.map((entry) => entry.id)
+							.filter((id) => id !== state.activeDocumentId),
+					]
+				: state.documents.map((entry) => entry.id);
+			for (const id of candidates) {
+				if (cancelled) return;
+				// A user may activate another restored tab while the boot read is pending. Hydrate
+				// without activation, then claim the active pointer only if no user-selected document
+				// is live; otherwise the boot task must not steal focus when its slower read resolves.
+				const hydrated = await hydrateDocumentById(id, { activate: false });
+				if (cancelled) return;
+				if (!hydrated) continue;
+				const registry = useDocumentRegistry.getState();
+				if (registry.activeDocumentId === null) {
+					registry.activateDocument(id);
+					useWorkspaceStore.getState().setActiveDocumentId(id);
+				} else {
+					// A user activation won while the boot read was pending. Mirror that settled
+					// choice into the manifest before persistence is enabled.
+					useWorkspaceStore.getState().setActiveDocumentId(registry.activeDocumentId);
 				}
+				break;
 			}
 
 			if (cancelled) return;

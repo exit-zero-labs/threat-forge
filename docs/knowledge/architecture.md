@@ -241,9 +241,12 @@ and leaves the database at its prior version. The database is never deleted to c
 
 **Restore without blocking first paint.** `useWorkspaceRestore` runs after mount: it reconciles the
 manifest against `listDocuments()` (manifest entries with no record are dropped; records with no
-manifest entry become `recoverableDocumentIds`), then reads **only** the active document's body and
-calls `hydrateDocument`. Inactive documents stay manifest descriptors until `hydrateDocumentById`
-loads one on demand.
+manifest entry become `recoverableDocumentIds`), then reads **only** the active document's body (or
+the first viable manifest entry when the pointer is missing) and calls `hydrateDocument`. Restore
+uses the lightweight YAML parser because these are app-authored, potentially in-progress models,
+but still applies ADR-009's exact schema-version gate so an older cached build cannot silently
+rewrite a newer-format body. Inactive documents stay manifest descriptors until
+`hydrateDocumentById` loads one on demand.
 
 **Autosave.** `useWorkspacePersistence` subscribes to the active document's own model and canvas
 stores and writes on a `WORKSPACE_AUTOSAVE_DEBOUNCE_MS` debounce, flushing on `visibilitychange`

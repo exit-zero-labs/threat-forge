@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ThreatModel } from "@/types/threat-model";
-import { documentDisplayTitle } from "./document-display-title";
+import { documentDisplayTitle, resolveDisplayTitle } from "./document-display-title";
 
 function makeModel(title: string): ThreatModel {
 	return {
@@ -38,5 +38,20 @@ describe("documentDisplayTitle", () => {
 		expect(documentDisplayTitle(makeModel("Metadata Title"), "/tmp/on-disk-name.thf")).toBe(
 			"on-disk-name",
 		);
+	});
+});
+
+describe("resolveDisplayTitle (cached-title path for un-hydrated tabs, #56)", () => {
+	it("resolves a cached manifest title identically to a hydrated model", () => {
+		// A restored tab has only the cached title string, not a model; it must land on the same
+		// label the hydrated tab would show, so the two cannot drift when the body finally loads.
+		expect(resolveDisplayTitle("Untitled Threat Model", null)).toBe(
+			documentDisplayTitle(makeModel("Untitled Threat Model"), null),
+		);
+		expect(resolveDisplayTitle("Ignored", "/home/jane/payments.thf")).toBe("payments");
+	});
+
+	it("falls back to the app name when a persisted document cached no title and has no path", () => {
+		expect(resolveDisplayTitle(null, null)).toBe("Threat Forge");
 	});
 });

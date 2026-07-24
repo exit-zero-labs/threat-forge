@@ -1,6 +1,6 @@
 import { Pin, X } from "lucide-react";
 import { useStore } from "zustand";
-import { documentDisplayTitle } from "@/lib/document-display-title";
+import { documentDisplayTitle, resolveDisplayTitle } from "@/lib/document-display-title";
 import { cn } from "@/lib/utils";
 import type { DocumentStores } from "@/stores/document-stores";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -14,18 +14,13 @@ import type { DocumentId } from "@/types/document";
  */
 export const TAB_DRAG_MIME = "application/x-threatforge-tab";
 
-export interface DocumentTabProps {
-	/** The document this tab represents. */
-	documentId: DocumentId;
-	/** The document's own store bundle, passed by the strip so the tab never activates it to read. */
-	stores: DocumentStores;
+/** Callbacks and selection flags shared by every tab, regardless of hydration state. */
+interface DocumentTabHandlers {
 	/** Whether this is the active document (exactly one tab is selected). */
 	selected: boolean;
 	/** Whether this tab currently holds the tablist's roving `tabindex={0}`. */
 	focused: boolean;
-	/** Whether this document is pinned to the leading block. */
-	pinned: boolean;
-	/** Activate this document. */
+	/** Activate this document. Hydrates a restored tab on demand before selecting it (`#56`). */
 	onActivate: (id: DocumentId) => void;
 	/** Close this document through the same dirty-confirmation path as `Delete`. */
 	onClose: (id: DocumentId) => void;
@@ -37,11 +32,29 @@ export interface DocumentTabProps {
 	onReorderEnd?: () => void;
 }
 
+interface DocumentTabViewProps extends DocumentTabHandlers {
+	/** The document this tab represents. */
+	documentId: DocumentId;
+	/** The resolved display label. */
+	title: string;
+	/** The full title (and path, when present) shown on hover. */
+	tooltip: string;
+	/** Whether this document has unsaved changes. Always false for an un-hydrated tab. */
+	isDirty: boolean;
+	/** Whether this document is pinned to the leading block. Always false for an un-hydrated tab. */
+	pinned: boolean;
+	/**
+	 * Whether pointer drag-reorder is offered. A restored (un-hydrated) tab has no live session to
+	 * move, so it is non-draggable rather than presenting a drag that silently no-ops (`#56`);
+	 * keyboard reorder still works by hydrating the tab first.
+	 */
+	draggable: boolean;
+}
+
 /**
- * One tab in the document tablist (`#54` D2/D4).
- *
- * Renders its own document's title and dirty state read from *that document's* store bundle — not
- * the active-document facade — so a background document going dirty updates its own tab.
+ * The presentational tab, shared by the hydrated {@link DocumentTab} and the restored
+ * {@link RestoredDocumentTab} so the WAI-ARIA structure, drag wiring, and controls exist in one
+ * place (`#54` D2/D4, `#56`).
  *
  * Structure: a plain wrapper holds the `role="tab"` element and the pin/close `<button>`s as
  * *siblings*. The buttons are deliberately not descendants of the `role="tab"` element, because a
@@ -51,42 +64,42 @@ export interface DocumentTabProps {
  * sibling controls keep their own labels. Only the `role="tab"` element carries the roving
  * `tabindex`; the controls are `tabindex={-1}`, so each tab stays a single tab stop.
  */
-export function DocumentTab({
+function DocumentTabView({
 	documentId,
-	stores,
+	title,
+	tooltip,
+	isDirty,
+	pinned,
 	selected,
 	focused,
-	pinned,
+	draggable,
 	onActivate,
 	onClose,
 	onPin,
 	onReorderStart,
 	onReorderEnd,
-}: DocumentTabProps) {
-	const model = useStore(stores.model, (s) => s.model);
-	const filePath = useStore(stores.model, (s) => s.filePath);
-	const isDirty = useStore(stores.model, (s) => s.isDirty);
+}: DocumentTabViewProps) {
 	const reduceMotion = useSettingsStore((s) => s.settings.reduceMotion);
-
-	const title = documentDisplayTitle(model, filePath);
 	const accessibleName = `${title}${isDirty ? ", unsaved changes" : ""}${pinned ? ", pinned" : ""}`;
-	// The hover tooltip carries the full title and the path the truncated label may be hiding (D3).
-	const tooltip = filePath ? `${title}\n${filePath}` : title;
 
 	return (
 		<div
 			data-testid={`document-tab-${documentId}`}
-			draggable
-			onDragStart={(e) => {
-				// The reorder id is tracked by the strip via `onReorderStart`, not read back from
-				// `dataTransfer`: WKWebView (desktop) returns an empty `getData()` for a custom MIME
-				// during `drop`, the same reason the palette carries its payload out-of-band (see the
-				// note in `dfd-canvas.tsx`). The MIME is still set for the drag cursor and non-WebKit.
-				onReorderStart?.(documentId);
-				e.dataTransfer.setData(TAB_DRAG_MIME, documentId);
-				e.dataTransfer.effectAllowed = "move";
-			}}
-			onDragEnd={() => onReorderEnd?.()}
+			draggable={draggable}
+			onDragStart={
+				draggable
+					? (e) => {
+							// The reorder id is tracked by the strip via `onReorderStart`, not read back from
+							// `dataTransfer`: WKWebView (desktop) returns an empty `getData()` for a custom MIME
+							// during `drop`, the same reason the palette carries its payload out-of-band (see the
+							// note in `dfd-canvas.tsx`). The MIME is still set for the drag cursor and non-WebKit.
+							onReorderStart?.(documentId);
+							e.dataTransfer.setData(TAB_DRAG_MIME, documentId);
+							e.dataTransfer.effectAllowed = "move";
+						}
+					: undefined
+			}
+			onDragEnd={draggable ? () => onReorderEnd?.() : undefined}
 			className={cn(
 				"group relative flex h-full shrink-0 items-center border-r border-border",
 				"min-w-[7rem] max-w-[14rem]",
@@ -157,5 +170,82 @@ export function DocumentTab({
 				<X className="h-3.5 w-3.5" aria-hidden="true" />
 			</button>
 		</div>
+	);
+}
+
+export interface DocumentTabProps extends DocumentTabHandlers {
+	/** The document this tab represents. */
+	documentId: DocumentId;
+	/** The document's own store bundle, passed by the strip so the tab never activates it to read. */
+	stores: DocumentStores;
+	/** Whether this document is pinned to the leading block. */
+	pinned: boolean;
+}
+
+/**
+ * One tab for a hydrated (live) document (`#54` D2/D4).
+ *
+ * Renders its own document's title and dirty state read from *that document's* store bundle — not
+ * the active-document facade — so a background document going dirty updates its own tab.
+ */
+export function DocumentTab({ documentId, stores, pinned, ...handlers }: DocumentTabProps) {
+	const model = useStore(stores.model, (s) => s.model);
+	const filePath = useStore(stores.model, (s) => s.filePath);
+	const isDirty = useStore(stores.model, (s) => s.isDirty);
+
+	const title = documentDisplayTitle(model, filePath);
+	// The hover tooltip carries the full title and the path the truncated label may be hiding (D3).
+	const tooltip = filePath ? `${title}\n${filePath}` : title;
+
+	return (
+		<DocumentTabView
+			documentId={documentId}
+			title={title}
+			tooltip={tooltip}
+			isDirty={isDirty}
+			pinned={pinned}
+			draggable
+			{...handlers}
+		/>
+	);
+}
+
+export interface RestoredDocumentTabProps extends DocumentTabHandlers {
+	/** The persisted document this tab represents. */
+	documentId: DocumentId;
+	/** Cached manifest title, resolved to a label without reading the body from IndexedDB. */
+	title: string;
+	/** Cached adapter path, or null for a browser document with no on-disk file. */
+	filePath: string | null;
+}
+
+/**
+ * One tab for a persisted document whose body has not been hydrated yet (`#56`).
+ *
+ * It renders from the localStorage manifest alone — no store bundle exists to subscribe to — so it
+ * is never dirty and never pinned (pin state is session-scoped and unpersisted). Activating it
+ * (click, or Enter/Space via the tablist) hydrates its body on demand through the strip. It is
+ * non-draggable: a pointer reorder would have no live session to move, so the drag is not offered
+ * rather than silently no-opping. Keyboard reorder/pin still work — the strip hydrates first.
+ */
+export function RestoredDocumentTab({
+	documentId,
+	title,
+	filePath,
+	...handlers
+}: RestoredDocumentTabProps) {
+	const label = resolveDisplayTitle(title, filePath);
+	const tooltip = filePath ? `${label}\n${filePath}` : label;
+
+	return (
+		<DocumentTabView
+			documentId={documentId}
+			title={label}
+			tooltip={tooltip}
+			isDirty={false}
+			pinned={false}
+			draggable={false}
+			{...handlers}
+		/>
 	);
 }

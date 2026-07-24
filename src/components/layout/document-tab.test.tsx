@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDocumentStores, type DocumentStores } from "@/stores/document-stores";
 import type { DocumentId } from "@/types/document";
 import type { ThreatModel } from "@/types/threat-model";
-import { DocumentTab } from "./document-tab";
+import { DocumentTab, RestoredDocumentTab } from "./document-tab";
 
 function makeModel(title: string): ThreatModel {
 	return {
@@ -167,5 +167,65 @@ describe("DocumentTab", () => {
 		expect(screen.getByRole("tab", { name: /pinned/ })).toBeInTheDocument();
 		fireEvent.click(screen.getByRole("button", { name: "Unpin Alpha" }));
 		expect(onPin).toHaveBeenCalledWith("doc-a", false);
+	});
+});
+
+describe("RestoredDocumentTab (un-hydrated, #56)", () => {
+	it("labels itself from the manifest title with no store bundle and is never dirty", () => {
+		render(
+			<RestoredDocumentTab
+				documentId={"doc-r" as DocumentId}
+				title="Cached Title"
+				filePath={null}
+				selected={false}
+				focused={false}
+				{...noop}
+			/>,
+		);
+
+		// It renders the same APG tab structure as a hydrated tab, from the cached title alone.
+		const tab = screen.getByRole("tab", { name: "Cached Title" });
+		expect(tab).toHaveAttribute("id", "tab-doc-r");
+		expect(tab).toHaveAttribute("aria-controls", "document-panel");
+		// A persisted document has no in-memory edits, so it can never show unsaved changes.
+		expect(screen.queryByRole("tab", { name: /unsaved changes/ })).toBeNull();
+		expect(screen.queryByRole("tab", { name: /pinned/ })).toBeNull();
+	});
+
+	it("prefers the path basename over the cached title, matching a hydrated tab", () => {
+		render(
+			<RestoredDocumentTab
+				documentId={"doc-r" as DocumentId}
+				title="Metadata Title"
+				filePath="/models/payments.thf"
+				selected
+				focused
+				{...noop}
+			/>,
+		);
+		expect(screen.getByRole("tab", { name: "payments" })).toBeInTheDocument();
+	});
+
+	it("activates and closes through the same callbacks the strip drives for a live tab", () => {
+		const onActivate = vi.fn();
+		const onClose = vi.fn();
+		render(
+			<RestoredDocumentTab
+				documentId={"doc-r" as DocumentId}
+				title="Restore Me"
+				filePath={null}
+				selected={false}
+				focused={false}
+				onActivate={onActivate}
+				onClose={onClose}
+				onPin={vi.fn()}
+			/>,
+		);
+
+		fireEvent.click(screen.getByRole("tab"));
+		expect(onActivate).toHaveBeenCalledWith("doc-r");
+
+		fireEvent.click(screen.getByRole("button", { name: "Close Restore Me" }));
+		expect(onClose).toHaveBeenCalledWith("doc-r");
 	});
 });

@@ -96,6 +96,18 @@ const INITIAL_PERSISTED: PersistedWorkspaceState = {
 };
 
 /**
+ * Renumber every entry's `order` field to its array index so the persisted array position and the
+ * `order` field can never disagree (`#56`). The array is the single order authority; `order` is a
+ * derived, self-consistent projection of it, which keeps a manifest that is later read back by a
+ * consumer that trusts `order` identical to one that trusts array position.
+ */
+function withCoherentOrder(documents: readonly WorkspaceManifestEntry[]): WorkspaceManifestEntry[] {
+	return documents.map((entry, index) =>
+		entry.order === index ? entry : { ...entry, order: index },
+	);
+}
+
+/**
  * The workspace store: the localStorage manifest projection plus runtime persistence
  * observability (issue #56, D1/D2). Only the manifest slice is written to localStorage;
  * persistence status, availability, and orphan lists are runtime-only, mirroring the
@@ -114,16 +126,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 				set((state) => {
 					const index = state.documents.findIndex((existing) => existing.id === entry.id);
 					if (index === -1) {
-						return { documents: [...state.documents, entry] };
+						// A new entry lands at the array slot its `order` requests (clamped into range),
+						// so a document whose order was derived from the live registry position is placed
+						// there rather than always appended. Renumbering keeps array index and `order`
+						// coherent regardless of where it landed.
+						const at = Math.max(0, Math.min(entry.order, state.documents.length));
+						const documents = state.documents.slice();
+						documents.splice(at, 0, entry);
+						return { documents: withCoherentOrder(documents) };
 					}
+					// An existing entry is replaced in place, preserving its persisted array position.
 					const documents = state.documents.slice();
 					documents[index] = entry;
-					return { documents };
+					return { documents: withCoherentOrder(documents) };
 				}),
 
 			removeManifestEntry: (id) =>
 				set((state) => ({
-					documents: state.documents.filter((entry) => entry.id !== id),
+					documents: withCoherentOrder(state.documents.filter((entry) => entry.id !== id)),
 					activeDocumentId: state.activeDocumentId === id ? null : state.activeDocumentId,
 				})),
 
@@ -137,7 +157,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 								(rank.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
 								(rank.get(b.id) ?? Number.MAX_SAFE_INTEGER),
 						);
-					return { documents };
+					// Reassign `order` to the new array indices so the reordered array and the `order`
+					// field stay coherent — the reorder-then-persist path previously left `order` stale.
+					return { documents: withCoherentOrder(documents) };
 				}),
 
 			setActiveDocumentId: (id) => set({ activeDocumentId: id }),
@@ -155,7 +177,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 					const { kept, orphanIds } = reconcileManifest(state.documents, storedIds);
 					const keptIds = new Set(kept.map((entry) => entry.id));
 					return {
-						documents: kept,
+						documents: withCoherentOrder(kept),
 						activeDocumentId:
 							state.activeDocumentId && keptIds.has(state.activeDocumentId)
 								? state.activeDocumentId
