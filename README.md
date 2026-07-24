@@ -259,3 +259,11 @@ Copyright 2026 Exit Zero Labs LLC. Licensed under the [Apache License 2.0](LICEN
 <p align="center">
   Built by <a href="https://exitzerolabs.com">Exit Zero Labs</a>. Ship clean. Build forward.
 </p>
+
+## Setup
+
+Copy the example environment file and adjust values:
+
+```bash
+cp .env.example .env
+```
