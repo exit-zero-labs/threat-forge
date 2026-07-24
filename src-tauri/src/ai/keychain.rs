@@ -194,6 +194,21 @@ impl KeyStorage {
 }
 
 #[cfg(test)]
+impl KeyStorage {
+    /// Poison the internal keys mutex so the next lock returns a `KeyStorage`
+    /// fault carrying the poison payload. Exists only so the IPC-boundary tests
+    /// in `commands::ai_commands` can drive the real lock-poison error path for
+    /// `has_key`, which never touches the filesystem and so cannot be faulted
+    /// through the public API otherwise.
+    pub(crate) fn poison_keys_lock_for_test(&self) {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = self.keys.lock().expect("lock is not yet poisoned");
+            panic!("poison the keys lock for a boundary test");
+        }));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
