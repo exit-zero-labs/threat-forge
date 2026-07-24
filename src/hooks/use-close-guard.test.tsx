@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type CloseHandler = (event: { preventDefault: () => void }) => unknown;
+type QuitHandler = () => unknown;
 
 // Stub the Tauri window. `getCurrentWindow().onCloseRequested` captures the handler so a test can
 // fire a close request; `destroy` records that the window was actually closed.
@@ -26,11 +27,58 @@ const tauriWindow = vi.hoisted(() => {
 	};
 });
 
+// Stub the Tauri event bus. `listen("quit-requested", cb)` captures the callback so a test can
+// simulate the Rust-emitted native-quit request.
+const tauriEvent = vi.hoisted(() => {
+	let quitHandler: QuitHandler | null = null;
+	let nextListenError: Error | null = null;
+	const listen = vi.fn(async (event: string, cb: QuitHandler) => {
+		if (nextListenError) {
+			const error = nextListenError;
+			nextListenError = null;
+			throw error;
+		}
+		if (event === "quit-requested") quitHandler = cb;
+		return () => {
+			if (event === "quit-requested") quitHandler = null;
+		};
+	});
+	return {
+		listen,
+		getQuitHandler: () => quitHandler,
+		failNextListen: () => {
+			nextListenError = new Error("event API unavailable");
+		},
+		reset: () => {
+			quitHandler = null;
+			nextListenError = null;
+			listen.mockClear();
+		},
+	};
+});
+
+// Stub the Tauri IPC. `confirm_quit` is the only command the guard invokes; record every call.
+const tauriCore = vi.hoisted(() => {
+	const invoke = vi.fn().mockResolvedValue(undefined);
+	return {
+		invoke,
+		reset: () => invoke.mockClear(),
+	};
+});
+
 vi.mock("@tauri-apps/api/window", () => ({
 	getCurrentWindow: () => ({
 		onCloseRequested: tauriWindow.onCloseRequested,
 		destroy: tauriWindow.destroy,
 	}),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+	listen: tauriEvent.listen,
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+	invoke: tauriCore.invoke,
 }));
 
 import { useDocumentRegistry } from "@/stores/document-registry";
@@ -81,6 +129,8 @@ beforeEach(() => {
 	useDocumentRegistry.setState({ documents: {}, openDocumentIds: [], activeDocumentId: null });
 	setActiveStores(createDocumentStores());
 	tauriWindow.reset();
+	tauriEvent.reset();
+	tauriCore.reset();
 });
 
 describe("useCloseGuard browser guard", () => {
@@ -243,5 +293,89 @@ describe("useCloseGuard desktop guard", () => {
 
 		getStateSpy.mockRestore();
 		confirmSpy.mockRestore();
+	});
+
+	it("unregisters the window close guard when quit-listener setup fails", async () => {
+		tauriEvent.failNextListen();
+		const { unmount } = render(<Harness />);
+		await waitFor(() => expect(tauriWindow.getHandler()).toBeTruthy());
+		await waitFor(() => expect(tauriEvent.listen).toHaveBeenCalled());
+
+		unmount();
+
+		expect(tauriWindow.getHandler()).toBeNull();
+	});
+});
+
+describe("useCloseGuard desktop quit guard", () => {
+	beforeEach(() => {
+		(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+	});
+	afterEach(() => {
+		(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = undefined;
+	});
+
+	it("prevents an immediate quit on dirty state, lists every dirty document, and confirms exactly once", async () => {
+		const a = open("Alpha");
+		const b = open("Beta");
+		act(() => {
+			requireStores(a).model.getState().markDirty();
+			requireStores(b).model.getState().markDirty();
+		});
+
+		render(<Harness />);
+		await waitFor(() => expect(tauriEvent.getQuitHandler()).toBeTruthy());
+
+		await act(async () => {
+			tauriEvent.getQuitHandler()?.();
+		});
+
+		// The native quit was already prevented in Rust; the guard must not exit yet. Both dirty
+		// documents are listed and no confirmation IPC has fired.
+		const modal = await screen.findByTestId("close-guard-modal");
+		expect(within(modal).getByText("Alpha")).toBeInTheDocument();
+		expect(within(modal).getByText("Beta")).toBeInTheDocument();
+		expect(tauriCore.invoke).not.toHaveBeenCalled();
+
+		await act(async () => {
+			fireEvent.click(within(modal).getByRole("button", { name: "Discard and quit" }));
+		});
+
+		expect(tauriCore.invoke).toHaveBeenCalledTimes(1);
+		expect(tauriCore.invoke).toHaveBeenCalledWith("confirm_quit");
+	});
+
+	it("cancels a dirty quit without confirming exit", async () => {
+		const a = open("Alpha");
+		act(() => {
+			requireStores(a).model.getState().markDirty();
+		});
+		render(<Harness />);
+		await waitFor(() => expect(tauriEvent.getQuitHandler()).toBeTruthy());
+
+		await act(async () => {
+			tauriEvent.getQuitHandler()?.();
+		});
+		const modal = await screen.findByTestId("close-guard-modal");
+		await act(async () => {
+			fireEvent.click(within(modal).getByRole("button", { name: "Cancel" }));
+		});
+
+		expect(screen.queryByTestId("close-guard-modal")).not.toBeInTheDocument();
+		expect(tauriCore.invoke).not.toHaveBeenCalled();
+	});
+
+	it("quits immediately with no summary when nothing is dirty", async () => {
+		open("Clean");
+		render(<Harness />);
+		await waitFor(() => expect(tauriEvent.getQuitHandler()).toBeTruthy());
+
+		await act(async () => {
+			tauriEvent.getQuitHandler()?.();
+		});
+
+		expect(screen.queryByTestId("close-guard-modal")).not.toBeInTheDocument();
+		await waitFor(() => expect(tauriCore.invoke).toHaveBeenCalledWith("confirm_quit"));
+		expect(tauriCore.invoke).toHaveBeenCalledTimes(1);
 	});
 });

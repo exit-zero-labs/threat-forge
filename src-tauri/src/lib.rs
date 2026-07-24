@@ -9,11 +9,18 @@ pub mod models;
 mod stride;
 
 use commands::{
-    analyze_stride, cancel_ai_stream, check_for_update, create_new_model, delete_api_key,
-    get_api_key_status, import_threat_model, install_update, open_layout, open_threat_model,
-    save_layout, save_threat_model, set_api_key, start_ai_stream, write_text_file,
+    analyze_stride, cancel_ai_stream, check_for_update, confirm_quit, create_new_model,
+    delete_api_key, get_api_key_status, import_threat_model, install_update, open_layout,
+    open_threat_model, save_layout, save_threat_model, set_api_key, start_ai_stream,
+    write_text_file,
 };
-use tauri::{Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+fn emit_quit_requested(app_handle: &AppHandle) {
+    if app_handle.emit("quit-requested", ()).is_err() {
+        eprintln!("Failed to deliver guarded quit request");
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,9 +33,14 @@ pub fn run() {
             let menu = menu::build_menu(app)?;
             app.set_menu(menu)?;
 
-            // Forward native menu events to the frontend
+            // Route every platform quit item through the frontend dirty-document guard.
             app.on_menu_event(move |app_handle, event| {
-                let _ = app_handle.emit("menu-action", event.id().0.as_str());
+                let id = event.id().0.as_str();
+                if id == "app-quit" || id == "file-exit" {
+                    emit_quit_requested(app_handle);
+                } else {
+                    let _ = app_handle.emit("menu-action", id);
+                }
             });
 
             // Initialize encrypted key storage
@@ -82,6 +94,7 @@ pub fn run() {
             import_threat_model,
             check_for_update,
             install_update,
+            confirm_quit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
