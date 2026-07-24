@@ -11,9 +11,7 @@ pub fn set_api_key(
     provider: AiProvider,
     key: String,
 ) -> Result<(), String> {
-    storage
-        .store_key(&provider, &key)
-        .map_err(|e| e.to_string())
+    store_api_key(&storage, &provider, &key)
 }
 
 /// Check whether an API key exists for a given provider (returns bool, NOT the key)
@@ -22,16 +20,44 @@ pub fn get_api_key_status(
     storage: State<'_, KeyStorage>,
     provider: AiProvider,
 ) -> Result<bool, String> {
-    storage.has_key(&provider).map_err(|e| e.to_string())
+    api_key_status(&storage, &provider)
 }
 
 /// Delete an API key for a given provider
 #[tauri::command]
 pub fn delete_api_key(storage: State<'_, KeyStorage>, provider: AiProvider) -> Result<(), String> {
-    storage.delete_key(&provider).map_err(|e| e.to_string())
+    remove_api_key(&storage, &provider)
 }
 
-/// Map a key-storage failure to the refusal `start_ai_stream` returns.
+// The three command bodies are split into these `&KeyStorage` seams so the
+// sanitized boundary mapping can be exercised against a real `KeyStorage`
+// fault in tests — `State` has no public constructor to build the command
+// directly. Each mirrors the `get_key` path in `start_ai_stream`: the only
+// thing crossing the IPC boundary is a `key_refusal` sentence, never the
+// storage error's internal `Display`.
+
+/// Boundary body of [`set_api_key`].
+fn store_api_key(storage: &KeyStorage, provider: &AiProvider, key: &str) -> Result<(), String> {
+    storage
+        .store_key(provider, key)
+        .map_err(|e| key_refusal(&e).to_string())
+}
+
+/// Boundary body of [`get_api_key_status`].
+fn api_key_status(storage: &KeyStorage, provider: &AiProvider) -> Result<bool, String> {
+    storage
+        .has_key(provider)
+        .map_err(|e| key_refusal(&e).to_string())
+}
+
+/// Boundary body of [`delete_api_key`].
+fn remove_api_key(storage: &KeyStorage, provider: &AiProvider) -> Result<(), String> {
+    storage
+        .delete_key(provider)
+        .map_err(|e| key_refusal(&e).to_string())
+}
+
+/// Map a key-storage failure to the authored refusal every AI key IPC command returns.
 ///
 /// `ThreatForgeError`'s `Display` is internal: it names the provider's storage
 /// key, a poisoned lock's payload, or a filesystem path, none of which may
@@ -164,5 +190,106 @@ mod tests {
             message: "Failed to read encrypted file".to_string(),
         };
         assert_ne!(key_refusal(&fault), RelayError::NoApiKey);
+    }
+
+    /// Build a `KeyStorage` whose data directory has been removed, so any write
+    /// path (`store_key`/`delete_key` → `flush`) fails with a real filesystem
+    /// error carrying internal implementation detail.
+    fn storage_with_broken_writes() -> (tempfile::TempDir, KeyStorage) {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage =
+            KeyStorage::new(tmp.path().to_path_buf()).expect("KeyStorage::new should succeed");
+        std::fs::remove_dir_all(tmp.path()).expect("remove data dir to break future writes");
+        (tmp, storage)
+    }
+
+    #[test]
+    fn set_api_key_maps_a_real_write_fault_to_the_safe_sentence_and_hides_the_key() {
+        let (tmp, storage) = storage_with_broken_writes();
+        let dir = tmp.path().to_string_lossy().into_owned();
+
+        // Precondition: the underlying storage error really does carry internal
+        // detail, so the assertions below are pinning sanitization, not a no-op.
+        let raw = storage
+            .store_key(&AiProvider::Anthropic, "sk-ant-secret-value")
+            .expect_err("writing into a removed data dir must fail")
+            .to_string();
+        assert!(
+            raw.contains("Failed to write"),
+            "precondition: raw storage error should carry internal detail: {raw}"
+        );
+
+        let refused = store_api_key(&storage, &AiProvider::Anthropic, "sk-ant-secret-value")
+            .expect_err("the command must surface the storage fault");
+
+        assert_eq!(refused, "the stored API key could not be read");
+        for leaked in [
+            dir.as_str(),
+            "Failed to write",
+            "keys.enc",
+            "sk-ant-secret-value",
+        ] {
+            assert!(
+                !refused.contains(leaked),
+                "internal detail {leaked:?} reached the boundary: {refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn delete_api_key_maps_a_real_write_fault_to_the_safe_sentence() {
+        let (tmp, storage) = storage_with_broken_writes();
+        let dir = tmp.path().to_string_lossy().into_owned();
+
+        let raw = storage
+            .delete_key(&AiProvider::Anthropic)
+            .expect_err("flushing into a removed data dir must fail")
+            .to_string();
+        assert!(
+            raw.contains("Failed to"),
+            "precondition: raw storage error should carry internal detail: {raw}"
+        );
+
+        let refused = remove_api_key(&storage, &AiProvider::Anthropic)
+            .expect_err("the command must surface the storage fault");
+
+        assert_eq!(refused, "the stored API key could not be read");
+        for leaked in [dir.as_str(), "Failed to", "keys.enc"] {
+            assert!(
+                !refused.contains(leaked),
+                "internal detail {leaked:?} reached the boundary: {refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn get_api_key_status_maps_a_poisoned_lock_without_echoing_its_payload() {
+        // `has_key` never touches the filesystem, so a poisoned lock is its only
+        // reachable failure — and the poison payload is exactly the internal
+        // detail that must not cross the boundary.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage =
+            KeyStorage::new(tmp.path().to_path_buf()).expect("KeyStorage::new should succeed");
+        storage.poison_keys_lock_for_test();
+
+        let raw = storage
+            .has_key(&AiProvider::Anthropic)
+            .expect_err("a poisoned lock must fail")
+            .to_string();
+        assert!(
+            raw.contains("Lock poisoned"),
+            "precondition: raw storage error should carry the poison payload: {raw}"
+        );
+
+        let refused = api_key_status(&storage, &AiProvider::Anthropic)
+            .expect_err("the command must surface the poisoned lock");
+
+        assert_eq!(refused, "the stored API key could not be read");
+        for leaked in ["Lock poisoned", "PoisonError", "poison"] {
+            assert!(
+                !refused.contains(leaked),
+                "internal detail {leaked:?} reached the boundary: {refused}"
+            );
+        }
     }
 }
