@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { resolveDisplayTitle } from "@/lib/document-display-title";
 import type { DocumentId } from "@/types/document";
 import { buildCommands, fuzzyMatch, searchCommands } from "./command-registry";
 
@@ -143,6 +144,23 @@ describe("command-registry", () => {
 			expect(commands.find((c) => c.id === "file:next-document")).toBeUndefined();
 			expect(commands.find((c) => c.id === "file:close-document")).toBeDefined();
 			expect(commands.filter((c) => c.id.startsWith("file:switch-to:"))).toHaveLength(1);
+		});
+
+		it("renders the sanitized document title in the command label, not a raw hostile one (#175)", () => {
+			// `command-palette.tsx` builds `openDocuments` from `documentDisplayTitle`/
+			// `resolveDisplayTitle`, so the title here is exactly what those already sanitize —
+			// this proves the command label built on top of it carries no bidi override into the
+			// text the palette renders directly as `cmd.label`.
+			const openDocuments = [
+				{
+					id: "doc-a" as DocumentId,
+					title: resolveDisplayTitle(null, "/tmp/invoice\u202Egpj.exe.thf"),
+				},
+			];
+			const commands = buildCommands({ ...mockDeps, openDocuments });
+			const switchCommand = commands.find((c) => c.id === "file:switch-to:doc-a");
+			expect(switchCommand?.label).toBe("Switch to: invoicegpj.exe");
+			expect(switchCommand?.label).not.toContain("\u202E");
 		});
 	});
 

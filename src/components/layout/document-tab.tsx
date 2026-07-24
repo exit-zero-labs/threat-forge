@@ -1,6 +1,10 @@
 import { Pin, X } from "lucide-react";
 import { useStore } from "zustand";
-import { documentDisplayTitle, resolveDisplayTitle } from "@/lib/document-display-title";
+import {
+	documentDisplayTitle,
+	resolveDisplayTitle,
+	sanitizeDisplayText,
+} from "@/lib/document-display-title";
 import { cn } from "@/lib/utils";
 import type { DocumentStores } from "@/stores/document-stores";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -195,7 +199,10 @@ export function DocumentTab({ documentId, stores, pinned, ...handlers }: Documen
 
 	const title = documentDisplayTitle(model, filePath);
 	// The hover tooltip carries the full title and the path the truncated label may be hiding (D3).
-	const tooltip = filePath ? `${title}\n${filePath}` : title;
+	// `filePath` is untrusted display text just like the title, so it goes through the same
+	// sanitizer (`#175`) — the sanitized `title` alone does not stop a control/bidi character
+	// hiding in the *directory* portion of the path from reaching this tooltip.
+	const tooltip = filePath ? `${title}\n${sanitizeDisplayText(filePath)}` : title;
 
 	return (
 		<DocumentTabView
@@ -235,7 +242,9 @@ export function RestoredDocumentTab({
 	...handlers
 }: RestoredDocumentTabProps) {
 	const label = resolveDisplayTitle(title, filePath);
-	const tooltip = filePath ? `${label}\n${filePath}` : label;
+	// Same sanitized-path rule as the hydrated tab above: the label alone does not cover a raw
+	// path re-appended after it (`#175`).
+	const tooltip = filePath ? `${label}\n${sanitizeDisplayText(filePath)}` : label;
 
 	return (
 		<DocumentTabView

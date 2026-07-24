@@ -168,6 +168,28 @@ describe("DocumentTab", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Unpin Alpha" }));
 		expect(onPin).toHaveBeenCalledWith("doc-a", false);
 	});
+
+	it("strips a bidi override from the label and from the raw path re-appended in the tooltip (#175)", () => {
+		// The label comes from the sanitized title/basename; the tooltip then appends the *raw*
+		// `filePath` after it — the exact caller the issue warns can leak a hostile character back
+		// out through a tooltip even though the label alone is clean.
+		const hostilePath = "/home/jane/secret\u202Efolder/payments.thf";
+		const stores = seedBundle("Ignored", hostilePath);
+		render(
+			<DocumentTab
+				documentId={"doc-a" as DocumentId}
+				stores={stores}
+				selected
+				focused
+				pinned={false}
+				{...noop}
+			/>,
+		);
+
+		const tab = screen.getByRole("tab", { name: "payments" });
+		expect(tab).toHaveAttribute("title", `payments\n${hostilePath.replace("\u202E", "")}`);
+		expect(tab.getAttribute("title")).not.toContain("\u202E");
+	});
 });
 
 describe("RestoredDocumentTab (un-hydrated, #56)", () => {
@@ -204,6 +226,36 @@ describe("RestoredDocumentTab (un-hydrated, #56)", () => {
 			/>,
 		);
 		expect(screen.getByRole("tab", { name: "payments" })).toBeInTheDocument();
+	});
+
+	it("strips control characters from a cached title, matching the hydrated tab's sanitization (#175)", () => {
+		render(
+			<RestoredDocumentTab
+				documentId={"doc-r" as DocumentId}
+				title={"Cached\u0000Title"}
+				filePath={null}
+				selected={false}
+				focused={false}
+				{...noop}
+			/>,
+		);
+		expect(screen.getByRole("tab", { name: "CachedTitle" })).toBeInTheDocument();
+	});
+
+	it("strips a bidi override from the raw path re-appended in a restored tab's tooltip (#175)", () => {
+		const hostilePath = "/home/jane/secret\u202Efolder/payments.thf";
+		render(
+			<RestoredDocumentTab
+				documentId={"doc-r" as DocumentId}
+				title="Ignored"
+				filePath={hostilePath}
+				selected={false}
+				focused={false}
+				{...noop}
+			/>,
+		);
+		const tab = screen.getByRole("tab", { name: "payments" });
+		expect(tab.getAttribute("title")).not.toContain("\u202E");
 	});
 
 	it("activates and closes through the same callbacks the strip drives for a live tab", () => {
