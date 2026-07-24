@@ -21,7 +21,7 @@ function sse(frames: SseFrame[]): string {
 	return frames.map((f) => `event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`).join("");
 }
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-sonnet-5";
 
 /** One assistant turn that calls add_element for a "Cache" process. */
 function addElementResponse(): string {

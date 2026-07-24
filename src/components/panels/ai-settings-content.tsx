@@ -1,7 +1,7 @@
-import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
-import { getModelsForProvider } from "@/lib/ai-models";
+import { getDefaultModelId, getModelById, getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
@@ -36,6 +36,11 @@ export function AiSettingsContent() {
 	const models = getModelsForProvider(provider);
 	const selectedModelId =
 		provider === "anthropic" ? settings.aiModelAnthropic : settings.aiModelOpenai;
+	const selectedModel = models.find((m) => m.id === selectedModelId);
+	// Keep a persisted retired/unknown id visible until the user deliberately replaces it.
+	const isLegacyModel = selectedModelId !== "" && selectedModel === undefined;
+	const defaultModelId = getDefaultModelId(provider);
+	const defaultModelLabel = getModelById(defaultModelId)?.label ?? defaultModelId;
 
 	useEffect(() => {
 		async function checkStatus() {
@@ -107,6 +112,7 @@ export function AiSettingsContent() {
 			<div>
 				<span className="mb-1 block text-[10px] font-medium text-muted-foreground">Provider</span>
 				<select
+					aria-label="Provider"
 					value={provider}
 					onChange={(e) => setProvider(e.target.value as AiProvider)}
 					className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
@@ -123,20 +129,43 @@ export function AiSettingsContent() {
 			<div>
 				<span className="mb-1 block text-[10px] font-medium text-muted-foreground">Model</span>
 				<select
+					aria-label="Model"
 					value={selectedModelId}
 					onChange={(e) => handleModelChange(e.target.value)}
 					className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
 				>
+					{isLegacyModel && (
+						<option value={selectedModelId}>{selectedModelId} (legacy, unavailable)</option>
+					)}
 					{models.map((m) => (
 						<option key={m.id} value={m.id}>
 							{m.label}
 						</option>
 					))}
 				</select>
-				{models.find((m) => m.id === selectedModelId)?.description && (
-					<p className="mt-0.5 text-[10px] text-muted-foreground/70">
-						{models.find((m) => m.id === selectedModelId)?.description}
-					</p>
+				{selectedModel?.description && (
+					<p className="mt-0.5 text-[10px] text-muted-foreground/70">{selectedModel.description}</p>
+				)}
+				{isLegacyModel && (
+					<div
+						role="alert"
+						className="mt-1.5 flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-600 dark:text-amber-400"
+					>
+						<AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
+						<div className="space-y-1">
+							<p>
+								"{selectedModelId}" is no longer offered for this provider. Tool use stays disabled
+								for it; pick a current model above to restore tool use.
+							</p>
+							<button
+								type="button"
+								onClick={() => handleModelChange(defaultModelId)}
+								className="font-medium underline underline-offset-2 hover:no-underline"
+							>
+								Switch to {defaultModelLabel} (recommended default)
+							</button>
+						</div>
+					</div>
 				)}
 			</div>
 
