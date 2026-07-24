@@ -21,12 +21,14 @@
 #       attacker cannot read back, so it is a poor exfiltration drop; kept because
 #       analytics needs it.
 #
-# api.github.com is deliberately NOT allowlisted, even though the downloads page
-# reads the latest release from it: it is a write-capable multi-tenant API that a
-# post-XSS script could POST the key to (an attacker's own gist) and read back, so
-# it is the one origin worth removing from the backstop. The downloads page
-# degrades to a static GitHub-releases link when the lookup is blocked; issue #172
-# tracks proxying that lookup through the app origin to restore the live widget.
+# api.github.com is deliberately NOT allowlisted: it is a write-capable
+# multi-tenant API that a post-XSS script could POST the key to (an attacker's own
+# gist) and read back, so it is the one origin worth removing from the backstop.
+# The downloads page reads the latest release from the app's own origin instead —
+# the Cloudflare Worker route GET /api/latest-release (worker/latest-release.ts)
+# server-side-fetches GitHub and returns the trimmed release JSON — so the live
+# widget works under 'self' with no third-party connect origin. If that route is
+# ever unavailable the page still degrades to a static GitHub-releases link.
 #
 # style-src 'unsafe-inline' is required for the app's runtime-injected styles
 # (ReactFlow, shadcn), matching the desktop CSP; inline styles cannot read the key.

@@ -4,13 +4,19 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "threat-forge-web",
   "compatibility_date": "2026-07-20",
+  "main": "./worker/index.ts",
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",
+    // The Worker delegates every non-API request to this binding, so static
+    // assets and the SPA fallback keep serving unchanged.
+    "binding": "ASSETS",
+    // Only the release-proxy route runs the Worker; every other path is served
+    // directly by the Asset Worker without invoking this script.
+    "run_worker_first": ["/api/latest-release"],
   },
   "observability": {
-    "enabled": false,
-    "head_sampling_rate": 1,
+    "enabled": true,
     "logs": {
       "enabled": true,
       "head_sampling_rate": 1,
@@ -19,8 +25,6 @@
     },
     "traces": {
       "enabled": false,
-      "persist": true,
-      "head_sampling_rate": 1,
     },
   },
   "routes": [

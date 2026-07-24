@@ -1,0 +1,23 @@
+{
+	/* Type-check path for the Cloudflare Worker entrypoint.
+	   The Worker runs on workerd, not the browser, so it uses the Cloudflare
+	   runtime types (`@cloudflare/workers-types`) and no DOM lib — that keeps its
+	   globals (`Response`, `caches`, `Fetcher`, `ExportedHandler`) from colliding
+	   with the DOM `lib` the app's root tsconfig loads. The generated `Env`
+	   interface comes from `worker/worker-configuration.d.ts`. */
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"types": ["@cloudflare/workers-types"],
+		"skipLibCheck": true,
+		"noEmit": true,
+		"isolatedModules": true,
+		"strict": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true
+	},
+	"include": ["worker", "src/lib/github-release-schema.ts"]
+}

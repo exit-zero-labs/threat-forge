@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { categorizeAssets, detectOs, fetchLatestRelease, formatBytes } from "./github-releases";
+import {
+	categorizeAssets,
+	detectOs,
+	fetchLatestRelease,
+	formatBytes,
+	LATEST_RELEASE_ENDPOINT,
+} from "./github-releases";
 
 describe("detectOs", () => {
 	it("detects macOS from user agent", () => {
@@ -35,7 +41,8 @@ describe("categorizeAssets", () => {
 	const FIXTURE_ASSETS = [
 		{
 			name: "Threat.Forge_0.1.0_aarch64.dmg",
-			browser_download_url: "https://example.com/aarch64.dmg",
+			browser_download_url:
+				"https://github.com/exit-zero-labs/threat-forge/releases/download/v0.1.0/aarch64.dmg",
 			size: 10_000_000,
 		},
 		{
@@ -125,13 +132,14 @@ describe("fetchLatestRelease", () => {
 			assets: [
 				{
 					name: "Threat.Forge_0.1.0_aarch64.dmg",
-					browser_download_url: "https://example.com/aarch64.dmg",
+					browser_download_url:
+						"https://github.com/exit-zero-labs/threat-forge/releases/download/v0.1.0/aarch64.dmg",
 					size: 10_000_000,
 				},
 			],
 		};
 
-		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
 			ok: true,
 			json: () => Promise.resolve(mockResponse),
 		} as Response);
@@ -139,6 +147,9 @@ describe("fetchLatestRelease", () => {
 		const release = await fetchLatestRelease();
 		expect(release.version).toBe("v0.1.0");
 		expect(release.assets.macos).toHaveLength(1);
+		// Same-origin proxy route — never the third-party GitHub API directly.
+		expect(fetchSpy).toHaveBeenCalledWith(LATEST_RELEASE_ENDPOINT);
+		expect(LATEST_RELEASE_ENDPOINT).not.toContain("api.github.com");
 	});
 
 	it("throws on API error", async () => {
@@ -147,7 +158,16 @@ describe("fetchLatestRelease", () => {
 			status: 403,
 		} as Response);
 
-		await expect(fetchLatestRelease()).rejects.toThrow("GitHub API error: 403");
+		await expect(fetchLatestRelease()).rejects.toThrow("Release lookup failed: 403");
+	});
+
+	it("throws when the proxy returns malformed data", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+			ok: true,
+			json: () => Promise.resolve({ assets: [{ name: 42 }] }),
+		} as Response);
+
+		await expect(fetchLatestRelease()).rejects.toThrow("Release lookup returned malformed data");
 	});
 
 	it("uses cached data within TTL", async () => {
@@ -178,7 +198,7 @@ describe("fetchLatestRelease", () => {
 				Promise.resolve({
 					tag_name: "v0.1.0",
 					published_at: "",
-					html_url: "",
+					html_url: "https://github.com/exit-zero-labs/threat-forge/releases/tag/v0.1.0",
 					assets: [],
 				}),
 		} as Response);
@@ -212,7 +232,7 @@ describe("fetchLatestRelease", () => {
 				Promise.resolve({
 					tag_name: "v0.1.0",
 					published_at: "",
-					html_url: "",
+					html_url: "https://github.com/exit-zero-labs/threat-forge/releases/tag/v0.1.0",
 					assets: [],
 				}),
 		} as Response);

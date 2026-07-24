@@ -12,6 +12,7 @@
 		"preview:web": "npm run build:web && wrangler dev",
 		"deploy:web": "npm run build:web && wrangler deploy",
 		"check:worker": "wrangler deploy --dry-run",
+		"check:worker-types": "wrangler types --include-runtime=false --check ./worker/worker-configuration.d.ts && tsc --noEmit -p tsconfig.worker.json",
 		"tauri": "tauri",
 		"check:lockfile": "node scripts/check-lockfile-registry.mjs",
 		"check:tauri-versions": "node scripts/check-tauri-version-alignment.mjs",
@@ -47,6 +48,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.5",
+		"@cloudflare/workers-types": "5.20260721.1",
 		"@playwright/test": "^1.58.2",
 		"@tailwindcss/vite": "^4.2.1",
 		"@tauri-apps/cli": "2.11.4",
