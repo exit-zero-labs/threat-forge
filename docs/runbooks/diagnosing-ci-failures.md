@@ -240,8 +240,8 @@ a saturated runner defeats.
   global `expect` or per-test timeout in `playwright.config.ts`** — #111 forbids it, and a
   node that is never added still has to fail.
 
-Guide auto-start is not currently covered by unit tests either; that gap is tracked in #141.
-A related dev/production divergence in the `welcome` guide is tracked in #142.
+Hook-level tests cover guide auto-start timers, eligibility, and the `welcome` guide's StrictMode
+replay. Real-browser auto-start coverage remains tracked in #141.
 
 ### A test that stays flaky gets quarantined, visibly
 
