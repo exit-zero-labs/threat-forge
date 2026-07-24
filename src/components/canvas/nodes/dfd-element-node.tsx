@@ -1,12 +1,8 @@
 import type { NodeProps } from "@xyflow/react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import {
-	getComponentByType,
-	getIconComponent,
-	getShapeForType,
-	type ShapeCategory,
-} from "@/lib/component-library";
-import { getServiceIcon } from "@/lib/service-icons";
+import { IconRenderer } from "@/components/icons/icon-renderer";
+import { resolveComponent, resolveElementIcon } from "@/lib/registry/registry";
+import type { ShapeKind } from "@/lib/registry/types";
 import { cn } from "@/lib/utils";
 import type { DfdNodeData } from "@/stores/canvas-store";
 import { useCanvasStore } from "@/stores/canvas-store";
@@ -28,8 +24,8 @@ function hexToRgba(hex: string, opacity: number): string {
 	return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 
-/** Shape CSS classes driven by the ShapeCategory */
-function shapeClass(shape: ShapeCategory): string {
+/** Shape CSS classes driven by the ShapeKind */
+function shapeClass(shape: ShapeKind): string {
 	switch (shape) {
 		case "database":
 			return "border-y-2";
@@ -43,69 +39,6 @@ function shapeClass(shape: ShapeCategory): string {
 	}
 }
 
-/** Resolved icon: either a Lucide component or an SVG path string. */
-type ResolvedIcon =
-	| { type: "lucide"; component: ReturnType<typeof getIconComponent> }
-	| { type: "svg"; path: string; fillRule?: "evenodd" | "nonzero" };
-
-/**
- * Resolve the icon for a node.
- * Priority: service icon (subtype/icon) > subtype library icon > component type icon > direct icon field > no icon.
- */
-function resolveIcon(elementType: string, subtype?: string, icon?: string): ResolvedIcon | null {
-	// Check service icon registry first for subtype or icon field
-	const serviceId = subtype || icon;
-	if (serviceId) {
-		const svc = getServiceIcon(serviceId);
-		if (svc) return { type: "svg", path: svc.path, fillRule: svc.fillRule };
-	}
-
-	if (subtype) {
-		const parentComp = getComponentByType(elementType);
-		const subtypeDef = parentComp?.subtypes?.find((st) => st.id === subtype);
-		if (subtypeDef) {
-			const comp = getIconComponent(subtypeDef.icon);
-			if (comp) return { type: "lucide", component: comp };
-		}
-		const comp = getComponentByType(subtype);
-		if (comp) {
-			const lucide = getIconComponent(comp.icon);
-			if (lucide) return { type: "lucide", component: lucide };
-		}
-	}
-	const comp = getComponentByType(elementType);
-	if (comp) {
-		const lucide = getIconComponent(comp.icon);
-		if (lucide) return { type: "lucide", component: lucide };
-	}
-	if (icon) {
-		const lucide = getIconComponent(icon);
-		if (lucide) return { type: "lucide", component: lucide };
-	}
-	return null;
-}
-
-/** Render a resolved icon as either a Lucide component or inline SVG. */
-function NodeIcon({ resolved }: { resolved: ResolvedIcon }) {
-	if (resolved.type === "lucide" && resolved.component) {
-		const LucideIcon = resolved.component;
-		return <LucideIcon className="h-4 w-4 shrink-0 text-muted-foreground" />;
-	}
-	if (resolved.type === "svg") {
-		return (
-			<svg
-				className="h-4 w-4 shrink-0 text-muted-foreground"
-				viewBox="0 0 24 24"
-				fill="currentColor"
-				aria-hidden="true"
-			>
-				<path d={resolved.path} fillRule={resolved.fillRule ?? "nonzero"} />
-			</svg>
-		);
-	}
-	return null;
-}
-
 export function DfdElementNode({ id, data, selected }: NodeProps) {
 	const nodeData = data as DfdNodeData;
 	const [isEditing, setIsEditing] = useState(false);
@@ -117,8 +50,12 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 		s.edges.some((e) => e.selected && (e.source === id || e.target === id)),
 	);
 
-	const shape = getShapeForType(nodeData.elementType);
-	const resolvedIcon = resolveIcon(nodeData.elementType, nodeData.subtype, nodeData.icon);
+	const shape = resolveComponent(nodeData.elementType).shape;
+	const resolvedIcon = resolveElementIcon({
+		type: nodeData.elementType,
+		subtype: nodeData.subtype,
+		icon: nodeData.icon,
+	});
 
 	const fillColor = nodeData.elementFillColor as string | undefined;
 	const strokeColor = nodeData.elementStrokeColor as string | undefined;
@@ -182,7 +119,7 @@ export function DfdElementNode({ id, data, selected }: NodeProps) {
 						className="flex items-center justify-center gap-1.5 text-sm font-medium text-foreground cursor-text"
 						onDoubleClick={() => setIsEditing(true)}
 					>
-						{resolvedIcon && <NodeIcon resolved={resolvedIcon} />}
+						<IconRenderer icon={resolvedIcon} className="h-4 w-4 shrink-0 text-muted-foreground" />
 						<span>{nodeData.label}</span>
 					</div>
 				)}

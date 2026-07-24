@@ -1,12 +1,7 @@
 import { MarkerType } from "@xyflow/react";
 import { ArrowLeftRight } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import {
-	COMPONENT_CATEGORIES,
-	COMPONENT_LIBRARY,
-	getComponentByType,
-	getSubtypesForType,
-} from "@/lib/component-library";
+import { getComponent, listCategories, listComponents } from "@/lib/registry/registry";
 import { type DfdEdge, type DfdEdgeData, useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -225,13 +220,13 @@ function ElementProperties({ elementId }: { elementId: string }) {
 	}
 
 	const isTextAnnotation = element.type === "text";
-	const subtypes = getSubtypesForType(element.type);
+	const subtypes = getComponent(element.type)?.variants ?? [];
 	const relatedThreats = model?.threats.filter((t) => t.element === element.id) ?? [];
 
 	/** Group library components by category for the type dropdown */
-	const componentsByCategory = COMPONENT_CATEGORIES.map((cat) => ({
-		category: cat,
-		items: COMPONENT_LIBRARY.filter((c) => c.category === cat),
+	const componentsByCategory = listCategories().map((cat) => ({
+		category: cat.label,
+		items: listComponents({ category: cat.id }),
 	}));
 
 	const syncElementNodeData = (updates: Record<string, unknown>) => {
@@ -244,16 +239,16 @@ function ElementProperties({ elementId }: { elementId: string }) {
 	};
 
 	const handleTypeChange = (newType: string) => {
-		const comp = getComponentByType(newType);
+		const comp = getComponent(newType);
 		updateElement(element.id, {
 			type: newType,
 			subtype: undefined,
-			icon: comp?.icon,
+			icon: comp?.iconId,
 		});
 		syncElementNodeData({
 			elementType: newType,
 			subtype: undefined,
-			icon: comp?.icon,
+			icon: comp?.iconId,
 		});
 	};
 

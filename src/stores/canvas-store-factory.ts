@@ -7,7 +7,7 @@ import {
 	isSelfLoop,
 	nodeToRect,
 } from "@/lib/canvas-utils";
-import { getComponentByType } from "@/lib/component-library";
+import { getComponent } from "@/lib/registry/registry";
 import type {
 	DataFlow,
 	DiagramLayout,
@@ -246,7 +246,7 @@ export function flowToEdge(flow: DataFlow): DfdEdge {
 }
 
 function defaultElementName(type: string): string {
-	return getComponentByType(type)?.label ?? "New Component";
+	return getComponent(type)?.label ?? "New Component";
 }
 
 /**

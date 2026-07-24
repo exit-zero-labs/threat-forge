@@ -68,6 +68,7 @@ test.describe("Element Editing", () => {
 			.locator("select")
 			.first();
 
+		await expect(typeSelect.locator('option[value="generic"]')).toHaveCount(1);
 		await typeSelect.selectOption("sql_database");
 
 		// Verify the dropdown value persisted

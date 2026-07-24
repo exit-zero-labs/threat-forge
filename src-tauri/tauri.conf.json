@@ -43,6 +43,11 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
+		"licenseFile": "../LICENSE",
+		"resources": {
+			"../LICENSE": "LICENSE",
+			"../NOTICE": "NOTICE"
+		},
 		"fileAssociations": [
 			{
 				"ext": ["thf"],

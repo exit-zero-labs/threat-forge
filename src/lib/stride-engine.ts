@@ -7,10 +7,8 @@
  */
 
 import { generateThreatId } from "@/lib/ai-utils";
-import {
-	type StrideCategory as ComponentStrideCategory,
-	getStrideCategoryForType,
-} from "@/lib/component-library";
+import { resolveComponent } from "@/lib/registry/registry";
+import type { StrideRole } from "@/lib/registry/types";
 import type {
 	Severity,
 	StrideCategory,
@@ -21,7 +19,7 @@ import type {
 
 interface ThreatRule {
 	category: StrideCategory;
-	applicableCategories: ComponentStrideCategory[];
+	applicableCategories: StrideRole[];
 	targetsFlows: boolean;
 	titleTemplate: string;
 	descriptionTemplate: string;
@@ -212,7 +210,7 @@ export function analyzeStride(model: ThreatModel): Threat[] {
 
 	// Element-based rules
 	for (const element of model.elements) {
-		const elementCategory = getStrideCategoryForType(element.type);
+		const elementCategory = resolveComponent(element.type).strideRole;
 		if (elementCategory === "none") continue;
 		for (const rule of rules) {
 			if (rule.targetsFlows) continue;

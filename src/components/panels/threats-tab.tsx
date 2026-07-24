@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { CanvasContextMenu, type ContextMenuItem } from "@/components/canvas/canvas-context-menu";
-import { getComponentByType } from "@/lib/component-library";
 import { copyTextToClipboard } from "@/lib/platform";
+import { getComponent } from "@/lib/registry/registry";
 import { serializeThreatYaml } from "@/lib/thf-yaml";
 import { cn } from "@/lib/utils";
 import { useModelStore } from "@/stores/model-store";
@@ -321,7 +321,7 @@ function ThreatEditor({ threat }: { threat: Threat }) {
 						className="text-xs text-primary hover:underline"
 					>
 						{linkedElement.name} (
-						{getComponentByType(linkedElement.type)?.label ?? linkedElement.type.replace("_", " ")})
+						{getComponent(linkedElement.type)?.label ?? linkedElement.type.replace("_", " ")})
 					</button>
 				</FieldGroup>
 			)}

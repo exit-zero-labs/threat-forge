@@ -234,6 +234,15 @@ THREAT_MODEL
 - **Unknown fields are tolerated** (no `deny_unknown_fields`) for forward compatibility
 - **New fields must be optional** with sensible defaults for backward compatibility
 
+### Element type, subtype, and icon vocabulary
+
+`element.type`, `element.subtype`, and `element.icon` are **open strings** whose vocabulary is
+the typed registry (`src/lib/registry/`), not a closed schema enum. This is deliberate: an
+unknown value renders a fallback rather than failing the file to open, so a document authored by
+a newer build, a human, or the AI still loads on an older build. The registry never rewrites
+these values back into the document. Released IDs are permanent — see
+[`component-registry.md`](component-registry.md).
+
 ## Schema Stability Rules
 
 - Never make breaking changes without a version bump and migration path
