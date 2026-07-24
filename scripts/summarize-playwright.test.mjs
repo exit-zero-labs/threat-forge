@@ -338,11 +338,17 @@ describe("renderSummary", () => {
 describe("summarize-playwright CLI", () => {
 	let workDir = "";
 
-	/** Runs the script and asserts it stayed advisory: it must always exit 0. */
+	/**
+	 * Runs the script and asserts it stayed advisory: it must always exit 0. Both
+	 * GitHub Actions file-command variables default to unset so a test that does not
+	 * pass one stays isolated from the real files this repo's own CI step exports —
+	 * without this, an inherited `GITHUB_OUTPUT` would let the script append into the
+	 * live step's output file instead of the test's throwaway one.
+	 */
 	const run = (args, env) => {
 		const result = spawnSync(process.execPath, [scriptPath, ...args], {
 			encoding: "utf8",
-			env: { ...process.env, GITHUB_STEP_SUMMARY: "", ...env },
+			env: { ...process.env, GITHUB_STEP_SUMMARY: "", GITHUB_OUTPUT: "", ...env },
 		});
 
 		expect(result.stderr).toBe("");
@@ -353,6 +359,7 @@ describe("summarize-playwright CLI", () => {
 	beforeAll(() => {
 		workDir = mkdtempSync(join(tmpdir(), "summarize-playwright-"));
 		writeFileSync(join(workDir, "results.json"), JSON.stringify(oneFlakyReport));
+		writeFileSync(join(workDir, "all-pass.json"), JSON.stringify(allPassReport));
 		writeFileSync(join(workDir, "malformed.json"), "{ not json");
 	});
 
@@ -395,5 +402,53 @@ describe("summarize-playwright CLI", () => {
 		run([join(workDir, "malformed.json")], { GITHUB_STEP_SUMMARY: summaryFile });
 
 		expect(readFileSync(summaryFile, "utf8")).toContain("No usable JSON report at");
+	});
+
+	it("writes has-flaky=true to the GitHub output file when the report has a flaky test", () => {
+		const outputFile = join(workDir, "flaky-output.txt");
+
+		run([join(workDir, "results.json")], { GITHUB_OUTPUT: outputFile });
+
+		// Exact GitHub Actions `key=value` file-command format: the workflow reads this
+		// same output the summary is derived from, so it never re-parses the report.
+		expect(readFileSync(outputFile, "utf8")).toBe("has-flaky=true\n");
+	});
+
+	it("writes has-flaky=false to the GitHub output file for a fully passing run", () => {
+		const outputFile = join(workDir, "clean-output.txt");
+
+		run([join(workDir, "all-pass.json")], { GITHUB_OUTPUT: outputFile });
+
+		expect(readFileSync(outputFile, "utf8")).toBe("has-flaky=false\n");
+	});
+
+	it("writes has-flaky=false when the report can't be read, deferring to the job's own failure() check", () => {
+		const outputFile = join(workDir, "missing-report-output.txt");
+
+		run([join(workDir, "absent.json")], { GITHUB_OUTPUT: outputFile });
+
+		expect(readFileSync(outputFile, "utf8")).toBe("has-flaky=false\n");
+	});
+
+	it("appends the output alongside an existing GitHub output file", () => {
+		const outputFile = join(workDir, "existing-output.txt");
+		writeFileSync(outputFile, "other-step-output=already-here\n");
+
+		run([join(workDir, "results.json")], { GITHUB_OUTPUT: outputFile });
+
+		const written = readFileSync(outputFile, "utf8");
+		expect(written).toContain("other-step-output=already-here\n");
+		expect(written).toContain("has-flaky=true\n");
+	});
+
+	it("fails closed when the GitHub output cannot be written", () => {
+		const result = spawnSync(process.execPath, [scriptPath, join(workDir, "results.json")], {
+			encoding: "utf8",
+			// A directory cannot receive the file-command append. The non-zero step result makes the
+			// workflow's `failure()` condition upload the diagnostics instead of losing flaky evidence.
+			env: { ...process.env, GITHUB_STEP_SUMMARY: "", GITHUB_OUTPUT: workDir },
+		});
+
+		expect(result.status).not.toBe(0);
 	});
 });

@@ -1,16 +1,22 @@
-// Summarizes a Playwright JSON report into the GitHub Actions run summary.
+// Summarizes a Playwright JSON report into the GitHub Actions run summary and exposes a
+// `has-flaky` step output for the workflow to gate diagnostic-artifact upload on.
 //
 // Playwright retries failed tests in CI (playwright.config.ts), so a test that fails once
 // and passes on retry is reported as flaky and does not fail the run. Without this summary
 // those retried passes — and the specs skipped on CI — are invisible outside the HTML report,
-// which is only uploaded on failure.
+// which is only uploaded on failure. The `has-flaky` output lets the workflow upload that
+// report for a flaky-but-green run too, without re-parsing the JSON report in shell — this
+// script stays the only place that reads the report shape.
 //
 // Usage:
 //   node scripts/summarize-playwright.mjs [report-path] [--stdout]
 //
-// Writes Markdown to $GITHUB_STEP_SUMMARY when that variable is set. Without it the script is
+// Writes Markdown to $GITHUB_STEP_SUMMARY when that variable is set, and `has-flaky=true` or
+// `has-flaky=false` to $GITHUB_OUTPUT when that variable is set. Without either, the script is
 // a no-op unless --stdout is passed, which prints the same Markdown for local inspection.
-// It is advisory and never a gate: it always exits 0.
+// Summary rendering stays advisory. Writing the workflow output fails closed: if GitHub cannot
+// receive the flaky signal, the step fails and the workflow's `failure()` upload path retains the
+// diagnostic bundle instead of silently losing it.
 //
 // The report shape is @playwright/test's `JSONReport` (node_modules/playwright/types/
 // testReporter.d.ts). Fields read here: `stats.duration`; `suites[].specs[].tests[].status`
@@ -319,8 +325,9 @@ const main = () => {
 	const args = process.argv.slice(2);
 	const reportPath = args.find((arg) => !arg.startsWith("--")) ?? DEFAULT_REPORT_PATH;
 	const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+	const outputPath = process.env.GITHUB_OUTPUT;
 
-	if (!summaryPath && !args.includes("--stdout")) {
+	if (!summaryPath && !outputPath && !args.includes("--stdout")) {
 		return;
 	}
 
@@ -332,10 +339,17 @@ const main = () => {
 		report = JSON.parse(readFileSync(reportPath, "utf8"));
 	} catch (error) {
 		writeSummary(renderUnavailable(reportPath, error));
+		// The report couldn't be read, so whether any test was flaky is unknown rather
+		// than false. This still defaults to "no upload" on an otherwise green job — a
+		// job that failed for another reason is covered by the workflow's own
+		// `failure()` check, which does not depend on this output.
+		writeHasFlakyOutput(false);
 		return;
 	}
 
-	writeSummary(renderSummary(summarizeReport(report)));
+	const summary = summarizeReport(report);
+	writeSummary(renderSummary(summary));
+	writeHasFlakyOutput(summary.flaky > 0);
 };
 
 /**
@@ -356,6 +370,24 @@ const writeSummary = (markdown) => {
 		const reason = error instanceof Error ? error.message : String(error);
 		process.stdout.write(`::warning::Playwright run summary could not be written: ${reason}\n`);
 	}
+};
+
+/**
+ * Writes the `has-flaky` step output the workflow reads to decide whether to upload the
+ * Playwright diagnostic bundle for an otherwise-green run. This is the only place that
+ * derives the value, so the workflow never re-parses the JSON report in shell.
+ *
+ * @param {boolean} hasFlaky
+ * @returns {void}
+ */
+const writeHasFlakyOutput = (hasFlaky) => {
+	const outputPath = process.env.GITHUB_OUTPUT;
+	if (!outputPath) {
+		return;
+	}
+	// Unlike the Markdown summary, this output controls evidence retention. Let a write error fail
+	// the step: the following upload step's `failure()` branch then preserves the bundle.
+	appendFileSync(outputPath, `has-flaky=${hasFlaky}\n`);
 };
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
