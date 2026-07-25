@@ -100,3 +100,14 @@ restatement of that plan's reasoning.
   A new `test.step`/attachment name follows one of these rules automatically; a genuinely new kind
   needs a matching classifier update in `build-artifact-manifest.mjs` (and its test file) — never a
   guess baked into a spec.
+
+## Local agent workflow (`#67`)
+
+`scripts/run-agent-scenario.mjs` (`npm run test:e2e:agent -- <scenario>`) launches one named,
+deterministic scenario in the same browser app mode, against the same fixtures/helpers in this
+directory, that CI uses — never a new fixture, helper, or artifact format. The full workflow —
+starting, selecting a scenario, navigating/capturing/locating evidence, and reporting a defect from
+observed evidence — is documented in `docs/runbooks/running-agent-e2e-scenarios.md`, not restated
+here. `scripts/run-agent-scenario.test.mjs` fails if that runbook's scenario catalog,
+`package.json`'s `test:e2e:agent` script, or the underlying spec files/test titles drift out of
+sync with each other.

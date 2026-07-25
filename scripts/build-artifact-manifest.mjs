@@ -35,8 +35,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_REPORT_PATH = "test-results/results.json";
-const DEFAULT_MANIFEST_PATH = "test-results/artifact-manifest.json";
+export const DEFAULT_REPORT_PATH = "test-results/results.json";
+export const DEFAULT_MANIFEST_PATH = "test-results/artifact-manifest.json";
 const SCHEMA_VERSION = 1;
 
 /** The sole current Playwright project (`playwright.config.ts`'s `devices["Desktop Chrome"]`). */

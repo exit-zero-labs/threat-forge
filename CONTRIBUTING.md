@@ -120,7 +120,10 @@ Examples:
 
 1. Run the smallest targeted checks while iterating.
 2. Run `npm run ci:local` before handoff.
-3. Add E2E, Docker, Tauri build, signing, or live-service checks when the change requires them.
+3. Add E2E, Docker, Tauri build, signing, or live-service checks when the change requires them. For
+   a browser-facing UI change, run the relevant scenario in
+   [docs/runbooks/running-agent-e2e-scenarios.md](docs/runbooks/running-agent-e2e-scenarios.md)
+   (`npm run test:e2e:agent -- <scenario>`) and inspect its evidence before handoff.
 4. Run the author anti-slop pass and independent PR preflight.
 5. Link the issue with `Closes #N` and the M/L plan when required.
 6. Include before/after screenshots or traces for visible UI changes.

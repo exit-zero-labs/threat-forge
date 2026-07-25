@@ -1,5 +1,5 @@
 ---
-applyTo: "e2e/**,playwright.config.*"
+applyTo: "e2e/**,playwright.config.*,scripts/run-agent-scenario*.mjs,docs/runbooks/running-agent-e2e-scenarios.md"
 ---
 
 # End-to-end tests
@@ -32,3 +32,8 @@ Follow `AGENTS.md`; this file adds Playwright rules.
   for any accessibility assertion instead of constructing a new `AxeBuilder` inline; add exceptions
   only as exact `{ ruleId, target }` node entries in `KNOWN_ACCESSIBILITY_EXCEPTIONS`, tied to a
   tracking issue — never allowlist a whole rule ID.
+- A local agent runs a named scenario with `npm run test:e2e:agent -- <scenario>` (or
+  `-- --list` for the catalog) instead of hand-building a Playwright invocation; see
+  `docs/runbooks/running-agent-e2e-scenarios.md` for scenario selection, evidence capture/location,
+  and defect reporting. Add a new scenario to `scripts/run-agent-scenario.mjs`'s `SCENARIOS` map and
+  the runbook's table together, never one without the other.
