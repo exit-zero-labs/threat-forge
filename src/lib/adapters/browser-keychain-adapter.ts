@@ -86,12 +86,11 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * and this is the only path a user who revoked a key and then left the provider alone will
  * ever run again.
  *
- * A marker records why the slot was settled, and one reason is not like the others. Only a
+ * A marker records that the slot was settled, and one reason is not like the others. Only a
  * revocation is the user throwing a credential away, so only a revocation is answered while
  * the vault is too damaged to decrypt anything; a slot superseded by a later save, or settled
  * because a record could not be read, waits for a readable vault instead of being erased on
- * the strength of a copy that may be the last one. Those two are recorded apart for
- * diagnosis and take the same path as each other. On a healthy vault every reason discards
+ * the strength of a copy that may be the last one. On a healthy vault either reason discards
  * the slot rather than importing it.
  *
  * Both guards are evaluated inside {@link importLegacySecret}'s own transaction rather than

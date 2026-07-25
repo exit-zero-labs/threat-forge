@@ -70,23 +70,24 @@ function retiredKey(id: string): string {
 /**
  * Why a provider's clear-text slot was settled.
  *
- * `"revoked"` is the user deleting a credential. `"superseded"` is a stored key replacing a
- * clear-text slot the browser would not erase. `"dropped"` is this vault discarding a record
- * it could not read, which the user never asked for.
+ * `"revoked"` is the user deleting a credential. `"settled"` is everything else that stops a
+ * slot being importable: a stored key replacing one the browser would not erase, and this
+ * vault discarding a record it could not read.
  *
- * All three block re-import. Only `"revoked"` changes what happens next: while the vault
+ * Both block re-import, and the distinction carries exactly one decision. While the vault
  * holds records it cannot decrypt, a revocation is still answered — the user threw the
- * credential away — and the other two are refused, because the clear-text copy may be the
- * last one there is and the user asked for neither. `"superseded"` and `"dropped"` therefore
- * take the same path as each other; they are recorded apart so a profile that comes back with
- * a settled slot shows why. Only a revocation overwrites an existing marker, so what is
- * recorded is the first settling event, not the most recent one.
+ * credential away — and anything else is refused, because the clear-text copy may be the last
+ * one there is and the user asked for neither.
+ *
+ * The causes behind `"settled"` are not recorded apart. Nothing reads them: no code path,
+ * surface or diagnostic distinguishes a supersession from a drop, so naming them would
+ * describe the writers rather than anything the vault decides. Two named values rather than a
+ * boolean because the marker is persisted, and a name states which decision it licenses.
  */
-type RetiredReason = "revoked" | "superseded" | "dropped";
+type RetiredReason = "revoked" | "settled";
 
 const REVOKED: RetiredReason = "revoked";
-const SUPERSEDED: RetiredReason = "superseded";
-const DROPPED: RetiredReason = "dropped";
+const SETTLED: RetiredReason = "settled";
 
 /**
  * Read a provider's retirement marker, or `null` when it has none.
@@ -96,18 +97,16 @@ const DROPPED: RetiredReason = "dropped";
  * exists to prevent — so an unreadable marker is still a marker. Only `undefined`, which is
  * what IndexedDB returns for a key that was never written, means no marker.
  *
- * That default is also what handles `true`, the shape written before markers carried a
- * reason. It is deliberately not read as a revocation: both the delete path and the
- * unreadable-record path wrote it, so all it establishes is that re-import was declined.
- * Reading it as a revocation would license erasing a clear-text slot on a damaged vault,
- * which is more authority than that shape ever carried, and on a profile whose marker came
- * from a dropped record it would destroy the copy the `"dropped"` reason exists to keep.
+ * The default covers a marker from a build this one does not understand, and the shapes
+ * earlier builds on this branch wrote: bare `true`, and the `"superseded"` and `"dropped"`
+ * values `"settled"` replaced. None is read as a revocation. A revocation licenses erasing a
+ * clear-text slot on a vault that can offer no replacement, and an unrecognised marker
+ * establishes only that re-import was already declined.
  */
 function readRetiredReason(stored: unknown): RetiredReason | null {
 	if (stored === undefined) return null;
 	if (stored === REVOKED) return REVOKED;
-	if (stored === SUPERSEDED) return SUPERSEDED;
-	return DROPPED;
+	return SETTLED;
 }
 
 const WRAP_KEY_ID = "aes-gcm-256-v1";
@@ -538,12 +537,10 @@ type SlotSettlement = "supersede-slot" | "leave-slot";
  * the marker write fail are the same ones that later destroy the record, so the two are
  * correlated rather than independent.
  *
- * The marker a revocation already recorded is never overwritten here, and neither is one from
- * an earlier settling event: a revocation is the only reason answered on a vault that cannot
- * decrypt anything, so lowering it would disarm the one path that erases a revoked clear-text
- * credential, and re-labelling an earlier drop as a supersession would discard the cause
- * without changing what happens next. The read and the write share the transaction, so no
- * concurrent delete can land between them.
+ * A revocation already recorded for this provider is never overwritten. It is the only reason
+ * answered on a vault that cannot decrypt anything, so lowering it would disarm the one path
+ * that erases a revoked clear-text credential. The read and the write share the transaction,
+ * so no concurrent delete can land between them.
  *
  * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
  * caller must surface that failure rather than storing the value in clear text.
@@ -564,22 +561,22 @@ export async function putSecret(
 		}
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
 		const meta = tx.objectStore(STORE_META);
-		const stored = tx.objectStore(STORE_SECRETS).put(record, id);
+		// Issued before the promise body so the ciphertext write is queued ahead of the marker
+		// read, and before any `await`, since a transaction commits once its queue drains.
+		tx.objectStore(STORE_SECRETS).put(record, id);
 		return new Promise<void>((resolve, reject) => {
-			let written = false;
-			stored.onsuccess = () => {
-				written = true;
-			};
-			// Chained inside the success callback rather than awaited, to keep the transaction
-			// live across the decision. The marker write needs no flag of its own: every way it
-			// can fail aborts the transaction, so reaching `oncomplete` means it either landed
-			// or was deliberately skipped.
+			// The marker read is chained inside a success callback rather than awaited, to keep
+			// the transaction live across the decision.
 			const marker = meta.get(retiredKey(id));
 			marker.onsuccess = () => {
-				if (readRetiredReason(marker.result) !== null) return;
-				meta.put(SUPERSEDED, retiredKey(id));
+				if (readRetiredReason(marker.result) === REVOKED) return;
+				meta.put(SETTLED, retiredKey(id));
 			};
-			tx.oncomplete = () => (written ? resolve() : reject(unavailable()));
+			// Neither write is tracked with a flag. A failed request fires `error`, which
+			// bubbles to the transaction and aborts it, so `oncomplete` already means both
+			// landed. A flag on the marker would be worse than redundant: it is written
+			// conditionally, so a cleared flag could not tell a deliberate skip from a loss.
+			tx.oncomplete = () => resolve();
 			tx.onabort = () => reject(unavailable());
 			tx.onerror = () => reject(unavailable());
 		});
@@ -659,10 +656,10 @@ export async function hasSecret(id: string): Promise<boolean> {
  * marker that could be cleared would not be durable. The cost is one small record per
  * provider the user has ever deleted a key for.
  *
- * The write is unconditional, where the other two writers defer to an existing marker. A
- * revocation is the only reason that must override one: it is the only reason answered on a
- * vault that cannot decrypt anything, so a slot already settled as superseded or dropped has
- * to be re-settled as revoked when the user throws the credential away.
+ * The write is unconditional, where the other two writers defer to a revocation. This is the
+ * one direction that must override: a slot already settled for some other reason has to be
+ * re-settled as revoked when the user throws the credential away, because that is what makes
+ * the stale clear-text copy erasable on a vault too damaged to offer a replacement.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
@@ -687,10 +684,10 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
  *
  * Does nothing for an `error` this vault did not raise for a stored value.
  *
- * The marker is written only when the provider has none. A revocation must survive: a save
- * after one re-creates a stored record while the `REVOKED` marker still stands, so this path
- * can find a matching value to drop with a revocation already recorded, and lowering it would
- * leave a credential the user threw away sitting readable in clear text on a damaged vault.
+ * The marker defers to a revocation already recorded. A save after one re-creates a stored
+ * record while the `REVOKED` marker still stands, so this path can find a matching value to
+ * drop with a revocation in place, and lowering it would leave a credential the user threw
+ * away sitting readable in clear text on a damaged vault.
  */
 export async function dropUnreadableSecret(id: string, error: KeyVaultError): Promise<void> {
 	if (!corruptRecords.has(error)) return;
@@ -716,8 +713,8 @@ export async function dropUnreadableSecret(id: string, error: KeyVaultError): Pr
 				secrets.delete(id);
 				const marker = meta.get(retiredKey(id));
 				marker.onsuccess = () => {
-					if (readRetiredReason(marker.result) !== null) return;
-					meta.put(DROPPED, retiredKey(id));
+					if (readRetiredReason(marker.result) === REVOKED) return;
+					meta.put(SETTLED, retiredKey(id));
 				};
 			};
 			tx.oncomplete = () => resolve();
@@ -789,8 +786,8 @@ export async function importLegacySecret(id: string, secret: string): Promise<vo
 			// live across the decision.
 			const marker = meta.get(retiredKey(id));
 			marker.onsuccess = () => {
-				// This vault has already settled the credential, by revocation or by dropping an
-				// unreadable record. Either way the slot is a copy of something superseded.
+				// This vault has already settled the credential, by revocation or by a save or
+				// drop that outranked the slot. Either way it is a copy of something superseded.
 				if (readRetiredReason(marker.result)) return;
 				const existing = secrets.count(id);
 				existing.onsuccess = () => {

@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetKeyVault } from "./test-fixtures/key-vault";
 import "fake-indexeddb/auto";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
-import type { KeychainAdapter } from "./keychain-adapter";
+import { type KeychainAdapter, LEGACY_RETAINED } from "./keychain-adapter";
 import { TauriKeychainAdapter } from "./tauri-keychain-adapter";
 
 beforeEach(() => {
@@ -61,6 +61,23 @@ describe("the browser keychain adapter", () => {
 
 		expect(await browser.getKey("openai")).toBe("sk-browser-test-key");
 		expect(await browser.hasKey("openai")).toBe(true);
+	});
+
+	it("keeps the retained-copy reason a literal type rather than a string", () => {
+		// `LEGACY_RETAINED` is inferred, and the inference is load-bearing: it is what
+		// keeps `KeyVaultErrorReason` a closed union. Annotate the constant `: string`
+		// and the union collapses, `new KeyVaultError("legacy-retaind", …)` compiles,
+		// and the settings panel silently stops recognising a removal that left a live
+		// clear-text key — with no diagnostic anywhere.
+		//
+		// `tsc --noEmit` fails with "unused '@ts-expect-error' directive" the moment
+		// that widening happens, because a `string` would accept this typo.
+		// @ts-expect-error the constant's type is the literal, not `string`.
+		const widened: typeof LEGACY_RETAINED = "legacy-retaind";
+
+		// And the directive is guarding a real value rather than a name that never
+		// resolves, which is what would make the assertion vacuous.
+		expect(widened).not.toBe(LEGACY_RETAINED);
 	});
 
 	it("reports a missing key as null rather than an error", async () => {

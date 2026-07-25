@@ -113,20 +113,6 @@ async function writeMetaValue(key: string, value: unknown): Promise<void> {
 	db.close();
 }
 
-/** Read a raw value back out of the vault's meta store. */
-async function readMetaValue(key: string): Promise<unknown> {
-	const db = await openVaultDb();
-	try {
-		return await new Promise<unknown>((resolve, reject) => {
-			const request = db.transaction("meta", "readonly").objectStore("meta").get(key);
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
-	} finally {
-		db.close();
-	}
-}
-
 /** Replace the contents of the wrap-key store, simulating a damaged vault. */
 async function writeWrapKeyStore(entries: [unknown, string][]): Promise<void> {
 	const db = await openVaultDb();
@@ -1002,24 +988,6 @@ describe("a clear-text slot that will not erase", () => {
 		// leaving the revoked credential readable in clear text with no path left to erase it.
 		expect(settled).toBeNull();
 		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
-	});
-
-	it("keeps the reason a slot was first settled for", async () => {
-		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
-		refuseLegacyRemoval();
-		const adapter = new BrowserKeychainAdapter();
-		// Migration writes no marker, so this is the one way a provider reaches the drop path
-		// with its slot still unsettled.
-		expect(await adapter.getKey("anthropic")).toBe("sk-ant-old");
-		await corruptStoredRecord("anthropic");
-		expect(await adapter.getKey("anthropic")).toBeNull();
-
-		await adapter.setKey("anthropic", "sk-ant-replacement");
-
-		// The reasons behave alike, so nothing else would catch this: the marker is the only
-		// record of why a slot stopped being importable, and re-labelling a record this vault
-		// gave up on as a key the user replaced answers a support question wrongly.
-		expect(await readMetaValue("legacy-retired:anthropic")).toBe("dropped");
 	});
 
 	it("erases a settled slot once the browser starts allowing it", async () => {
