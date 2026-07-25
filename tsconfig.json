@@ -16,6 +16,9 @@
 		"isolatedModules": true,
 		"noEmit": true,
 		"jsx": "react-jsx",
+		/* Keep Node globals out of browser production code even though E2E tooling installs
+		   @types/node. Runtime-specific projects opt into their own ambient types. */
+		"types": [],
 
 		/* Path aliases */
 		"paths": {

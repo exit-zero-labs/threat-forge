@@ -45,10 +45,12 @@ const ORIGIN_X = 100;
 const ORIGIN_Y = 100;
 const FIXTURE_DATE = "2026-01-01";
 
+/** @param {number} index */
 function elementId(index) {
 	return `element-${String(index).padStart(3, "0")}`;
 }
 
+/** @param {number} index */
 function flowId(index) {
 	return `flow-${String(index).padStart(3, "0")}`;
 }

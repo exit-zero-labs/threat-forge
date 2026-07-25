@@ -13,6 +13,7 @@
 			"worker/latest-release.ts",
 			"worker/**/*.test.ts",
 			"scripts/*.mjs",
+			"e2e/**/*.{ts,tsx,js,mjs}",
 			"*.ts",
 			"*.json"
 		]

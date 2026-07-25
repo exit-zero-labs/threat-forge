@@ -8,10 +8,9 @@
  * name — so the two non-TypeScript sources are read from disk here rather than
  * restated, which is what makes this a drift test instead of a copy of itself.
  *
- * Both sources arrive through Vite's `?raw` loader rather than `node:fs`,
- * matching `src/types/thf-fixtures.test.ts`: the repository has no
- * `@types/node`, and the loader still reads the committed file, so an edit to
- * either one shows up here.
+ * Both sources arrive through Vite's `?raw` loader rather than `node:fs`, matching
+ * `src/types/thf-fixtures.test.ts`. E2E tooling has Node types, but the browser-targeted root
+ * project deliberately excludes their globals; the loader still reads the committed files.
  */
 
 import { describe, expect, it } from "vitest";

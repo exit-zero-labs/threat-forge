@@ -4,7 +4,7 @@ import type { IconPath } from "@/lib/registry/types";
 
 /**
  * Fixture sources arrive through Vite's `?raw` glob loader rather than `node:fs`,
- * matching the repository's established test pattern (the toolchain ships no `@types/node`).
+ * matching the browser-targeted root project's deliberate exclusion of Node ambient types.
  */
 const validSources = import.meta.glob<string>("../../../tests/fixtures/icons/valid/*.svg", {
 	query: "?raw",

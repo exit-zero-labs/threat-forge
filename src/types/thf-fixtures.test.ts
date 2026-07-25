@@ -6,9 +6,9 @@
  * These assertions pin the behavior that exists today. An additive schema change must keep
  * every one of them passing without editing it.
  *
- * Fixtures arrive through Vite's `?raw` loader rather than `node:fs`, because the repository
- * has no `@types/node` and adding Node globals to a browser-targeted `tsconfig` to read four
- * files is a worse trade than a build-time import.
+ * Fixtures arrive through Vite's `?raw` loader rather than `node:fs`. E2E tooling installs
+ * `@types/node`, but the browser-targeted root project deliberately sets `types: []`; build-time
+ * imports keep these tests on that browser contract instead of admitting Node globals.
  */
 
 import { dump, load, YAMLException } from "js-yaml";

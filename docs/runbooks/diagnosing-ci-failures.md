@@ -13,7 +13,7 @@ something. See [When not to rerun](#when-not-to-rerun).
 | Job | Runner | Depends on | What it proves |
 |-----|--------|-----------|----------------|
 | `Lockfile` | ubuntu | — | `package-lock.json` registry/integrity, Tauri JS/Rust version alignment |
-| `Lint` | ubuntu | `Lockfile` | Biome, `tsc --noEmit`, `cargo fmt --check`, Clippy with `-D warnings` |
+| `Lint` | ubuntu | `Lockfile` | Biome (incl. `e2e/**`), `tsc --noEmit`, E2E `tsc --noEmit -p tsconfig.e2e.json`, `cargo fmt --check`, Clippy with `-D warnings` |
 | `Test` | ubuntu | `Lockfile` | Vitest (`src/**` and `scripts/**/*.test.mjs`) and `cargo test` |
 | `E2E Tests` | ubuntu | `Test` | Playwright against the web build |
 | `Build (ubuntu-latest)` | ubuntu | `Lint`, `Test` | Tauri bundle, web build, Worker bundle check |
@@ -65,8 +65,8 @@ Work through this in order. Stop at the first step that explains the failure.
    [Canvas timeouts: the two races already closed](#canvas-timeouts-the-two-races-already-closed).
 
 6. **Otherwise it is a real failure.** Reproduce it locally with the smallest matching check
-   (`npx biome check .`, `npx tsc --noEmit`, `npx vitest --run`, `cargo clippy`,
-   `npx playwright test`), or run `npm run ci:local` for the full native gate.
+   (`npx biome check .`, `npx tsc --noEmit`, `npm run check:e2e-types`, `npx vitest --run`,
+   `cargo clippy`, `npx playwright test`), or run `npm run ci:local` for the full native gate.
 
 ## Where the auto-rerun decision is published
 

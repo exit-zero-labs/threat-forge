@@ -1,4 +1,4 @@
-import { type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { addPaletteItem, createModel, expect, test, waitForCanvasReady } from "./fixtures";
 
 /** Add a trust boundary from the palette (doesn't use node-* testid like elements) */
