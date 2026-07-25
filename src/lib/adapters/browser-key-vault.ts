@@ -72,10 +72,12 @@ function retiredKey(id: string): string {
  * clear-text slot the browser would not erase. `"dropped"` is this vault discarding a record
  * it could not read, which the user never asked for.
  *
- * All three block re-import. They differ only while the vault holds records it cannot
- * decrypt: there a revocation is still answered, because the user threw the credential away,
- * and the other two are refused, because the clear-text copy may be the last one there is and
- * the user asked for neither. On a readable vault all three discard the slot alike.
+ * All three block re-import. Only `"revoked"` changes what happens next: while the vault
+ * holds records it cannot decrypt, a revocation is still answered — the user threw the
+ * credential away — and the other two are refused, because the clear-text copy may be the
+ * last one there is and the user asked for neither. `"superseded"` and `"dropped"` therefore
+ * take the same path as each other today; they are recorded apart so a profile that comes
+ * back with a settled slot can be diagnosed, not because the reader treats them differently.
  */
 type RetiredReason = "revoked" | "superseded" | "dropped";
 
@@ -91,12 +93,16 @@ const DROPPED: RetiredReason = "dropped";
  * exists to prevent — so an unreadable marker is still a marker. Only `undefined`, which is
  * what IndexedDB returns for a key that was never written, means no marker.
  *
- * `true` is the shape written before markers carried a reason, and it only ever meant an
- * unconditional decline, which is what a revocation is.
+ * That default is also what handles `true`, the shape written before markers carried a
+ * reason. It is deliberately not read as a revocation: both the delete path and the
+ * unreadable-record path wrote it, so all it establishes is that re-import was declined.
+ * Reading it as a revocation would license erasing a clear-text slot on a damaged vault,
+ * which is more authority than that shape ever carried, and on a profile whose marker came
+ * from a dropped record it would destroy the copy the `"dropped"` reason exists to keep.
  */
 function readRetiredReason(stored: unknown): RetiredReason | null {
 	if (stored === undefined) return null;
-	if (stored === REVOKED || stored === true) return REVOKED;
+	if (stored === REVOKED) return REVOKED;
 	if (stored === SUPERSEDED) return SUPERSEDED;
 	return DROPPED;
 }
@@ -509,16 +515,67 @@ async function encryptSecret(
 }
 
 /**
+ * Whether a save must also record that it superseded a pre-#133 clear-text slot.
+ *
+ * Not inferable inside the vault: only the adapter can see `localStorage`. Passed rather
+ * than defaulted so a caller storing a secret has to decide, since guessing wrong in the
+ * `"leave-slot"` direction is what lets a replaced credential come back.
+ */
+type SlotSettlement = "supersede-slot" | "leave-slot";
+
+/**
  * Encrypt `secret` under the vault's wrapping key and store it for `id`.
+ *
+ * Under `"supersede-slot"` the ciphertext and the retirement marker are written in one
+ * transaction. They cannot be two operations: the stored record is the only thing outranking
+ * a clear-text slot the browser refused to erase, and that record does not survive the vault
+ * being restarted after its wrapping key is lost. A save that committed the record and then
+ * failed to write the marker — quota, eviction, a closed tab — would report success and leave
+ * the superseded credential ready to come back as the active key. The conditions that make
+ * the marker write fail are the same ones that later destroy the record, so the two are
+ * correlated rather than independent.
+ *
+ * The marker is only ever raised, never lowered: a revocation already recorded for this
+ * provider outranks a supersession, and overwriting it would disarm the one path that erases
+ * a revoked clear-text credential on a vault that cannot decrypt anything. The read and the
+ * write share the transaction, so no concurrent delete can land between them.
  *
  * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
  * caller must surface that failure rather than storing the value in clear text.
  */
-export async function putSecret(id: string, secret: string): Promise<void> {
+export async function putSecret(
+	id: string,
+	secret: string,
+	settlement: SlotSettlement,
+): Promise<void> {
 	await withVault(async (db) => {
+		// Encryption finishes before any transaction opens, since awaiting Web Crypto inside
+		// one would let it commit early.
 		const record = await encryptSecret(db, secret, "always");
-		const tx = db.transaction(STORE_SECRETS, "readwrite");
-		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).put(record, id));
+		if (settlement === "leave-slot") {
+			const tx = db.transaction(STORE_SECRETS, "readwrite");
+			await awaitWrite(tx, tx.objectStore(STORE_SECRETS).put(record, id));
+			return;
+		}
+		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
+		const meta = tx.objectStore(STORE_META);
+		const stored = tx.objectStore(STORE_SECRETS).put(record, id);
+		return new Promise<void>((resolve, reject) => {
+			let written = false;
+			stored.onsuccess = () => {
+				written = true;
+			};
+			// Chained inside the success callback rather than awaited, to keep the transaction
+			// live across the decision.
+			const marker = meta.get(retiredKey(id));
+			marker.onsuccess = () => {
+				if (readRetiredReason(marker.result) === REVOKED) return;
+				meta.put(SUPERSEDED, retiredKey(id));
+			};
+			tx.oncomplete = () => (written ? resolve() : reject(unavailable()));
+			tx.onabort = () => reject(unavailable());
+			tx.onerror = () => reject(unavailable());
+		});
 	});
 }
 
@@ -595,26 +652,6 @@ export async function hasSecret(id: string): Promise<boolean> {
  * marker that could be cleared would not be durable. The cost is one small record per
  * provider the user has ever deleted a key for.
  */
-/**
- * Record that `id`'s clear-text slot has been superseded by a stored key.
- *
- * A stored record is what stops a slot the browser refuses to erase from overwriting a key
- * the user replaced. That record is not permanent: restarting the vault after its wrapping
- * key is lost clears it, and then nothing outranks the slot and the replaced credential comes
- * back on the next read. This marker is the ranking fact made durable, written at the one
- * moment it is known — a save that found the slot still readable afterwards.
- *
- * It is not a revocation. The user replaced a credential rather than throwing one away, and
- * the slot may still be the only readable copy on a damaged vault, so it declines re-import
- * without licensing an erase.
- */
-export async function markSupersededSlot(id: string): Promise<void> {
-	await withVault(async (db) => {
-		const tx = db.transaction(STORE_META, "readwrite");
-		await awaitWrite(tx, tx.objectStore(STORE_META).put(SUPERSEDED, retiredKey(id)));
-	});
-}
-
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
@@ -637,6 +674,10 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
  * a well-formed record, so it is never the thing dropped.
  *
  * Does nothing for an `error` this vault did not raise for a stored value.
+ *
+ * Writes `DROPPED` without checking for a stronger marker, unlike a save: a revocation
+ * deletes the record in the same transaction that writes its marker, so once one exists
+ * there is no stored value left for this to match against and it returns before writing.
  */
 export async function dropUnreadableSecret(id: string, error: KeyVaultError): Promise<void> {
 	if (!corruptRecords.has(error)) return;

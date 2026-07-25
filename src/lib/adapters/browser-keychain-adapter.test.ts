@@ -604,22 +604,36 @@ describe("recovering from an unreadable record", () => {
 		expect(await adapter.hasKey("openai")).toBe(false);
 	});
 
-	it("still honours a revocation recorded before markers carried a reason", async () => {
+	it("still declines a slot settled before markers carried a reason", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.deleteKey("anthropic");
+		// The shape earlier builds on this branch wrote. Reading it as "no marker" hands back
+		// the credential the read is supposed to have settled.
+		await writeMetaValue("legacy-retired:anthropic", true);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-settled");
+
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		// A healthy vault discards a settled slot whatever the reason, so the residue goes too.
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("does not erase a clear-text copy on the strength of a marker that predates reasons", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
 		await adapter.setKey("openai", "sk-openai-stored");
-		await adapter.deleteKey("anthropic");
-		// The shape earlier builds on this branch wrote. It only ever meant an unconditional
-		// decline, and reading it as "no marker" hands back the credential the user revoked.
 		await writeMetaValue("legacy-retired:anthropic", true);
 		await writeWrapKeyStore([]);
-		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-still-good");
 
-		// Read on a damaged vault, which is where the reasons stop being interchangeable: only
-		// a revocation is answered without a wrapping key. Reading the old shape as anything
-		// weaker would leave the revoked copy sitting in clear text.
-		expect(await adapter.getKey("anthropic")).toBeNull();
-		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		// Both the delete path and the dropped-record path wrote `true`, so it establishes only
+		// that re-import was declined. Reading it as a revocation would license erasing this
+		// copy on a vault that can offer no replacement — more authority than that shape ever
+		// carried, and on a profile whose marker came from a drop it destroys a good key.
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-still-good");
 	});
 
 	it("does not create key material on a read after a record was dropped", async () => {
@@ -801,6 +815,17 @@ describe("a clear-text slot that will not erase", () => {
 		});
 	}
 
+	it("does not settle a slot the profile never had", async () => {
+		const adapter = new BrowserKeychainAdapter();
+
+		await adapter.setKey("anthropic", SECRET);
+
+		// Markers are durable and uncleared, so writing one per save on a profile created after
+		// #133 — where no clear-text slot has ever existed — is litter, and it would decline an
+		// import that could only ever be legitimate.
+		expect(await countStore("meta")).toBe(0);
+	});
+
 	it("does not let the stale slot overwrite a newly saved key", async () => {
 		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
 		refuseLegacyRemoval();
@@ -890,6 +915,51 @@ describe("a clear-text slot that will not erase", () => {
 		// trying to remove, and can retry — rather than the revoked clear-text value coming
 		// back in its place.
 		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+	});
+
+	it("does not let a later save weaken a revocation already recorded", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-compromised");
+		const refusal = refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await expect(adapter.deleteKey("anthropic")).rejects.toBeInstanceOf(KeyVaultError);
+
+		// The user revoked the key, was told a clear-text copy survived, and enters a new one.
+		// The save settles the slot too, but the reasons are not equal: only a revocation is
+		// answered on a vault that cannot decrypt anything. Writing the weaker reason over the
+		// stronger one disarms the single path that erases the revoked copy.
+		await adapter.setKey("anthropic", "sk-ant-replacement");
+		await writeWrapKeyStore([]);
+		refusal.mockRestore();
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		// The damaged vault is still reported — the replacement is unreadable and re-entering a
+		// key is the only fix. What the revocation decides is the clear-text residue: it is
+		// erased on sight, where a supersession in the same state is kept.
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("fails the save rather than storing a key whose supersession went unrecorded", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		const metaFailure = failMetaStore();
+
+		// The marker is the only durable statement that the stored key outranks the slot, and
+		// the record that would otherwise carry that fact does not survive the vault being
+		// restarted. A save that committed the ciphertext and lost the marker would report
+		// success and leave the replaced credential ready to come back as the active key —
+		// under exactly the storage pressure that later destroys the record.
+		await expect(adapter.setKey("anthropic", "sk-ant-rotated")).rejects.toBeInstanceOf(
+			KeyVaultError,
+		);
+
+		metaFailure.mockRestore();
+		// Neither half landed, so the user is where they started and can retry.
+		expect(await countSecrets()).toBe(0);
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old");
 	});
 
 	it("erases a settled slot once the browser starts allowing it", async () => {

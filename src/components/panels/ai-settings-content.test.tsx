@@ -9,14 +9,14 @@ import { DEFAULT_USER_SETTINGS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
 
 let hasKey: (provider: string) => Promise<boolean> = async () => false;
-let loadAdapter: () => Promise<unknown> = async () => ({
+let getAdapter: () => Promise<unknown> = async () => ({
 	hasKey: (provider: string) => hasKey(provider),
 	setKey: async () => undefined,
 	deleteKey: async () => undefined,
 });
 
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
-	getKeychainAdapter: () => loadAdapter(),
+	getKeychainAdapter: () => getAdapter(),
 }));
 
 function modelSelect(): HTMLSelectElement {
@@ -31,7 +31,7 @@ beforeEach(() => {
 	localStorage.clear();
 	vi.restoreAllMocks();
 	hasKey = async () => false;
-	loadAdapter = async () => ({
+	getAdapter = async () => ({
 		hasKey: (provider: string) => hasKey(provider),
 		setKey: async () => undefined,
 		deleteKey: async () => undefined,
@@ -120,8 +120,76 @@ describe("key storage that cannot answer", () => {
 		expect(screen.getByText("API key configured")).toBeInTheDocument();
 	});
 
+	it("applies a stalled status check after a save that failed", async () => {
+		let release: () => void = () => undefined;
+		const stalled = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		hasKey = async () => {
+			await stalled;
+			return true;
+		};
+		getAdapter = async () => ({
+			hasKey: (provider: string) => hasKey(provider),
+			setKey: async () => {
+				throw new Error("Encrypted key storage in this browser is unavailable.");
+			},
+			deleteKey: async () => undefined,
+		});
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+		fireEvent.change(screen.getByPlaceholderText("sk-ant-..."), {
+			target: { value: "sk-ant-new" },
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		});
+		await act(async () => {
+			release();
+			await stalled;
+		});
+
+		// Nothing was written, so the check is not stale — it is the only reading of storage the
+		// panel has. Treating the attempt as a mutation would discard it permanently and leave a
+		// user with a key already saved looking at "No API key configured" and no Remove button.
+		expect(screen.getByText("API key configured")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Remove API key" })).toBeInTheDocument();
+	});
+
+	it("treats a removal that left a clear-text copy as removed, with the warning", async () => {
+		class RetainedCopyError extends Error {
+			readonly reason = "legacy-retained";
+		}
+		hasKey = async () => true;
+		getAdapter = async () => ({
+			hasKey: (provider: string) => hasKey(provider),
+			setKey: async () => undefined,
+			deleteKey: async () => {
+				throw new RetainedCopyError(
+					"The API key was removed from encrypted storage, but this browser would not delete an older clear-text copy.",
+				);
+			},
+		});
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Remove API key" }));
+		});
+
+		// The stored key really is gone; the rejection is about residue the adapter could not
+		// erase. Leaving the status alone showed "API key configured" directly underneath a
+		// message saying the key had been removed.
+		expect(screen.getByText(/would not delete an older clear-text copy/)).toBeInTheDocument();
+		expect(screen.getByText("No API key configured")).toBeInTheDocument();
+	});
+
 	it("says so when the storage adapter itself will not load", async () => {
-		loadAdapter = async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		getAdapter = async () => {
 			throw new Error("Failed to fetch dynamically imported module: /assets/x-9f2a1c.js");
 		};
 
@@ -133,10 +201,17 @@ describe("key storage that cannot answer", () => {
 		// A bundle path and content hash are not an explanation, and this is a surface that
 		// otherwise only ever shows messages the app authored.
 		expect(screen.queryByText(/dynamically imported module/)).not.toBeInTheDocument();
+		// Kept out of the UI, not discarded: a real chunk-load regression has to stay
+		// diagnosable from a console log a user can paste into a bug report.
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("Key storage adapter failed to load"),
+			expect.objectContaining({ message: expect.stringContaining("dynamically imported") }),
+		);
 	});
 
 	it("does not put a bundler failure in front of the user when saving", async () => {
-		loadAdapter = async () => {
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		getAdapter = async () => {
 			throw new Error("Failed to fetch dynamically imported module: /assets/x-9f2a1c.js");
 		};
 

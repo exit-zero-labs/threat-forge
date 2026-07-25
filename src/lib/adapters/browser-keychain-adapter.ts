@@ -5,7 +5,6 @@ import {
 	hasSecret,
 	importLegacySecret,
 	KeyVaultError,
-	markSupersededSlot,
 	putSecret,
 	retireAndDeleteSecret,
 } from "./browser-key-vault";
@@ -87,12 +86,13 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * and this is the only path a user who revoked a key and then left the provider alone will
  * ever run again.
  *
- * A marker is set for three different reasons and they are not interchangeable. Only a
+ * A marker records why the slot was settled, and one reason is not like the others. Only a
  * revocation is the user throwing a credential away, so only a revocation is answered while
  * the vault is too damaged to decrypt anything; a slot superseded by a later save, or settled
  * because a record could not be read, waits for a readable vault instead of being erased on
- * the strength of a copy that may be the last one. On a healthy vault all three discard the
- * slot rather than importing it.
+ * the strength of a copy that may be the last one. Those two are recorded apart for
+ * diagnosis and take the same path as each other. On a healthy vault every reason discards
+ * the slot rather than importing it.
  *
  * Both guards are evaluated inside {@link importLegacySecret}'s own transaction rather than
  * here, because a check in this function and a write in another transaction can straddle a
@@ -166,19 +166,20 @@ function withProviderLock<T>(provider: AiProvider, operation: () => Promise<T>):
 export class BrowserKeychainAdapter implements KeychainAdapter {
 	async setKey(provider: AiProvider, key: string): Promise<void> {
 		await withProviderLock(provider, async () => {
-			await putSecret(provider, key);
-			// A stored key supersedes any pre-#133 clear-text value for the same provider.
-			// A slot that refuses to be erased is not failed here: the save genuinely
-			// succeeded, and reporting an error would tell the user the opposite. It can no
-			// longer override the vault, and `deleteKey` is where a surviving clear-text
-			// credential becomes a claim that must not be made.
-			if (removeLegacyKey(provider) === "erased") return;
-			// The slot survived, so the stored record is the only thing outranking it — and
-			// that record does not survive the vault being restarted after its wrapping key is
-			// lost. Settling the slot now keeps the replaced credential from coming back once
-			// the record is gone. Best effort: the save has already committed, and failing it
-			// here would report the opposite of what happened.
-			await markSupersededSlot(provider).catch(() => undefined);
+			// Read before the write, because the save itself has to carry the answer: a stored
+			// key supersedes any pre-#133 clear-text value for the same provider, and the record
+			// that expresses that ranking does not survive the vault being restarted after its
+			// wrapping key is lost. Recording it in the same transaction as the ciphertext is
+			// what keeps the replaced credential from coming back once the record is gone.
+			// `unreadable` is settled too: storage that will not answer may still be holding a
+			// slot, and a marker for a slot that does not exist is inert.
+			const slot = readLegacySlot(provider);
+			await putSecret(provider, key, slot.state === "absent" ? "leave-slot" : "supersede-slot");
+			// Attempted, but not reported. A slot that refuses to be erased does not fail the
+			// save: the save genuinely succeeded, it can no longer override the vault, and
+			// `deleteKey` is where a surviving clear-text credential becomes a claim that must
+			// not be made.
+			removeLegacyKey(provider);
 		});
 	}
 

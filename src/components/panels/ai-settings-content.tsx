@@ -11,13 +11,19 @@ import { useSettingsStore } from "@/stores/settings-store";
 const ADAPTER_LOAD_ERROR = "Key storage could not be loaded. Reload the page and try again.";
 
 /**
- * Load the keychain adapter, or `null` when the module itself will not load.
+ * Load the keychain adapter, replacing a module-load failure with an authored message.
  *
  * Adapters author their own user-safe messages; a failure to load one does not, and would
- * otherwise render a bundle URL and a hash as the explanation.
+ * otherwise render a bundle URL and a hash as the explanation. The cause is logged rather
+ * than dropped, so a real chunk-load regression is still diagnosable from a bug report.
  */
-async function loadAdapter(): Promise<Awaited<ReturnType<typeof getKeychainAdapter>> | null> {
-	return getKeychainAdapter().catch(() => null);
+async function loadAdapter(): Promise<Awaited<ReturnType<typeof getKeychainAdapter>>> {
+	try {
+		return await getKeychainAdapter();
+	} catch (err) {
+		console.warn("Key storage adapter failed to load:", err);
+		throw new Error(ADAPTER_LOAD_ERROR);
+	}
 }
 
 const PROVIDERS: { value: AiProvider; label: string }[] = [
@@ -32,6 +38,19 @@ const PROVIDERS: { value: AiProvider; label: string }[] = [
  */
 function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Whether `error` reports a removal that succeeded but left a clear-text copy behind.
+ *
+ * The browser adapter deletes the stored key and *then* rejects, because it cannot claim the
+ * credential is gone while a pre-encryption copy is still readable. The removal did happen,
+ * so the panel has to record it and still show the warning. Matched structurally rather than
+ * by importing the browser vault, which would pull IndexedDB code into the desktop bundle.
+ */
+function isRetainedLegacyCopy(error: unknown): boolean {
+	if (!(error instanceof Error) || !("reason" in error)) return false;
+	return error.reason === "legacy-retained";
 }
 
 /** AI settings form content — used inside the settings dialog. */
@@ -71,37 +90,38 @@ export function AiSettingsContent() {
 	useEffect(() => {
 		let current = true;
 		async function checkStatus() {
-			const adapter = await loadAdapter();
-			if (!current) return;
-			if (!adapter) {
-				setMessage({ type: "error", text: ADAPTER_LOAD_ERROR });
-				return;
-			}
-			// Settled independently so one provider's failure does not erase the other's status.
-			// Unreadable storage rejects for both, and a vault too damaged to migrate rejects for
-			// a provider whose pre-encryption key is still waiting to be moved; reporting either
-			// as "no API key configured" points the user at entering a key, which is the one
-			// thing that will not help.
-			const [anthropic, openai] = await Promise.allSettled([
-				adapter.hasKey("anthropic"),
-				adapter.hasKey("openai"),
-			]);
-			if (!current) return;
-			const answers: [AiProvider, PromiseSettledResult<boolean>][] = [
-				["anthropic", anthropic],
-				["openai", openai],
-			];
-			const fresh = answers.filter(([name]) => !mutated.current.has(name));
-			setKeyStatus((prev) => {
-				const next = { ...prev };
-				for (const [name, answer] of fresh) {
-					next[name] = answer.status === "fulfilled" && answer.value;
+			try {
+				const adapter = await loadAdapter();
+				if (!current) return;
+				// Settled independently so one provider's failure does not erase the other's
+				// status. Unreadable storage rejects for both, and a vault too damaged to migrate
+				// rejects for a provider whose pre-encryption key is still waiting to be moved;
+				// reporting either as "no API key configured" points the user at entering a key,
+				// which is the one thing that will not help.
+				const [anthropic, openai] = await Promise.allSettled([
+					adapter.hasKey("anthropic"),
+					adapter.hasKey("openai"),
+				]);
+				if (!current) return;
+				const answers: [AiProvider, PromiseSettledResult<boolean>][] = [
+					["anthropic", anthropic],
+					["openai", openai],
+				];
+				const fresh = answers.filter(([name]) => !mutated.current.has(name));
+				setKeyStatus((prev) => {
+					const next = { ...prev };
+					for (const [name, answer] of fresh) {
+						next[name] = answer.status === "fulfilled" && answer.value;
+					}
+					return next;
+				});
+				const failure = fresh.find(([, answer]) => answer.status === "rejected")?.[1];
+				if (failure?.status === "rejected") {
+					setMessage({ type: "error", text: errorText(failure.reason) });
 				}
-				return next;
-			});
-			const failure = fresh.find(([, answer]) => answer.status === "rejected")?.[1];
-			if (failure?.status === "rejected") {
-				setMessage({ type: "error", text: errorText(failure.reason) });
+			} catch (err) {
+				// Only the adapter load rejects here; `allSettled` never does.
+				if (current) setMessage({ type: "error", text: errorText(err) });
 			}
 		}
 		void checkStatus();
@@ -118,7 +138,6 @@ export function AiSettingsContent() {
 
 		try {
 			const adapter = await loadAdapter();
-			if (!adapter) throw new Error(ADAPTER_LOAD_ERROR);
 			await adapter.setKey(provider, apiKey.trim());
 			// Recorded once the write has actually landed, so a save that fails does not leave
 			// the mount check discarded and the panel stuck reporting no key at all.
@@ -142,16 +161,27 @@ export function AiSettingsContent() {
 		setDeleting(true);
 		setMessage(null);
 
-		try {
-			const adapter = await loadAdapter();
-			if (!adapter) throw new Error(ADAPTER_LOAD_ERROR);
-			await adapter.deleteKey(provider);
+		function recordRemoval() {
 			mutated.current.add(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: false }));
+		}
+
+		try {
+			const adapter = await loadAdapter();
+			await adapter.deleteKey(provider);
+			recordRemoval();
 			const successText = isTauri() ? "API key removed." : "API key removed from this browser.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
+			// A retained clear-text copy is a warning about residue, not a failed removal: the
+			// stored key is gone. Leaving the status alone would show the provider as configured
+			// underneath a message saying it was removed, and would let a slow mount check
+			// overwrite it with the answer from before the delete.
+			if (isRetainedLegacyCopy(err)) {
+				recordRemoval();
+				await checkApiKey(provider);
+			}
 			setMessage({ type: "error", text: errorText(err) });
 		} finally {
 			setDeleting(false);
