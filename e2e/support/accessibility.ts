@@ -87,8 +87,6 @@ export interface AccessibilityException {
  * - `color-contrast` (serious): the pre-model welcome screen's de-emphasized caption text, using
  *   Tailwind `text-muted-foreground/60` and `/40` opacity utilities — a deliberate low-emphasis
  *   design choice that fails strict WCAG AA contrast by construction. Tracked by #218.
- * - `scrollable-region-focusable` (serious): the component palette's scrollable list, present in
- *   every document state. Tracked by #219.
  * - `aria-required-children` (critical): the document tab strip's `role="tablist"` container,
  *   whose actual `role="tab"` children are one level deeper than axe-core expects, alongside
  *   sibling close/pin buttons per this repo's deliberate tab-accessibility design
@@ -105,11 +103,6 @@ export const KNOWN_ACCESSIBILITY_EXCEPTIONS: readonly AccessibilityException[] =
 	},
 	{ ruleId: "color-contrast", target: ".hover\\:text-muted-foreground", issue: 218 },
 	{ ruleId: "color-contrast", target: ".text-muted-foreground\\/40", issue: 218 },
-	{
-		ruleId: "scrollable-region-focusable",
-		target: ".overflow-y-auto.p-2.flex-1",
-		issue: 219,
-	},
 	{ ruleId: "aria-required-children", target: ".overscroll-x-contain", issue: 220 },
 ];
 
