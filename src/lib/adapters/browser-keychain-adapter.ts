@@ -1,12 +1,11 @@
 import type { AiProvider } from "@/stores/chat-store";
 import {
-	deleteSecret,
 	getSecret,
 	hasSecret,
-	isLegacySlotRetired,
+	importLegacySecret,
 	KeyVaultError,
 	putSecret,
-	retireLegacySlot,
+	retireAndDeleteSecret,
 } from "./browser-key-vault";
 import type { KeychainAdapter } from "./keychain-adapter";
 
@@ -79,7 +78,7 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * re-migrated, only cleaned up.
  *
  * That guard alone does not cover deletion, because after a delete there is no stored secret
- * to outrank the slot. {@link retireLegacySlot} closes that: once
+ * to outrank the slot. The retirement marker closes that: once
  * {@link BrowserKeychainAdapter.deleteKey} has settled a slot it is never imported again, so
  * a credential the user revoked cannot come back on the next read. A settled slot is still
  * erased on sight — the browser that refused the removal may since have started allowing it,
@@ -87,27 +86,31 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * ever run again. Discarding rather than importing is the right reading of the marker,
  * because a user delete is the only thing that sets it.
  *
- * The erase happens only after the encrypted write has committed — {@link putSecret} resolves
- * at transaction commit, not at request success — so a failure part-way through leaves the
- * user's key intact rather than destroying it. If the vault is unavailable the error
- * propagates: callers must not fall back to reading clear text, because that would quietly
- * re-establish the storage posture #133 removed.
+ * Both guards are evaluated inside {@link importLegacySecret}'s own transaction rather than
+ * here, because a check in this function and a write in another transaction can straddle a
+ * concurrent delete in a second tab.
+ *
+ * The erase happens only after the encrypted write has committed — {@link importLegacySecret}
+ * resolves at transaction commit, not at request success — so a failure part-way through
+ * leaves the user's key intact rather than destroying it. If the vault is unavailable the
+ * error propagates: callers must not fall back to reading clear text, because that would
+ * quietly re-establish the storage posture #133 removed.
+ *
+ * A slot that refuses to be erased here is not reported. Only `deleteKey` makes a claim about
+ * a credential being gone, so only it must fail when one survives; a read reporting an error
+ * would break every AI request over a residue the user cannot act on from that surface.
+ * Surfacing it persistently in settings is #233.
  */
 async function migrateLegacyKey(provider: AiProvider): Promise<void> {
 	const slot = readLegacySlot(provider);
 	// Checked before the vault is consulted, so the common case — no legacy slot, which is
 	// every profile created after #133 — costs no extra transaction.
 	if (slot.state !== "present") return;
-	if (await isLegacySlotRetired(provider)) {
-		removeLegacyKey(provider);
-		return;
-	}
-	if (!(await hasSecret(provider))) {
-		await putSecret(provider, slot.value);
-	}
+	await importLegacySecret(provider, slot.value);
 	// No marker is written here. Once the slot is erased it reads as `absent` and the guard
-	// above short-circuits before the vault is touched, so a marker would only add a write to
-	// every migration. `deleteKey` is the one caller whose marker is load-bearing.
+	// above short-circuits before the vault is touched; no in-app path re-creates the slot, so
+	// a marker would only add a write to every migration. `deleteKey` is the one caller whose
+	// marker is load-bearing.
 	removeLegacyKey(provider);
 }
 
@@ -116,8 +119,10 @@ async function migrateLegacyKey(provider: AiProvider): Promise<void> {
  *
  * Every public method is a read-modify-write across two stores, so an unordered `getKey` and
  * `deleteKey` can interleave such that the migration re-inserts the key the user just
- * deleted. Serializing per provider removes that window. Cross-tab races are out of scope
- * here; IndexedDB's own transaction serialization is what keeps the vault itself consistent.
+ * deleted. Serializing per provider removes that window for this tab. It cannot order
+ * anything across tabs, because the map is module-scoped — that is why the vault's own
+ * check-and-act operations each run in a single IndexedDB transaction, which the browser does
+ * serialize across connections.
  */
 const providerOperations = new Map<AiProvider, Promise<unknown>>();
 
@@ -175,7 +180,10 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 					// report the provider as unconfigured. Without the delete, `hasKey` would keep
 					// counting the record and the settings panel would show the provider as
 					// configured while every request failed for want of a key.
-					await deleteSecret(provider);
+					// Marked as well as deleted: this destroys the record that outranks the
+					// clear-text slot, so without the marker a slot the browser refused to erase
+					// would be re-imported on the next read — reinstating a key the user replaced.
+					await retireAndDeleteSecret(provider);
 					return null;
 				}
 				// A `vault-corrupt` or `unavailable` fault affects every provider and re-entering
@@ -188,15 +196,13 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 	async deleteKey(provider: AiProvider): Promise<void> {
 		await withProviderLock(provider, async () => {
 			const erasure = removeLegacyKey(provider);
-			// Written before the record is deleted, not after. The marker records the user's
-			// intent to be rid of this credential, so establishing it first is what makes the
-			// delete safe: if this write fails, nothing has been destroyed, the stored secret
-			// still outranks the clear-text slot, and the user gets an honest failure. Written
-			// afterwards it would leave a window — a failed write, or another tab reading
-			// between the two steps — in which there is no stored secret to outrank the slot
-			// and no marker to stop it, which is exactly the resurrection this guards against.
-			await retireLegacySlot(provider);
-			await deleteSecret(provider);
+			// Marker and delete commit together or not at all. Applied separately, the moment
+			// between them has no stored secret to outrank the clear-text slot and no marker to
+			// stop it, and the credential the user just revoked comes back on the next read.
+			// If the whole transaction fails, the stored secret survives and the user gets an
+			// honest failure. The clear-text slot has already been erased by then, which is the
+			// safe direction for a delete.
+			await retireAndDeleteSecret(provider);
 			if (erasure !== "erased") {
 				// The encrypted copy is gone but a clear-text one may still be readable from
 				// this browser. Reporting success would tell a user who is removing a

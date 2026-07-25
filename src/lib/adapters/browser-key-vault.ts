@@ -49,9 +49,9 @@ const STORE_SECRETS = "secrets";
 /**
  * Holds markers that describe a provider rather than store its secret.
  *
- * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`:
- * a marker keyed into it would survive `deleteSecret` (which deletes by exact key), but the
- * store's readers would then have to tolerate two unrelated record shapes.
+ * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`. A
+ * marker keyed into the secrets store would also collide with the provider ids that store
+ * uses as keys, which is what {@link LEGACY_RETIRED_PREFIX} exists to avoid.
  */
 const STORE_META = "meta";
 
@@ -282,13 +282,15 @@ function awaitRequest<T>(request: IDBRequest<T>): Promise<T> {
  * user's only clear-text copy on the strength of it — so the commit is the only honest
  * point to resolve at. This matches `indexeddb-workspace-storage.ts`.
  */
-function awaitWrite(tx: IDBTransaction, request: IDBRequest): Promise<void> {
+function awaitWrite(tx: IDBTransaction, ...requests: IDBRequest[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		let succeeded = false;
-		request.onsuccess = () => {
-			succeeded = true;
-		};
-		tx.oncomplete = () => (succeeded ? resolve() : reject(unavailable()));
+		let succeeded = 0;
+		for (const request of requests) {
+			request.onsuccess = () => {
+				succeeded += 1;
+			};
+		}
+		tx.oncomplete = () => (succeeded === requests.length ? resolve() : reject(unavailable()));
 		tx.onabort = () => reject(unavailable());
 		tx.onerror = () => reject(unavailable());
 	});
@@ -394,19 +396,24 @@ async function withVault<T>(operation: (db: IDBDatabase) => Promise<T>): Promise
  * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
  * caller must surface that failure rather than storing the value in clear text.
  */
+/** Encrypt `secret` under the vault's wrapping key, minting one if the vault has none. */
+async function encryptSecret(db: IDBDatabase, secret: string): Promise<SecretRecord> {
+	const subtle = requireSubtle();
+	const wrapKey = await getOrCreateWrapKey(db);
+	const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_BYTES));
+	const encrypted = await subtle.encrypt(
+		{ name: "AES-GCM", iv },
+		wrapKey,
+		new TextEncoder().encode(secret),
+	);
+	// Persisted as a view rather than a raw `ArrayBuffer` so both fields read back through the
+	// same realm-independent check.
+	return { iv, ciphertext: new Uint8Array(encrypted) };
+}
+
 export async function putSecret(id: string, secret: string): Promise<void> {
 	await withVault(async (db) => {
-		const subtle = requireSubtle();
-		const wrapKey = await getOrCreateWrapKey(db);
-		const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_BYTES));
-		const encrypted = await subtle.encrypt(
-			{ name: "AES-GCM", iv },
-			wrapKey,
-			new TextEncoder().encode(secret),
-		);
-		// Persisted as a view rather than a raw `ArrayBuffer` so both fields read back through
-		// the same realm-independent check.
-		const record: SecretRecord = { iv, ciphertext: new Uint8Array(encrypted) };
+		const record = await encryptSecret(db, secret);
 		const tx = db.transaction(STORE_SECRETS, "readwrite");
 		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).put(record, id));
 	});
@@ -463,37 +470,78 @@ export async function hasSecret(id: string): Promise<boolean> {
 }
 
 /**
- * Delete the secret stored for `id`.
+ * Delete `id`'s secret and mark its pre-#133 clear-text slot as settled, in one transaction.
  *
  * The wrapping key is intentionally left in place: it is shared by every provider, so
  * removing one provider's key must not orphan the others.
- */
-export async function deleteSecret(id: string): Promise<void> {
-	await withVault(async (db) => {
-		const tx = db.transaction(STORE_SECRETS, "readwrite");
-		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).delete(id));
-	});
-}
-
-/**
- * Record that `id`'s pre-#133 clear-text slot is settled and must never be imported again.
+ *
+ * The two halves cannot be separate operations. A delete removes the stored secret that
+ * outranks the clear-text slot, and the marker is the only thing left to stop that slot being
+ * imported again — so any moment in which one has been applied and the other has not is a
+ * window where a revoked credential comes back. IndexedDB serializes overlapping `readwrite`
+ * transactions across connections, and therefore across tabs, so a single transaction is what
+ * makes this indivisible rather than merely well-ordered.
  *
  * The marker lives in the vault rather than in `localStorage` because the only situation that
  * needs it is one where `localStorage` has already proven unreliable: a browser that refuses
  * to erase the clear-text slot cannot be trusted to hold a note saying it was dismissed.
  */
-export async function retireLegacySlot(id: string): Promise<void> {
+export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
-		const tx = db.transaction(STORE_META, "readwrite");
-		await awaitWrite(tx, tx.objectStore(STORE_META).put(true, `${LEGACY_RETIRED_PREFIX}${id}`));
+		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
+		// Both requests are issued before any `await`, because a transaction commits as soon as
+		// its request queue drains and control returns to the event loop.
+		const marked = tx.objectStore(STORE_META).put(true, `${LEGACY_RETIRED_PREFIX}${id}`);
+		const deleted = tx.objectStore(STORE_SECRETS).delete(id);
+		await awaitWrite(tx, marked, deleted);
 	});
 }
 
-/** Report whether {@link retireLegacySlot} has settled `id`'s clear-text slot. */
-export async function isLegacySlotRetired(id: string): Promise<boolean> {
+/**
+ * Store `secret` for `id` only if the vault has neither a secret nor a retirement marker for
+ * it, and report whether it was stored.
+ *
+ * Migration is a check-then-act, and split across transactions it loses to a concurrent
+ * delete: a tab that reads "not retired, not stored", is descheduled while another tab
+ * completes a delete, then resumes and writes, resurrects the revoked key — and because both
+ * tabs' operations individually succeeded, the user is told the delete worked. The
+ * per-provider lock cannot prevent this, as it is module-scoped and so orders only one tab's
+ * calls. Doing the two counts and the put in one transaction closes it: the importing
+ * transaction either wholly precedes the delete, whose marker and delete then apply on top,
+ * or wholly follows it and sees the marker.
+ *
+ * Encryption happens before the transaction opens, since awaiting Web Crypto inside one would
+ * let it commit early. Encrypting a value that then turns out not to need storing is wasted
+ * work in a path that runs once per profile, not a correctness problem.
+ */
+export async function importLegacySecret(id: string, secret: string): Promise<boolean> {
 	return withVault(async (db) => {
-		const store = db.transaction(STORE_META, "readonly").objectStore(STORE_META);
-		const count = await awaitRequest(store.count(`${LEGACY_RETIRED_PREFIX}${id}`));
-		return count > 0;
+		const record = await encryptSecret(db, secret);
+		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
+		const meta = tx.objectStore(STORE_META);
+		const secrets = tx.objectStore(STORE_SECRETS);
+		return new Promise<boolean>((resolve, reject) => {
+			let stored = false;
+			// Chained inside the success callbacks rather than awaited, to keep the transaction
+			// live across the decision.
+			const retired = meta.count(`${LEGACY_RETIRED_PREFIX}${id}`);
+			retired.onsuccess = () => {
+				// The user deleted this credential. The slot is a stale copy of something revoked.
+				if (retired.result > 0) return;
+				const existing = secrets.count(id);
+				existing.onsuccess = () => {
+					// A stored secret outranks the slot: importing would revert a key the user
+					// replaced while the browser was refusing to erase the old clear-text one.
+					if (existing.result > 0) return;
+					const put = secrets.put(record, id);
+					put.onsuccess = () => {
+						stored = true;
+					};
+				};
+			};
+			tx.oncomplete = () => resolve(stored);
+			tx.onabort = () => reject(unavailable());
+			tx.onerror = () => reject(unavailable());
+		});
 	});
 }

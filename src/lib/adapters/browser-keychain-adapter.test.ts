@@ -339,28 +339,32 @@ describe("failing closed when encrypted storage is unavailable", () => {
 	});
 });
 
-describe("recovering from an unreadable record", () => {
-	it("reports a corrupted record as no key rather than throwing at the caller", async () => {
-		const adapter = new BrowserKeychainAdapter();
-		await adapter.setKey("anthropic", SECRET);
-
-		// Truncate the ciphertext so AES-GCM authentication fails on read.
-		const db = await openVaultDb();
+/** Truncate a stored record's ciphertext so AES-GCM authentication fails on read. */
+async function corruptStoredRecord(id: string): Promise<void> {
+	const db = await openVaultDb();
+	try {
 		await new Promise<void>((resolve, reject) => {
 			const store = db.transaction("secrets", "readwrite").objectStore("secrets");
-			const read = store.get("anthropic");
+			const read = store.get(id);
 			read.onsuccess = () => {
 				const record = read.result as { iv: Uint8Array; ciphertext: Uint8Array };
-				const write = store.put(
-					{ iv: record.iv, ciphertext: record.ciphertext.slice(0, 4) },
-					"anthropic",
-				);
+				const write = store.put({ iv: record.iv, ciphertext: record.ciphertext.slice(0, 4) }, id);
 				write.onsuccess = () => resolve();
 				write.onerror = () => reject(write.error);
 			};
 			read.onerror = () => reject(read.error);
 		});
+	} finally {
 		db.close();
+	}
+}
+
+describe("recovering from an unreadable record", () => {
+	it("reports a corrupted record as no key rather than throwing at the caller", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		await corruptStoredRecord("anthropic");
 
 		// The user sees the ordinary "no key configured" path and can simply re-enter it.
 		expect(await adapter.getKey("anthropic")).toBeNull();
@@ -370,6 +374,25 @@ describe("recovering from an unreadable record", () => {
 
 		await adapter.setKey("anthropic", "sk-ant-reentered");
 		expect(await adapter.getKey("anthropic")).toBe("sk-ant-reentered");
+	});
+
+	it("does not reinstate a replaced clear-text key when the record is dropped", async () => {
+		// A browser that refuses to erase the slot, and a user who replaced a compromised key
+		// rather than deleting it: the clear-text copy still holds the value they retired.
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-replaced-and-compromised");
+		vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		await corruptStoredRecord("anthropic");
+
+		// Dropping the damaged record removes the only thing outranking that slot, so the drop
+		// has to settle the slot too. Otherwise a truncated ciphertext is enough to silently
+		// restore the retired credential, and the panel reports the provider as configured
+		// while every request is signed with a key the user thought they had replaced.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await adapter.hasKey("anthropic")).toBe(false);
 	});
 
 	it("surfaces a damaged wrapping key instead of reporting no key configured", async () => {
@@ -457,13 +480,22 @@ describe("a clear-text slot that will not erase", () => {
 		return vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
 	}
 
-	/** Make the vault's marker store unusable, leaving every other store working. */
-	async function failMetaStore(): Promise<MockInstance<IDBDatabase["transaction"]>> {
-		const db = await openVaultDb();
-		const transaction = db.transaction.bind(db);
-		return vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation((stores, mode) => {
-			if (stores === "meta") throw new DOMException("no meta store", "NotFoundError");
-			return transaction(stores, mode);
+	/**
+	 * Make any transaction touching the vault's marker store fail, leaving the rest working.
+	 *
+	 * Applied to the prototype and dispatched on `this`, so production keeps using its own
+	 * connection: routing its transactions through a second connection opened here would hide
+	 * a real connection-lifecycle bug.
+	 */
+	function failMetaStore(): MockInstance<IDBDatabase["transaction"]> {
+		const realTransaction = IDBDatabase.prototype.transaction;
+		return vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+			this: IDBDatabase,
+			...args
+		) {
+			const stores = typeof args[0] === "string" ? [args[0]] : Array.from(args[0]);
+			if (stores.includes("meta")) throw new DOMException("no meta store", "NotFoundError");
+			return realTransaction.apply(this, args);
 		});
 	}
 
@@ -529,6 +561,10 @@ describe("a clear-text slot that will not erase", () => {
 
 		expect(error).toBeInstanceOf(KeyVaultError);
 		expect((error as KeyVaultError).reason).toBe("legacy-retained");
+		// Asserted here as well as on the retained branch, so collapsing the two messages onto
+		// either wording is caught. Only the message distinguishes "a copy is definitely still
+		// there" from "a copy could not be checked", and they call for different advice.
+		expect((error as KeyVaultError).message).toContain("blocked the check");
 	});
 
 	it("keeps the stored key when the tombstone cannot be written", async () => {
@@ -540,9 +576,12 @@ describe("a clear-text slot that will not erase", () => {
 		// The marker is what stops the clear-text slot being re-imported. If it is written
 		// after the record is deleted, a failure here leaves no stored secret to outrank the
 		// slot and no marker to stop it — and the revoked key returns on the next read.
-		const metaFailure = await failMetaStore();
+		const metaFailure = failMetaStore();
 
-		await expect(adapter.deleteKey("anthropic")).rejects.toBeInstanceOf(KeyVaultError);
+		const failure = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
+		// Pinned to the marker write this test is named for, rather than accepting the
+		// `legacy-retained` rejection the refused erase would also produce.
+		expect((failure as KeyVaultError).reason).toBe("unavailable");
 
 		metaFailure.mockRestore();
 		// Nothing was destroyed, so once storage recovers the user still has the key they were
@@ -623,9 +662,10 @@ describe("a wrapping key of the wrong shape", () => {
 
 describe("upgrading a database written by an earlier schema", () => {
 	it("keeps an existing key readable when the marker store is added", async () => {
-		// A version-1 vault: wrapping key and ciphertext, no `meta` store. Built through the
-		// adapter so the record really is what this code writes, then reopened at version 1
-		// to strip the store the current schema adds.
+		// A version-1 vault: wrapping key and ciphertext, no `meta` store. The records are built
+		// through the adapter so they really are what this code writes, then replayed into a
+		// fresh version-1 database — IndexedDB cannot reopen an existing database at a lower
+		// version, so there is no way to strip the store from the one just written.
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
 		const seeded = await openVaultDb();
@@ -670,6 +710,114 @@ describe("upgrading a database written by an earlier schema", () => {
 		expect(Array.from(upgraded.objectStoreNames).sort()).toEqual(["meta", "secrets", "wrap-key"]);
 		expect(upgraded.version).toBe(KEY_VAULT_DB_VERSION);
 		upgraded.close();
+	});
+});
+
+describe("two tabs acting on the same provider", () => {
+	/**
+	 * A second tab, as a second module instance.
+	 *
+	 * The per-provider lock is a module-scoped `Map`, so it orders one tab's calls and nothing
+	 * else. Re-importing gives a genuinely independent lock and vault connection over the same
+	 * `fake-indexeddb` and `localStorage` backing stores, which is what two tabs are.
+	 */
+	async function openSecondTab(): Promise<BrowserKeychainAdapter> {
+		vi.resetModules();
+		const module = await import("./browser-keychain-adapter");
+		return new module.BrowserKeychainAdapter();
+	}
+
+	/**
+	 * Hold the `nth` vault connection open request until released, and report when it is hit.
+	 *
+	 * A migration is a check followed by an act, and the window that matters is the one
+	 * between them — where a tab has decided the slot is safe to import but has not yet
+	 * written it. Each vault operation opens its own connection, so suspending an open parks
+	 * the tab in that gap. Real IndexedDB and real Web Crypto still do the work; only the
+	 * delivery of one connection is deferred, which is what a scheduler does to a backgrounded
+	 * tab. Starting both tabs together instead samples whichever interleaving the event loop
+	 * happens to pick, and passes against code that has the race.
+	 */
+	function parkVaultOpen(nth: number): { reached: Promise<void>; release: () => void } {
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let signalReached = () => {};
+		const reached = new Promise<void>((resolve) => {
+			signalReached = resolve;
+		});
+		const realOpen = globalThis.indexedDB.open.bind(globalThis.indexedDB);
+		let seen = 0;
+		vi.spyOn(globalThis.indexedDB, "open").mockImplementation((name, version) => {
+			seen += 1;
+			if (seen !== nth) return realOpen(name, version);
+			const parked = {
+				onupgradeneeded: null,
+				onsuccess: null,
+				onerror: null,
+				onblocked: null,
+				result: undefined,
+			} as unknown as IDBOpenDBRequest;
+			signalReached();
+			void gate.then(() => {
+				const real = realOpen(name, version);
+				const forward = (handler: keyof IDBOpenDBRequest) => (event: Event) => {
+					Object.defineProperty(parked, "result", { value: real.result, configurable: true });
+					(parked[handler] as ((this: IDBRequest, event: Event) => void) | null)?.call(
+						parked,
+						event,
+					);
+				};
+				real.onupgradeneeded = forward("onupgradeneeded");
+				real.onsuccess = forward("onsuccess");
+				real.onerror = forward("onerror");
+				real.onblocked = forward("onblocked");
+			});
+			return parked;
+		});
+		return { reached, release };
+	}
+
+	it("does not resurrect a revoked key when a read races the delete", async () => {
+		const tabA = new BrowserKeychainAdapter();
+		await tabA.setKey("anthropic", SECRET);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
+		const tabB = await openSecondTab();
+
+		// Tab B starts migrating the clear-text slot and stalls part-way through. No fault is
+		// injected into storage and both tabs' operations succeed on their own terms; the only
+		// thing arranged is the order, which a backgrounded tab produces by itself.
+		const suspended = parkVaultOpen(2);
+		const read = tabB.getKey("anthropic");
+		await suspended.reached;
+
+		// The user revokes the key in the foreground tab, and is told it worked.
+		await expect(tabA.deleteKey("anthropic")).resolves.toBeUndefined();
+
+		suspended.release();
+		// Tab B now resumes against a vault the delete has already changed. With the guard read
+		// and the write in separate transactions, tab B still believes nothing is stored and
+		// writes the clear-text value it captured — and nothing anywhere reports a problem.
+		await expect(read).resolves.not.toBe("sk-ant-revoked");
+
+		expect(await tabA.getKey("anthropic")).toBeNull();
+		expect(await tabB.getKey("anthropic")).toBeNull();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("keeps a delete final when the other tab migrates afterwards", async () => {
+		const tabA = new BrowserKeychainAdapter();
+		await tabA.setKey("anthropic", SECRET);
+		await tabA.deleteKey("anthropic");
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
+
+		// The marker outlives the tab that wrote it, so a tab opened later — or one that was
+		// idle through the delete — still discards the slot instead of importing it.
+		const tabB = await openSecondTab();
+
+		expect(await tabB.getKey("anthropic")).toBeNull();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
 	});
 });
 
