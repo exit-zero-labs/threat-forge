@@ -9,7 +9,9 @@ restatement of that plan's reasoning.
 ## Modules
 
 - **`base.ts`** — the failure-aware Playwright base every other layer in this directory (and every
-  spec, directly or through `e2e/fixtures.ts`) is ultimately built on:
+  spec, directly or through `e2e/fixtures.ts`) is ultimately built on. Its `page` fixture is lazy:
+  browser-free support tests do not receive page diagnostics/context, and the manifest records
+  project-default viewport for those attempts.
   - `failureAwareTest`/`expect`: a `page` fixture that fails the test if the page emits an
     unallowlisted `console.error`, `console.warning`, `pageerror`, or `requestfailed` event. The
     default allowlist is empty. A test that deliberately triggers a fully understood, safe
@@ -36,6 +38,21 @@ restatement of that plan's reasoning.
   narrowly scoped test-adapter technique (see each function's doc comment for exactly what it does
   and why). `WORKSPACE_FIXTURE_VERSION` is exported once and included in every fixture's
   `test.step` name.
+- **`accessibility.ts`** (issue #66) — the sole `@axe-core/playwright` integration point; never
+  construct a new `AxeBuilder` elsewhere:
+  - `scanAccessibility(page, opts?)`/`formatAccessibilityViolations(violations)`: a thin
+    `AxeBuilder` wrapper and a one-line-per-violation renderer (rule id, impact, target
+    selector(s), `helpUrl`).
+  - `KNOWN_ACCESSIBILITY_EXCEPTIONS`: exact `{ ruleId, target, issue }` node-level exceptions —
+    never a whole rule ID — one entry per confirmed pre-existing violation, each tied to its own
+    tracking issue (`#218`, `#219`, `#220`; see
+    `docs/quality/e2e-visual-accessibility-rubric.md`).
+  - `assertNoSeriousAccessibilityViolations(page, opts?)`: the tier-2, explicit, opt-in assertion
+    every accessibility-audit spec calls; fails only on a serious/critical violation with no
+    matching exact-target exception.
+  - `projectAccessibilityEvidence(result)`: the tier-1, privacy-reduced, bounded (≤50
+    violations × ≤20 nodes) projection `base.ts` attaches automatically — never attach axe's raw
+    result object.
 
 ## Conventions for future issues (`#66`, `#67`)
 
@@ -56,3 +73,30 @@ restatement of that plan's reasoning.
   than duplicating a create/open/switch/drag/connect pattern inline in a new spec. If a genuinely
   new *class* of workspace state is needed, add a tenth `seed*` function and a corresponding
   discriminating test in `e2e/workspace-fixtures.spec.ts`, rather than overloading an existing one.
+- **Artifact manifest (`#66`):** `scripts/build-artifact-manifest.mjs` reads `test-results/
+  results.json` after any Playwright run and writes `test-results/artifact-manifest.json` — one
+  entry per test attempt, with every `test.step` and attachment classified by fixed rules a future
+  contributor can rely on without reading `docs/plans/66-e2e-quality-artifacts.md`:
+
+  | `test.step` title prefix | Classified as |
+  |---|---|
+  | `seed:` | `fixture` |
+  | `createDocument:`, `openDocument:`, `switchToTab:`, `clickElementByName:`, `dragElementBy:`, `connectElements:`, `editElementName:`, `saveDocument:`, `exportHtmlReport:`, `restoreWorkspace:`, `waitForLocalSave:`, `openDocuments:` | `interaction` |
+  | any other explicit `test.step` title (e.g. `assertNoSeriousAccessibilityViolations: ...`) | `other` |
+
+  | Attachment `name` | Classified as |
+  |---|---|
+  | `trace` | `trace` |
+  | `video` | `video` |
+  | `error-context` | `dom-snapshot` |
+  | `artifact-context` | `context` |
+  | `console-log` | `console-log` |
+  | `accessibility` | `accessibility` |
+  | `diagnostic-capture-error` | `diagnostic-capture-error` |
+  | `<baseline>-expected` / `-actual` / `-diff` (any `image/*` content type) | `visual-baseline-diff` |
+  | any other `image/*` content type (e.g. a plain failure `screenshot`, or `screenshot-templates.spec.ts`'s `empty-state`/`template-<id>`) | `screenshot` |
+  | anything else | `other` |
+
+  A new `test.step`/attachment name follows one of these rules automatically; a genuinely new kind
+  needs a matching classifier update in `build-artifact-manifest.mjs` (and its test file) — never a
+  guess baked into a spec.

@@ -193,7 +193,31 @@ any flaky test. The upload condition combines `failure()` with the summary step'
 output, so a missing or failed summary cannot suppress evidence from a red run. The artifact
 contains both `playwright-report/` (the HTML report) and `test-results/` (traces, screenshots,
 videos, and `results.json`) and is retained for **7 days**. `playwright.config.ts` sets
-`trace: "on-first-retry"`, `screenshot: "only-on-failure"`, and `video: "retain-on-failure"`.
+`trace: "retain-on-failure"`, `screenshot: "only-on-failure"`, and `video: "retain-on-failure"`.
+A trace is therefore available for any unexpected failed attempt — first attempt or retry — not
+only a retried one (issue #66). Playwright may omit trace/video for `test.fail()` policy-proof
+attempts whose outer status is expected; those still carry #66's context/console/accessibility/DOM
+evidence, and the green run correctly does not upload a diagnostic bundle.
+
+Every **page-backed** attempt carries `artifact-context` with its runtime viewport. A page-backed
+attempt also carries a bounded `console-log` transcript and privacy-reduced `accessibility`
+projection when its body did not pass, its actual status differs from its expected status
+(including an unexpected pass of `test.fail()`), or the browser-event policy is about to fail
+fixture teardown. Browser-free support tests do not instantiate the lazy page fixture; their
+manifest entries use the labeled project-default viewport and have no page diagnostics. Console
+evidence is ≤300 entries / ≤20,000 chars with query/fragment stripped; accessibility evidence is
+≤50 violations × ≤20 nodes (`e2e/support/accessibility.ts`). If capture fails, a
+`diagnostic-capture-error` attachment records why without masking the original failure (issue #66).
+After any
+`npx playwright test` run, `node scripts/build-artifact-manifest.mjs` reads `test-results/
+results.json` and writes `test-results/artifact-manifest.json` — a single, versioned, portable
+index of every step and attachment across every attempt, with each attachment's kind classified,
+path normalized/contained relative to the repo root, and size where knowable (see
+`e2e/support/README.md`'s "Conventions for future issues" for the exact classification tables).
+This is a manual command locally; CI runs it automatically with `if: always()` right before report
+upload. The manifest is therefore inside the uploaded `playwright-report` artifact whenever one
+exists — not a replacement for the HTML report, but a faster way to find which attempt has the
+attachment you need before downloading it.
 
 When the summary contains a flaky row, download `playwright-report` from that run and inspect the
 retry trace before rerunning. If the row exists but the artifact does not, inspect the
@@ -268,6 +292,12 @@ What this means in practice:
 - Regenerating a baseline with `--update-snapshots` needs deliberate before/after review, and
   the reason for the change recorded. Two baselines were legitimately regenerated in #136
   because closing the mount race changed where second-and-later nodes land.
+- A PR that changes any file under `e2e/canvas-visual.spec.ts-snapshots/` must have its
+  before/after PNGs reviewed as images, not merely accepted on green CI — CI cannot see these
+  files change meaning at all, since it never runs the spec. GitHub's own pull-request "Files
+  changed" view natively renders a side-by-side/diff view for binary PNG changes; a reviewer
+  without macOS access uses that instead of checking out the branch. Record the reason for a
+  baseline change in the PR description, mirroring the `#136` precedent above (issue #66).
 
 ## After an automatic rerun
 
