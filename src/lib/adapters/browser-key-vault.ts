@@ -47,10 +47,11 @@ const STORE_WRAP = "wrap-key";
 /** Holds one ciphertext record per provider. */
 const STORE_SECRETS = "secrets";
 /**
- * Holds markers that must outlive the records they describe.
+ * Holds markers that describe a provider rather than store its secret.
  *
- * Separate from {@link STORE_SECRETS} because a marker's whole purpose is to survive the
- * deletion of that provider's secret.
+ * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`:
+ * a marker keyed into it would survive `deleteSecret` (which deletes by exact key), but the
+ * store's readers would then have to tolerate two unrelated record shapes.
  */
 const STORE_META = "meta";
 
@@ -108,7 +109,7 @@ export class KeyVaultError extends Error {
 }
 
 const UNAVAILABLE_MESSAGE =
-	"Encrypted key storage is unavailable in this browser, so the API key cannot be stored.";
+	"Encrypted key storage is unavailable in this browser. Check that this site is allowed to store data, then try again.";
 const CORRUPT_MESSAGE = "The stored API key could not be read and needs to be entered again.";
 const VAULT_CORRUPT_MESSAGE =
 	"Encrypted key storage in this browser is damaged. Clear this site's browser data, then add your API key again.";

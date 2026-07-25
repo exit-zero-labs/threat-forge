@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { KEY_VAULT_DB_NAME, KEY_VAULT_DB_VERSION, KeyVaultError } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
@@ -453,8 +453,18 @@ describe("storage that never responds", () => {
 
 describe("a clear-text slot that will not erase", () => {
 	/** Make `localStorage.removeItem` a no-op, as a browser refusing the removal would. */
-	function refuseLegacyRemoval(): void {
-		vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
+	function refuseLegacyRemoval(): MockInstance<Storage["removeItem"]> {
+		return vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
+	}
+
+	/** Make the vault's marker store unusable, leaving every other store working. */
+	async function failMetaStore(): Promise<MockInstance<IDBDatabase["transaction"]>> {
+		const db = await openVaultDb();
+		const transaction = db.transaction.bind(db);
+		return vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation((stores, mode) => {
+			if (stores === "meta") throw new DOMException("no meta store", "NotFoundError");
+			return transaction(stores, mode);
+		});
 	}
 
 	it("does not let the stale slot overwrite a newly saved key", async () => {
@@ -520,6 +530,56 @@ describe("a clear-text slot that will not erase", () => {
 		expect(error).toBeInstanceOf(KeyVaultError);
 		expect((error as KeyVaultError).reason).toBe("legacy-retained");
 	});
+
+	it("keeps the stored key when the tombstone cannot be written", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-compromised");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		// The marker is what stops the clear-text slot being re-imported. If it is written
+		// after the record is deleted, a failure here leaves no stored secret to outrank the
+		// slot and no marker to stop it — and the revoked key returns on the next read.
+		const metaFailure = await failMetaStore();
+
+		await expect(adapter.deleteKey("anthropic")).rejects.toBeInstanceOf(KeyVaultError);
+
+		metaFailure.mockRestore();
+		// Nothing was destroyed, so once storage recovers the user still has the key they were
+		// trying to remove, and can retry — rather than the revoked clear-text value coming
+		// back in its place.
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+	});
+
+	it("erases a settled slot once the browser starts allowing it", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-compromised");
+		const refusal = refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await expect(adapter.deleteKey("anthropic")).rejects.toBeInstanceOf(KeyVaultError);
+
+		// The refusal lifts — the user changed a site-data setting, or removed an extension.
+		// A user who revoked a key and then left this provider alone runs no other path, so
+		// without this the revoked credential stays readable in clear text indefinitely.
+		refusal.mockRestore();
+
+		expect(await adapter.hasKey("anthropic")).toBe(false);
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("distinguishes a slot known to survive from one it could not check", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		const retained = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
+
+		// Both cases share a reason code, so only the message tells the user which situation
+		// they are in — and only one of them justifies asserting a copy exists.
+		expect((retained as KeyVaultError).message).toContain("would not delete");
+		expect((retained as KeyVaultError).message).not.toContain("blocked the check");
+	});
 });
 
 describe("a wrapping key of the wrong shape", () => {
@@ -558,6 +618,58 @@ describe("a wrapping key of the wrong shape", () => {
 		await expect(adapter.setKey("anthropic", "sk-ant-second")).rejects.toBeInstanceOf(
 			KeyVaultError,
 		);
+	});
+});
+
+describe("upgrading a database written by an earlier schema", () => {
+	it("keeps an existing key readable when the marker store is added", async () => {
+		// A version-1 vault: wrapping key and ciphertext, no `meta` store. Built through the
+		// adapter so the record really is what this code writes, then reopened at version 1
+		// to strip the store the current schema adds.
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		const seeded = await openVaultDb();
+		const wrapKeys = await new Promise<unknown[]>((resolve, reject) => {
+			const request = seeded.transaction("wrap-key", "readonly").objectStore("wrap-key").getAll();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+		const secrets = await new Promise<unknown[]>((resolve, reject) => {
+			const request = seeded.transaction("secrets", "readonly").objectStore("secrets").getAll();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+		seeded.close();
+		resetKeyVault();
+		await new Promise<void>((resolve, reject) => {
+			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME, 1);
+			request.onupgradeneeded = () => {
+				const db = request.result;
+				db.createObjectStore("wrap-key");
+				db.createObjectStore("secrets");
+			};
+			request.onsuccess = () => {
+				const db = request.result;
+				const tx = db.transaction(["wrap-key", "secrets"], "readwrite");
+				tx.objectStore("wrap-key").put(wrapKeys[0], "aes-gcm-256-v1");
+				tx.objectStore("secrets").put(secrets[0], "anthropic");
+				tx.oncomplete = () => {
+					db.close();
+					resolve();
+				};
+				tx.onerror = () => reject(tx.error);
+			};
+			request.onerror = () => reject(request.error);
+		});
+
+		// The upgrade must add a store, not reset the database: a user whose key silently
+		// vanished on upgrade would have no way to tell that from the app losing it.
+		expect(await new BrowserKeychainAdapter().getKey("anthropic")).toBe(SECRET);
+
+		const upgraded = await openVaultDb();
+		expect(Array.from(upgraded.objectStoreNames).sort()).toEqual(["meta", "secrets", "wrap-key"]);
+		expect(upgraded.version).toBe(KEY_VAULT_DB_VERSION);
+		upgraded.close();
 	});
 });
 

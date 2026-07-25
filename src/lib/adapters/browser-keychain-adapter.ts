@@ -79,9 +79,13 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * re-migrated, only cleaned up.
  *
  * That guard alone does not cover deletion, because after a delete there is no stored secret
- * to outrank the slot. {@link retireLegacySlot} closes that: once the slot has been settled —
- * erased during migration, or dismissed by {@link BrowserKeychainAdapter.deleteKey} — it is
- * never imported again, so a credential the user revoked cannot come back on the next read.
+ * to outrank the slot. {@link retireLegacySlot} closes that: once
+ * {@link BrowserKeychainAdapter.deleteKey} has settled a slot it is never imported again, so
+ * a credential the user revoked cannot come back on the next read. A settled slot is still
+ * erased on sight — the browser that refused the removal may since have started allowing it,
+ * and this is the only path a user who revoked a key and then left the provider alone will
+ * ever run again. Discarding rather than importing is the right reading of the marker,
+ * because a user delete is the only thing that sets it.
  *
  * The erase happens only after the encrypted write has committed — {@link putSecret} resolves
  * at transaction commit, not at request success — so a failure part-way through leaves the
@@ -94,13 +98,17 @@ async function migrateLegacyKey(provider: AiProvider): Promise<void> {
 	// Checked before the vault is consulted, so the common case — no legacy slot, which is
 	// every profile created after #133 — costs no extra transaction.
 	if (slot.state !== "present") return;
-	if (await isLegacySlotRetired(provider)) return;
+	if (await isLegacySlotRetired(provider)) {
+		removeLegacyKey(provider);
+		return;
+	}
 	if (!(await hasSecret(provider))) {
 		await putSecret(provider, slot.value);
 	}
-	if (removeLegacyKey(provider) === "erased") {
-		await retireLegacySlot(provider);
-	}
+	// No marker is written here. Once the slot is erased it reads as `absent` and the guard
+	// above short-circuits before the vault is touched, so a marker would only add a write to
+	// every migration. `deleteKey` is the one caller whose marker is load-bearing.
+	removeLegacyKey(provider);
 }
 
 /**
@@ -144,9 +152,7 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 			// succeeded, and reporting an error would tell the user the opposite. It can no
 			// longer override the vault, and `deleteKey` is where a surviving clear-text
 			// credential becomes a claim that must not be made.
-			if (removeLegacyKey(provider) === "erased") {
-				await retireLegacySlot(provider);
-			}
+			removeLegacyKey(provider);
 		});
 	}
 
@@ -182,12 +188,15 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 	async deleteKey(provider: AiProvider): Promise<void> {
 		await withProviderLock(provider, async () => {
 			const erasure = removeLegacyKey(provider);
-			await deleteSecret(provider);
-			// The user asked for this credential to be gone. Even when the clear-text slot
-			// survives, it must never be imported again — otherwise the next read would
-			// re-encrypt the revoked key into the vault and the app would quietly resume
-			// signing provider requests with it.
+			// Written before the record is deleted, not after. The marker records the user's
+			// intent to be rid of this credential, so establishing it first is what makes the
+			// delete safe: if this write fails, nothing has been destroyed, the stored secret
+			// still outranks the clear-text slot, and the user gets an honest failure. Written
+			// afterwards it would leave a window — a failed write, or another tab reading
+			// between the two steps — in which there is no stored secret to outrank the slot
+			// and no marker to stop it, which is exactly the resurrection this guards against.
 			await retireLegacySlot(provider);
+			await deleteSecret(provider);
 			if (erasure !== "erased") {
 				// The encrypted copy is gone but a clear-text one may still be readable from
 				// this browser. Reporting success would tell a user who is removing a
