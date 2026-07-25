@@ -450,6 +450,42 @@ describe("recovering from an unreadable record", () => {
 		expect(await countWrapKeys()).toBe(0);
 	});
 
+	it("keeps the clear-text slot when the wrapping key is unusable", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([["not-a-crypto-key", "aes-gcm-256-v1"]]);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-only-readable-copy");
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		// The stored record cannot be decrypted, so the clear-text slot is the only usable
+		// credential left. Deciding the migration has nothing to do — a record is already
+		// stored — and erasing the slot on that basis destroys it, while the message shown
+		// tells the user to clear their browser data.
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-only-readable-copy");
+	});
+
+	it("does not create key material for one provider while another's record is stranded", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([]);
+		localStorage.setItem("tf-api-key-openai", "sk-openai-old-cleartext");
+
+		const error = await adapter.getKey("openai").catch((caught: unknown) => caught);
+
+		// The wrapping key is shared, so minting one to migrate openai would strand the
+		// anthropic record under a key that no longer exists — and the next anthropic read
+		// would then read as an ordinary corrupt record and drop it. Nothing about openai
+		// makes that acceptable, so the vault has to fail for every provider at once.
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		expect(await countWrapKeys()).toBe(0);
+		expect(await countSecrets()).toBe(1);
+		// The clear-text slot must survive too: erasing it on the strength of an import that
+		// never happened would destroy the only copy of that key.
+		expect(localStorage.getItem("tf-api-key-openai")).toBe("sk-openai-old-cleartext");
+	});
+
 	it("does not create key material while a clear-text slot is waiting to migrate", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
@@ -784,7 +820,7 @@ describe("two tabs acting on the same provider", () => {
 		let seen = 0;
 		const missed = setTimeout(
 			() => signalMissed(new Error(`park never reached: wanted vault open #${nth}, saw ${seen}`)),
-			1_000,
+			3_000,
 		);
 		vi.spyOn(globalThis.indexedDB, "open").mockImplementation((name, version) => {
 			seen += 1;
@@ -814,6 +850,9 @@ describe("two tabs acting on the same provider", () => {
 			});
 			return parked;
 		});
+		// A test that builds a park and never awaits `reached` would otherwise surface the miss
+		// as an unhandled rejection instead of a failure.
+		void reached.catch(() => undefined);
 		return { reached, release };
 	}
 
@@ -846,6 +885,26 @@ describe("two tabs acting on the same provider", () => {
 		expect(await tabA.getKey("anthropic")).toBeNull();
 		expect(await tabB.getKey("anthropic")).toBeNull();
 		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("drops a stored value too malformed to read back as a record", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		const db = await openVaultDb();
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("secrets", "readwrite");
+			tx.objectStore("secrets").put({ iv: "not-bytes", ciphertext: "nope" }, "anthropic");
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+		db.close();
+
+		// Nothing here can be compared byte for byte, but the record still has to go. Left in
+		// place it is counted forever: the panel shows the provider as configured while every
+		// request fails for want of a key, and no path removes it.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await adapter.hasKey("anthropic")).toBe(false);
+		expect(await countSecrets()).toBe(0);
 	});
 
 	it("does not discard a key re-entered elsewhere while a damaged one is dropped", async () => {

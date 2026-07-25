@@ -49,17 +49,22 @@ const STORE_SECRETS = "secrets";
 /**
  * Holds markers that describe a provider rather than store its secret.
  *
- * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`: a
- * marker keyed into it would survive a delete by exact key, and every reader of that store
- * would have to tolerate two unrelated record shapes.
+ * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`, and
+ * no reader of it has to tolerate two unrelated record shapes.
  */
 const STORE_META = "meta";
 
 /**
- * Marker key prefix recording that a provider's pre-#133 clear-text slot has been dealt with
+ * Key of the marker recording that a provider's pre-#133 clear-text slot has been dealt with
  * and must never be imported again.
+ *
+ * Built in one place because the pre-check, the authoritative guard and both writers must
+ * agree; a guard that reads a different key than the writer writes reads as "not retired"
+ * forever, and the caller erases the clear-text slot on the strength of it.
  */
-const LEGACY_RETIRED_PREFIX = "legacy-retired:";
+function retiredKey(id: string): string {
+	return `legacy-retired:${id}`;
+}
 
 const WRAP_KEY_ID = "aes-gcm-256-v1";
 
@@ -114,9 +119,10 @@ export class KeyVaultError extends Error {
  * Held here rather than on the error so nothing that logs or serializes a `KeyVaultError` can
  * pick up stored ciphertext, and keyed weakly so it disappears with the error.
  */
-const corruptRecords = new WeakMap<KeyVaultError, SecretRecord>();
+const corruptRecords = new WeakMap<KeyVaultError, SecretRecord | null>();
 
-function corruptRecord(record: SecretRecord): KeyVaultError {
+/** `null` records that the stored value did not read back as a record at all. */
+function corruptRecord(record: SecretRecord | null): KeyVaultError {
 	const error = new KeyVaultError("corrupt", CORRUPT_MESSAGE);
 	corruptRecords.set(error, record);
 	return error;
@@ -449,8 +455,7 @@ export async function getSecret(id: string): Promise<string | null> {
 		const stored = await awaitRequest(store.get(id));
 		if (stored === undefined) return null;
 		const record = readSecretRecord(stored);
-		// Unreadable as a record at all, so there is nothing to compare a later drop against.
-		if (!record) throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
+		if (!record) throw corruptRecord(null);
 
 		const wrapKey = await readWrapKey(db);
 		if (!wrapKey) throw vaultCorrupt();
@@ -502,17 +507,17 @@ export async function hasSecret(id: string): Promise<boolean> {
  * to erase the clear-text slot cannot be trusted to hold a note saying it was dismissed.
  *
  * It is written on every delete, including for providers that never had a clear-text slot,
- * and there is no way to clear one. Both are deliberate: deciding whether a slot exists would
- * mean reading `localStorage`, which is exactly the source this marker exists to stop
- * trusting, and a marker that could be cleared would not be a durable record of the user's
- * intent. The cost is one small record per provider the user has ever deleted a key for.
+ * and there is no way to clear one. Both are deliberate: whether a slot exists is decided by
+ * a `localStorage` read that can throw or lie, and a durable record must not be gated on one;
+ * and a marker that could be cleared would not be durable. The cost is one small record per
+ * provider the user has ever deleted a key for.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
 		// Both requests are issued before any `await`, because a transaction commits as soon as
 		// its request queue drains and control returns to the event loop.
-		const marked = tx.objectStore(STORE_META).put(true, `${LEGACY_RETIRED_PREFIX}${id}`);
+		const marked = tx.objectStore(STORE_META).put(true, retiredKey(id));
 		const deleted = tx.objectStore(STORE_SECRETS).delete(id);
 		await awaitWrite(tx, marked, deleted);
 	});
@@ -521,19 +526,18 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
 /**
  * Drop the record that `error` was raised for, and settle `id`'s clear-text slot with it.
  *
- * Conditional on the stored bytes still being the ones that failed to decrypt. Reading,
+ * Conditional on the stored value still being the one that could not be read. Reading,
  * decrypting and then deleting spans several transactions, so another tab can save a working
  * key in between — and deleting by id alone would throw that key away and leave behind a
- * retirement marker no path can clear. Comparing inside the write transaction makes the drop
- * apply only to the damaged record it was decided for.
+ * retirement marker no path can clear. Re-reading inside the write transaction makes the drop
+ * apply only to the damaged value it was decided for. A key saved concurrently reads back as
+ * a well-formed record, so it is never the thing dropped.
  *
- * Does nothing when `error` carries no record, which is the case for a value too malformed to
- * read back as one. There is nothing to compare then, and dropping unconditionally is the
- * behaviour this exists to avoid.
+ * Does nothing for an `error` this vault did not raise for a stored value.
  */
 export async function dropUnreadableSecret(id: string, error: KeyVaultError): Promise<void> {
-	const expected = corruptRecords.get(error);
-	if (!expected) return;
+	if (!corruptRecords.has(error)) return;
+	const expected = corruptRecords.get(error) ?? null;
 	await withVault(async (db) => {
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
 		const secrets = tx.objectStore(STORE_SECRETS);
@@ -541,10 +545,18 @@ export async function dropUnreadableSecret(id: string, error: KeyVaultError): Pr
 			// Chained inside the callback rather than awaited, to keep the transaction live.
 			const current = secrets.get(id);
 			current.onsuccess = () => {
+				if (current.result === undefined) return;
 				const stored = readSecretRecord(current.result);
-				if (!stored || !sameRecord(stored, expected)) return;
+				// A value that never parsed is identified by still not parsing: there are no
+				// bytes to compare, but "unreadable" is itself the fact that was established,
+				// and anything written since would parse.
+				const isSameValue =
+					expected === null ? stored === null : stored !== null && sameRecord(stored, expected);
+				if (!isSameValue) return;
+				// Order is immaterial inside one transaction, and a failing request aborts it
+				// into `onerror`, so resolving on `oncomplete` alone is enough here.
 				secrets.delete(id);
-				tx.objectStore(STORE_META).put(true, `${LEGACY_RETIRED_PREFIX}${id}`);
+				tx.objectStore(STORE_META).put(true, retiredKey(id));
 			};
 			tx.oncomplete = () => resolve();
 			tx.onabort = () => reject(unavailable());
@@ -579,16 +591,27 @@ function sameRecord(a: SecretRecord, b: SecretRecord): boolean {
  */
 export async function importLegacySecret(id: string, secret: string): Promise<void> {
 	return withVault(async (db) => {
-		// Read-only pre-check, purely so the common declines cost nothing and, more importantly,
-		// so `encryptSecret` is not reached on a read. Encrypting mints a wrapping key when the
-		// vault has none, which would turn the diagnosable "records exist but the key is gone"
-		// state into a silent one — the invariant `getSecret` documents. The authoritative
-		// answer is still the in-transaction check below; this only declines early.
+		// Read-only pre-check, so an import that is going to decline never reaches
+		// `encryptSecret`. Encrypting mints a wrapping key when the vault has none, which would
+		// turn the diagnosable "records exist but the key is gone" state into a silent one —
+		// the invariant `getSecret` documents. The authoritative answer is still the
+		// in-transaction check below; this only declines early, so the two cannot disagree in a
+		// way that stores something they would not.
 		const check = db.transaction([STORE_SECRETS, STORE_META], "readonly");
-		const retiredEarly = check.objectStore(STORE_META).count(`${LEGACY_RETIRED_PREFIX}${id}`);
-		const existingEarly = check.objectStore(STORE_SECRETS).count(id);
-		if ((await awaitRequest(retiredEarly)) > 0) return;
-		if ((await awaitRequest(existingEarly)) > 0) return;
+		// All three handlers are attached in this task, so none of them can miss its event.
+		const [retiredCount, existingCount, storedCount] = await Promise.all([
+			awaitRequest(check.objectStore(STORE_META).count(retiredKey(id))),
+			awaitRequest(check.objectStore(STORE_SECRETS).count(id)),
+			awaitRequest(check.objectStore(STORE_SECRETS).count()),
+		]);
+		// Checked before either decline, because both of them are answers, and this vault is in
+		// no state to give one. The wrapping key is shared, so minting a replacement would
+		// orphan every record already stored under the old one — and declining would let the
+		// caller erase the clear-text slot, which on an unreadable vault is the user's only
+		// remaining copy. Failing keeps the state diagnosable and both copies intact.
+		if (storedCount > 0 && !(await readWrapKey(db))) throw vaultCorrupt();
+		if (retiredCount > 0) return;
+		if (existingCount > 0) return;
 
 		const record = await encryptSecret(db, secret);
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
@@ -597,7 +620,7 @@ export async function importLegacySecret(id: string, secret: string): Promise<vo
 		return new Promise<void>((resolve, reject) => {
 			// Chained inside the success callbacks rather than awaited, to keep the transaction
 			// live across the decision.
-			const retired = meta.count(`${LEGACY_RETIRED_PREFIX}${id}`);
+			const retired = meta.count(retiredKey(id));
 			retired.onsuccess = () => {
 				// The user deleted this credential. The slot is a stale copy of something revoked.
 				if (retired.result > 0) return;

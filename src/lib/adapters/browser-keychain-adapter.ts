@@ -84,10 +84,9 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * a credential the user revoked cannot come back on the next read. A settled slot is still
  * erased on sight — the browser that refused the removal may since have started allowing it,
  * and this is the only path a user who revoked a key and then left the provider alone will
- * ever run again. Discarding rather than importing is the right reading of the marker: it
- * means this vault destroyed the record that outranked the slot, whether because the user
- * deleted it or because it was damaged beyond reading, and in both cases the slot holds a
- * value the vault has already superseded.
+ * ever run again. Discarding rather than importing is the right reading of the marker: it is
+ * set when the user deletes a credential and when a damaged record is dropped, and in both
+ * cases the slot holds a value this vault has already settled.
  *
  * Both guards are evaluated inside {@link importLegacySecret}'s own transaction rather than
  * here, because a check in this function and a write in another transaction can straddle a
@@ -103,8 +102,8 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * that secret having been read. A stored record that turns out to be undecryptable therefore
  * costs the user their clear-text copy too. Reaching that needs a damaged record and a slot
  * that survived an earlier erase — which means a browser that was refusing removal and has
- * since stopped — so it is left as a known narrow window rather than paying a decrypt on
- * every migration.
+ * since stopped — so it is left as a known narrow window. A vault that cannot produce a
+ * wrapping key at all is a different case, and is refused rather than declined.
  *
  * A slot that refuses to be erased here is not reported. Only `deleteKey` makes a claim about
  * a credential being gone, so only it must fail when one survives; a read reporting an error
