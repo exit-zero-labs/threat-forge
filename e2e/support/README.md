@@ -45,8 +45,7 @@ restatement of that plan's reasoning.
     selector(s), `helpUrl`).
   - `KNOWN_ACCESSIBILITY_EXCEPTIONS`: exact `{ ruleId, target, issue }` node-level exceptions —
     never a whole rule ID — one entry per confirmed pre-existing violation, each tied to its own
-    tracking issue (`#218`, `#220`; see
-    `docs/quality/e2e-visual-accessibility-rubric.md`).
+    tracking issue (`#220`; see `docs/quality/e2e-visual-accessibility-rubric.md`).
   - `assertNoSeriousAccessibilityViolations(page, opts?)`: the tier-2, explicit, opt-in assertion
     every accessibility-audit spec calls; fails only on a serious/critical violation with no
     matching exact-target exception.

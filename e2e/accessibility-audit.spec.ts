@@ -1,5 +1,6 @@
+import { THEME_PRESETS } from "@/lib/themes/presets";
 import { expect, test } from "./fixtures";
-import { assertNoSeriousAccessibilityViolations } from "./support/accessibility";
+import { assertNoSeriousAccessibilityViolations, scanAccessibility } from "./support/accessibility";
 import { installDeterministicClock } from "./support/base";
 import {
 	seedEmptyWorkspace,
@@ -8,17 +9,117 @@ import {
 } from "./support/workspace-fixtures";
 
 /**
- * Tier-2, explicit accessibility gate (issue #66, D4/step 4). Every test here calls
+ * Tier-2, explicit accessibility gate (issue #66, D4/step 4). State audits call
  * `assertNoSeriousAccessibilityViolations` against the default `KNOWN_ACCESSIBILITY_EXCEPTIONS`
- * allowlist, so a passing run proves no unexcepted serious/critical violation exists. Exact-match
- * unit coverage prevents rule-wide exceptions; tracked issues and owner review retire stale
- * exceptions when their underlying live violation is fixed.
+ * allowlist; focused regressions use the same scanner and require complete axe passes for their
+ * exact targets. Exact-match unit coverage prevents rule-wide exceptions; tracked issues and owner
+ * review retire stale exceptions when their underlying live violation is fixed.
  *
  * `seedMalformedWorkspace` is intentionally not covered: its failure surfaces through a native
  * `window.alert` dialog that this suite's dialog listener dismisses before axe can inspect any
  * resulting page state (see `workspace-fixtures.ts`'s own doc comment on that fixture).
  */
 test.describe("Accessibility audit", () => {
+	test("issue #218's four empty-canvas targets pass contrast in every built-in theme", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await installDeterministicClock(page);
+		await page.goto("/app");
+		await expect(page.getByTestId("empty-canvas")).toBeVisible();
+
+		const targetSelector = '[data-testid="empty-canvas-contrast-target"]';
+		const targets = page.locator(targetSelector);
+		await expect(targets).toHaveCount(4);
+
+		for (const preset of Object.values(THEME_PRESETS)) {
+			await test.step(preset.name, async () => {
+				await page.getByTestId("btn-settings-dialog").click();
+				const settings = page.getByTestId("settings-dialog");
+				await settings.getByRole("button", { name: "Appearance", exact: true }).click();
+				await settings
+					.getByRole("button", {
+						name: preset.mode === "dark" ? "Dark" : "Light",
+						exact: true,
+					})
+					.click();
+				await settings.getByRole("button", { name: preset.name, exact: true }).click();
+				await page.keyboard.press("Escape");
+				await expect(settings).toBeHidden();
+				await page.mouse.move(0, 0);
+
+				await expect
+					.poll(
+						() =>
+							page.evaluate(() => ({
+								background: document.documentElement.style
+									.getPropertyValue("--color-background")
+									.trim(),
+								foreground: document.documentElement.style
+									.getPropertyValue("--color-foreground")
+									.trim(),
+							})),
+						{ message: `${preset.name} should be the active theme before its contrast scan` },
+					)
+					.toEqual({
+						background: preset.tokens.background,
+						foreground: preset.tokens.foreground,
+					});
+
+				await expect
+					.poll(
+						() =>
+							targets.evaluateAll(
+								(elements) =>
+									new Set(
+										elements.map((element) => {
+											const style = getComputedStyle(element);
+											return `${style.color}|${style.opacity}`;
+										}),
+									).size,
+							),
+						{ message: `${preset.name} should apply one settled treatment to all four nodes` },
+					)
+					.toBe(1);
+
+				const result = await scanAccessibility(page, { include: [targetSelector] });
+				const contrastFailures = [...result.violations, ...result.incomplete]
+					.filter((violation) => violation.id === "color-contrast")
+					.flatMap((violation) => violation.nodes.map((node) => node.target.join(" > ")));
+				expect(
+					contrastFailures,
+					`${preset.name} should have no failed or incomplete color-contrast results`,
+				).toEqual([]);
+
+				const contrastPass = result.passes.find((entry) => entry.id === "color-contrast");
+				expect(
+					contrastPass?.nodes,
+					`${preset.name} should produce four measured color-contrast passes`,
+				).toHaveLength(4);
+
+				const restingOpacities = await targets.evaluateAll((elements) =>
+					elements.map((element) => Number.parseFloat(getComputedStyle(element).opacity)),
+				);
+				expect(
+					restingOpacities.every((opacity) => opacity > 0 && opacity < 1),
+					`${preset.name} secondary text should remain de-emphasized`,
+				).toBe(true);
+			});
+		}
+
+		const githubButton = page.locator('button[data-testid="empty-canvas-contrast-target"]');
+		const restingOpacity = Number.parseFloat(
+			await githubButton.evaluate((element) => getComputedStyle(element).opacity),
+		);
+		await githubButton.hover();
+		await expect
+			.poll(() =>
+				githubButton.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity)),
+			)
+			.toBe(1);
+		expect(restingOpacity).toBeLessThan(1);
+	});
+
 	test("pre-model component library is keyboard-scrollable with no unexcepted serious/critical violations", async ({
 		page,
 	}) => {

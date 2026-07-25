@@ -91,7 +91,10 @@ function EmptyCanvas() {
 
 				{/* Templates */}
 				<div className="mt-8 w-full max-w-2xl">
-					<p className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
+					<p
+						data-testid="empty-canvas-contrast-target"
+						className="mb-3 text-center text-xs font-medium uppercase tracking-wider text-foreground opacity-95"
+					>
 						Start from a template
 					</p>
 					<div className="grid grid-cols-3 gap-2">
@@ -108,18 +111,29 @@ function EmptyCanvas() {
 
 			{/* Footer */}
 			<footer className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-4 border-t border-border/50 px-4 py-3">
-				<span className="text-xs text-muted-foreground/60">Built by Exit Zero Labs LLC</span>
+				<span
+					data-testid="empty-canvas-contrast-target"
+					className="text-xs text-foreground opacity-95"
+				>
+					Built by Exit Zero Labs LLC
+				</span>
 				<span className="text-muted-foreground/30">·</span>
 				<button
 					type="button"
 					onClick={() => void openExternalUrl("https://github.com/exit-zero-labs/threat-forge")}
-					className="flex items-center gap-1 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+					data-testid="empty-canvas-contrast-target"
+					className="flex items-center gap-1 text-xs text-foreground opacity-95 transition-opacity hover:opacity-100"
 				>
 					<GithubIcon className="h-3 w-3" />
 					GitHub
 				</button>
 				<span className="text-muted-foreground/30">·</span>
-				<span className="text-xs text-muted-foreground/40">v{__APP_VERSION__ ?? "dev"}</span>
+				<span
+					data-testid="empty-canvas-contrast-target"
+					className="text-xs text-foreground opacity-95"
+				>
+					v{__APP_VERSION__ ?? "dev"}
+				</span>
 			</footer>
 		</div>
 	);
