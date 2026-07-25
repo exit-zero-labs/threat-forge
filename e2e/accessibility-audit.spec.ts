@@ -19,12 +19,38 @@ import {
  * resulting page state (see `workspace-fixtures.ts`'s own doc comment on that fixture).
  */
 test.describe("Accessibility audit", () => {
-	test("pre-model welcome screen has no unexcepted serious/critical violations", async ({
+	test("pre-model component library is keyboard-scrollable with no unexcepted serious/critical violations", async ({
 		page,
 	}) => {
 		await installDeterministicClock(page);
 		await page.goto("/app");
 		await expect(page.getByTestId("empty-canvas")).toBeVisible();
+
+		const palette = page.getByTestId("component-palette");
+		const componentList = palette.getByRole("region", {
+			name: "Library components",
+			exact: true,
+		});
+		const categoryTabCount = await palette.getByRole("button").count();
+
+		await page.getByTestId("library-search").click();
+		for (let tab = 0; tab <= categoryTabCount; tab++) {
+			await page.keyboard.press("Tab");
+		}
+		await expect(componentList).toBeFocused();
+
+		const initialScroll = await componentList.evaluate((element) => ({
+			top: element.scrollTop,
+			height: element.scrollHeight,
+			viewportHeight: element.clientHeight,
+		}));
+		expect(initialScroll.height).toBeGreaterThan(initialScroll.viewportHeight);
+
+		await page.keyboard.press("ArrowDown");
+		await expect
+			.poll(() => componentList.evaluate((element) => element.scrollTop))
+			.toBeGreaterThan(initialScroll.top);
+
 		await assertNoSeriousAccessibilityViolations(page);
 	});
 

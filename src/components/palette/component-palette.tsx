@@ -124,7 +124,20 @@ export function ComponentPalette() {
 			)}
 
 			{/* Component list */}
-			<div className="flex-1 overflow-y-auto p-2">
+			<section
+				aria-label="Library components"
+				className="flex-1 overflow-y-auto p-2"
+				// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable for keyboard access
+				tabIndex={0}
+				onKeyDown={(event) => {
+					if (
+						event.target === event.currentTarget &&
+						(event.key === "ArrowUp" || event.key === "ArrowDown")
+					) {
+						event.stopPropagation();
+					}
+				}}
+			>
 				<div className="flex flex-col gap-0.5">
 					{filteredComponents.map((comp) => (
 						<LibraryPaletteItem key={comp.id} component={comp} />
@@ -135,7 +148,7 @@ export function ComponentPalette() {
 						</p>
 					)}
 				</div>
-			</div>
+			</section>
 		</div>
 	);
 }
