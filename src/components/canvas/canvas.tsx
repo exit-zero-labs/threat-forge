@@ -215,7 +215,8 @@ function RotatingTip() {
 
 	return (
 		<p
-			className="text-center text-xs italic text-muted-foreground/60"
+			data-testid="rotating-tip-contrast-target"
+			className="text-center text-xs italic text-foreground"
 			style={{
 				opacity: visible ? 1 : 0,
 				transition: reduceMotion ? "none" : "opacity 400ms ease-in-out",
