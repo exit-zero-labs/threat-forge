@@ -23,6 +23,9 @@ export default defineConfig({
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
+		// Pin the browser's reduced-motion preference across host environments (issue #65, D3).
+		// Specs still wait on observable state rather than transition duration.
+		contextOptions: { reducedMotion: "reduce" },
 	},
 	webServer: {
 		command: "npm run dev:web",

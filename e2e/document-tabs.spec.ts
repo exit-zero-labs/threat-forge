@@ -1,13 +1,5 @@
-import type { Page } from "@playwright/test";
 import { addPaletteItem, expect, test, waitForCanvasReady } from "./fixtures";
-
-/** Open `count` documents via the always-present new-document button, in the strip. */
-async function openDocuments(page: Page, count: number) {
-	for (let i = 1; i <= count; i++) {
-		await page.getByTestId("btn-new-document").click();
-		await expect(page.getByRole("tab")).toHaveCount(i);
-	}
-}
+import { openDocuments } from "./support/interactions";
 
 test.describe("Document tab workspace", () => {
 	test.beforeEach(async ({ page }) => {

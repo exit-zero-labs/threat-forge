@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { addPaletteItem, expect, test, waitForCanvasReady } from "./fixtures";
+import { waitForLocalSave } from "./support/interactions";
 
 /**
  * Browser workspace restore across a real page reload (issue #56, plan step 8 / D4).
@@ -22,27 +23,6 @@ function elementNameInput(page: Page) {
 		.locator("label")
 		.filter({ hasText: "Name" })
 		.locator("input");
-}
-
-/**
- * Wait for the observable local-save state to settle on the just-made edit.
- *
- * Every content change synchronously flips the indicator to "Saving locally..." (the hook calls
- * `markInFlight(..., "pending")` inside the store subscription, before the 1s debounce fires), so
- * asserting that state first guarantees we are tracking *this* edit's write rather than reading a
- * stale "Saved locally" left by an earlier one. Only then do we wait for the commit. No sleeps.
- *
- * Gating a reload on this commit also makes the persisted active-document pointer deterministic for
- * a real reason, not a dev artifact: the active document records itself as the persisted active tab
- * only once *its own* write commits while it is still active, so waiting for that edit to save
- * settles the pointer before the reload. (A bare tab switch records the incoming document's pointer
- * synchronously; an in-flight write for the document the user switched away from is deliberately
- * prevented from clobbering that pointer, so it cannot reopen the wrong tab on reload.)
- */
-async function waitForLocalSave(page: Page) {
-	const status = page.getByTestId("local-persistence-status");
-	await expect(status).toHaveText("Saving locally...");
-	await expect(status).toHaveText("Saved locally", { timeout: 15000 });
 }
 
 /** Rename the currently selected element and wait for that edit to save locally. */

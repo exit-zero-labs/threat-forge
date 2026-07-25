@@ -1,4 +1,4 @@
-import type { Viewport } from "@xyflow/react";
+import type { HandleType, Viewport } from "@xyflow/react";
 import { create } from "zustand";
 
 /**
@@ -49,6 +49,17 @@ interface CanvasInstanceState {
 	isConnecting: boolean;
 	setIsConnecting: (connecting: boolean) => void;
 
+	/**
+	 * The handle type (`source` or `target`) the in-progress connection/reconnect drag
+	 * started from, or `null` when idle. Every connection point renders an overlapping
+	 * source/target handle pair (#213); while a drag is active, `NodeHandles` uses this to
+	 * suppress pointer events on same-type siblings so the browser's hit test at the drop
+	 * point always resolves to the opposite-type handle underneath instead of whichever one
+	 * happens to paint on top.
+	 */
+	connectingHandleType: HandleType | null;
+	setConnectingHandleType: (handleType: HandleType | null) => void;
+
 	/** When true, the canvas store skips its drag-end history push — Alt+drag owns its own entry. */
 	altDragActive: boolean;
 	setAltDragActive: (active: boolean) => void;
@@ -90,6 +101,9 @@ export const useCanvasInstanceStore = create<CanvasInstanceState>((set) => ({
 
 	isConnecting: false,
 	setIsConnecting: (connecting) => set({ isConnecting: connecting }),
+
+	connectingHandleType: null,
+	setConnectingHandleType: (handleType) => set({ connectingHandleType: handleType }),
 
 	altDragActive: false,
 	setAltDragActive: (active) => set({ altDragActive: active }),
