@@ -2,6 +2,7 @@
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { LEGACY_RETAINED } from "@/lib/adapters/keychain-adapter";
 import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/ai-models";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -160,7 +161,7 @@ describe("key storage that cannot answer", () => {
 
 	it("treats a removal that left a clear-text copy as removed, with the warning", async () => {
 		class RetainedCopyError extends Error {
-			readonly reason = "legacy-retained";
+			readonly reason = LEGACY_RETAINED;
 		}
 		hasKey = async () => true;
 		getAdapter = async () => ({

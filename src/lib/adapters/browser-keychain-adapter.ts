@@ -8,7 +8,7 @@ import {
 	putSecret,
 	retireAndDeleteSecret,
 } from "./browser-key-vault";
-import type { KeychainAdapter } from "./keychain-adapter";
+import { type KeychainAdapter, LEGACY_RETAINED } from "./keychain-adapter";
 
 /**
  * Prefix of the clear-text `localStorage` slot this adapter used before #133. Retained only
@@ -232,7 +232,7 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 				// this browser. Reporting success would tell a user who is removing a
 				// possibly-compromised key that it is gone when it is not.
 				throw new KeyVaultError(
-					"legacy-retained",
+					LEGACY_RETAINED,
 					erasure === "retained"
 						? "The API key was removed from encrypted storage, but this browser would not delete an older clear-text copy. Clear this site's browser data to remove it."
 						: "The API key was removed from encrypted storage, but this browser blocked the check for an older clear-text copy. Clear this site's browser data to be sure it is gone.",

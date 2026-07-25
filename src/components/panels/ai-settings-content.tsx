@@ -1,6 +1,7 @@
 import { AlertTriangle, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
+import { LEGACY_RETAINED } from "@/lib/adapters/keychain-adapter";
 import { getDefaultModelId, getModelById, getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -50,7 +51,7 @@ function errorText(error: unknown): string {
  */
 function isRetainedLegacyCopy(error: unknown): boolean {
 	if (!(error instanceof Error) || !("reason" in error)) return false;
-	return error.reason === "legacy-retained";
+	return error.reason === LEGACY_RETAINED;
 }
 
 /** AI settings form content — used inside the settings dialog. */

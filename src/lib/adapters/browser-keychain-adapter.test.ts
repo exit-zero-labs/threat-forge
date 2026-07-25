@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } fr
 import "fake-indexeddb/auto";
 import { KEY_VAULT_DB_NAME, KEY_VAULT_DB_VERSION, KeyVaultError } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
+import { LEGACY_RETAINED } from "./keychain-adapter";
 import { yieldHostTask } from "./test-fixtures/host-task";
 import { resetKeyVault } from "./test-fixtures/key-vault";
 
@@ -110,6 +111,20 @@ async function writeMetaValue(key: string, value: unknown): Promise<void> {
 		tx.onerror = () => reject(tx.error);
 	});
 	db.close();
+}
+
+/** Read a raw value back out of the vault's meta store. */
+async function readMetaValue(key: string): Promise<unknown> {
+	const db = await openVaultDb();
+	try {
+		return await new Promise<unknown>((resolve, reject) => {
+			const request = db.transaction("meta", "readonly").objectStore("meta").get(key);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	} finally {
+		db.close();
+	}
 }
 
 /** Replace the contents of the wrap-key store, simulating a damaged vault. */
@@ -850,7 +865,7 @@ describe("a clear-text slot that will not erase", () => {
 		const error = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
 
 		expect(error).toBeInstanceOf(KeyVaultError);
-		expect((error as KeyVaultError).reason).toBe("legacy-retained");
+		expect((error as KeyVaultError).reason).toBe(LEGACY_RETAINED);
 		// The encrypted copy is still removed; only the claim of completeness is withheld.
 		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old-cleartext");
 	});
@@ -887,7 +902,7 @@ describe("a clear-text slot that will not erase", () => {
 		const error = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
 
 		expect(error).toBeInstanceOf(KeyVaultError);
-		expect((error as KeyVaultError).reason).toBe("legacy-retained");
+		expect((error as KeyVaultError).reason).toBe(LEGACY_RETAINED);
 		// Asserted here as well as on the retained branch, so collapsing the two messages onto
 		// either wording is caught. Only the message distinguishes "a copy is definitely still
 		// there" from "a copy could not be checked", and they call for different advice.
@@ -960,6 +975,51 @@ describe("a clear-text slot that will not erase", () => {
 		// Neither half landed, so the user is where they started and can retry.
 		expect(await countSecrets()).toBe(0);
 		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old");
+	});
+
+	it("does not let a dropped record weaken a revocation already recorded", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-compromised");
+		const refusal = refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await expect(adapter.deleteKey("anthropic")).rejects.toBeInstanceOf(KeyVaultError);
+
+		// A save after a revocation re-creates a record while the revocation still stands, so
+		// this provider can reach the drop path with a marker already recorded. Re-labelling it
+		// there would lower the only reason answered on a vault that cannot decrypt anything.
+		await adapter.setKey("anthropic", "sk-ant-replacement");
+		await corruptStoredRecord("anthropic");
+		expect(await adapter.getKey("anthropic")).toBeNull();
+
+		await adapter.setKey("openai", "sk-openai-stored");
+		await writeWrapKeyStore([]);
+		refusal.mockRestore();
+
+		const settled = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		// The revocation is answered before the wrap-key guard, so the read settles the slot and
+		// returns instead of reporting damage. Lowered to a drop, it would stop at that guard —
+		// leaving the revoked credential readable in clear text with no path left to erase it.
+		expect(settled).toBeNull();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("keeps the reason a slot was first settled for", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		// Migration writes no marker, so this is the one way a provider reaches the drop path
+		// with its slot still unsettled.
+		expect(await adapter.getKey("anthropic")).toBe("sk-ant-old");
+		await corruptStoredRecord("anthropic");
+		expect(await adapter.getKey("anthropic")).toBeNull();
+
+		await adapter.setKey("anthropic", "sk-ant-replacement");
+
+		// The reasons behave alike, so nothing else would catch this: the marker is the only
+		// record of why a slot stopped being importable, and re-labelling a record this vault
+		// gave up on as a key the user replaced answers a support question wrongly.
+		expect(await readMetaValue("legacy-retired:anthropic")).toBe("dropped");
 	});
 
 	it("erases a settled slot once the browser starts allowing it", async () => {

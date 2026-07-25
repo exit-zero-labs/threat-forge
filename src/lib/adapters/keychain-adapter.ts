@@ -23,3 +23,12 @@ export interface KeychainAdapter {
 	/** Delete an API key for a provider. */
 	deleteKey(provider: AiProvider): Promise<void>;
 }
+
+/**
+ * Reason code for a removal that succeeded but left a readable clear-text copy behind.
+ *
+ * Declared here rather than beside the browser vault that raises it because callers have to
+ * recognise it without importing IndexedDB code into the desktop bundle. Shared so renaming
+ * it cannot leave a caller silently matching a string nothing throws any more.
+ */
+export const LEGACY_RETAINED = "legacy-retained";

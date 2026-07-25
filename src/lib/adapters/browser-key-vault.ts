@@ -28,6 +28,8 @@
  * key storage never share a namespace; see `src/lib/persistence/no-key-leakage.test.ts`.
  */
 
+import type { LEGACY_RETAINED } from "./keychain-adapter";
+
 /** Key-vault database name. Disjoint from `WORKSPACE_STORAGE_NAMESPACE`. */
 export const KEY_VAULT_DB_NAME = "threatforge-keychain";
 /**
@@ -76,8 +78,9 @@ function retiredKey(id: string): string {
  * holds records it cannot decrypt, a revocation is still answered — the user threw the
  * credential away — and the other two are refused, because the clear-text copy may be the
  * last one there is and the user asked for neither. `"superseded"` and `"dropped"` therefore
- * take the same path as each other today; they are recorded apart so a profile that comes
- * back with a settled slot can be diagnosed, not because the reader treats them differently.
+ * take the same path as each other; they are recorded apart so a profile that comes back with
+ * a settled slot shows why. Only a revocation overwrites an existing marker, so what is
+ * recorded is the first settling event, not the most recent one.
  */
 type RetiredReason = "revoked" | "superseded" | "dropped";
 
@@ -136,7 +139,7 @@ export type KeyVaultErrorReason =
 	 * in this browser's storage. Reported so no caller can claim a key was removed when it
 	 * was not.
 	 */
-	| "legacy-retained";
+	| typeof LEGACY_RETAINED;
 
 /**
  * A vault failure carrying a user-safe message. Raw `DOMException` text and internal detail
@@ -535,10 +538,12 @@ type SlotSettlement = "supersede-slot" | "leave-slot";
  * the marker write fail are the same ones that later destroy the record, so the two are
  * correlated rather than independent.
  *
- * The marker is only ever raised, never lowered: a revocation already recorded for this
- * provider outranks a supersession, and overwriting it would disarm the one path that erases
- * a revoked clear-text credential on a vault that cannot decrypt anything. The read and the
- * write share the transaction, so no concurrent delete can land between them.
+ * The marker a revocation already recorded is never overwritten here, and neither is one from
+ * an earlier settling event: a revocation is the only reason answered on a vault that cannot
+ * decrypt anything, so lowering it would disarm the one path that erases a revoked clear-text
+ * credential, and re-labelling an earlier drop as a supersession would discard the cause
+ * without changing what happens next. The read and the write share the transaction, so no
+ * concurrent delete can land between them.
  *
  * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
  * caller must surface that failure rather than storing the value in clear text.
@@ -566,10 +571,12 @@ export async function putSecret(
 				written = true;
 			};
 			// Chained inside the success callback rather than awaited, to keep the transaction
-			// live across the decision.
+			// live across the decision. The marker write needs no flag of its own: every way it
+			// can fail aborts the transaction, so reaching `oncomplete` means it either landed
+			// or was deliberately skipped.
 			const marker = meta.get(retiredKey(id));
 			marker.onsuccess = () => {
-				if (readRetiredReason(marker.result) === REVOKED) return;
+				if (readRetiredReason(marker.result) !== null) return;
 				meta.put(SUPERSEDED, retiredKey(id));
 			};
 			tx.oncomplete = () => (written ? resolve() : reject(unavailable()));
@@ -651,6 +658,11 @@ export async function hasSecret(id: string): Promise<boolean> {
  * a `localStorage` read that can throw, and a durable record must not be gated on one; and a
  * marker that could be cleared would not be durable. The cost is one small record per
  * provider the user has ever deleted a key for.
+ *
+ * The write is unconditional, where the other two writers defer to an existing marker. A
+ * revocation is the only reason that must override one: it is the only reason answered on a
+ * vault that cannot decrypt anything, so a slot already settled as superseded or dropped has
+ * to be re-settled as revoked when the user throws the credential away.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
@@ -675,9 +687,10 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
  *
  * Does nothing for an `error` this vault did not raise for a stored value.
  *
- * Writes `DROPPED` without checking for a stronger marker, unlike a save: a revocation
- * deletes the record in the same transaction that writes its marker, so once one exists
- * there is no stored value left for this to match against and it returns before writing.
+ * The marker is written only when the provider has none. A revocation must survive: a save
+ * after one re-creates a stored record while the `REVOKED` marker still stands, so this path
+ * can find a matching value to drop with a revocation already recorded, and lowering it would
+ * leave a credential the user threw away sitting readable in clear text on a damaged vault.
  */
 export async function dropUnreadableSecret(id: string, error: KeyVaultError): Promise<void> {
 	if (!corruptRecords.has(error)) return;
@@ -685,6 +698,7 @@ export async function dropUnreadableSecret(id: string, error: KeyVaultError): Pr
 	await withVault(async (db) => {
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
 		const secrets = tx.objectStore(STORE_SECRETS);
+		const meta = tx.objectStore(STORE_META);
 		await new Promise<void>((resolve, reject) => {
 			// Chained inside the callback rather than awaited, to keep the transaction live.
 			const current = secrets.get(id);
@@ -700,7 +714,11 @@ export async function dropUnreadableSecret(id: string, error: KeyVaultError): Pr
 				// Order is immaterial inside one transaction, and a failing request aborts it
 				// into `onerror`, so resolving on `oncomplete` alone is enough here.
 				secrets.delete(id);
-				tx.objectStore(STORE_META).put(DROPPED, retiredKey(id));
+				const marker = meta.get(retiredKey(id));
+				marker.onsuccess = () => {
+					if (readRetiredReason(marker.result) !== null) return;
+					meta.put(DROPPED, retiredKey(id));
+				};
 			};
 			tx.oncomplete = () => resolve();
 			tx.onabort = () => reject(unavailable());
