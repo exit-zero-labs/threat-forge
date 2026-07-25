@@ -86,7 +86,10 @@ function retiredKey(id: string): string {
  *
  * Only `retireAndDeleteSecret` overwrites a marker that already stands. The other writers
  * defer to whatever is there, so a value this build does not recognise is preserved rather
- * than downgraded to one it does.
+ * than downgraded to one it does. The revocation is exempt on purpose: `"revoked"` is the
+ * strongest marker this build has, and a user throwing a credential away must always be
+ * recordable. That is the one place an unrecognised value is replaced, and the trade is
+ * deliberate — a marker that cannot be written is a revocation that cannot be enforced.
  */
 type RetiredReason = "revoked" | "settled";
 
@@ -541,12 +544,15 @@ type SlotSettlement = "supersede-slot" | "leave-slot";
  * the marker write fail are the same ones that later destroy the record, so the two are
  * correlated rather than independent.
  *
- * A marker already recorded for this provider is never overwritten. Rewriting one that stands
- * changes nothing this build reads, but it is a request that can fail, and it shares the
- * transaction with the ciphertext — so a per-record meta fault would turn a save that used to
- * commit into a rejection. It would also clobber a marker shape written by some later build,
- * which this build cannot interpret and so must not downgrade. The read and the write share
- * the transaction, so no concurrent delete can land between them.
+ * A marker already recorded for this provider is never overwritten. This path only ever
+ * writes `SETTLED`, so rewriting a standing marker can only hold it level or lower it: a
+ * revocation would be downgraded, disarming the one path that erases a revoked clear-text
+ * credential on a vault that cannot offer a replacement, and a shape written by some later
+ * build would be replaced by one this build happens to understand. Even where the value is
+ * unchanged the write is a request that can fail, and it shares the transaction with the
+ * ciphertext, so a per-record meta fault would turn a save that used to commit into a
+ * rejection. The read and the write share the transaction, so no concurrent delete can land
+ * between them.
  *
  * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
  * caller must surface that failure rather than storing the value in clear text.
@@ -667,7 +673,8 @@ export async function hasSecret(id: string): Promise<boolean> {
  * stands. This is the one direction that must override: a slot already settled for some other
  * reason has to be re-settled as revoked when the user throws the credential away, because
  * that is what makes the stale clear-text copy erasable on a vault too damaged to offer a
- * replacement. Every other re-settling would only rewrite a decision with an equal one.
+ * replacement. It is safe to make unconditional for the same reason: a revocation is the
+ * strongest marker, so this write never lowers what it replaces.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
@@ -692,7 +699,7 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
  *
  * Does nothing for an `error` this vault did not raise for a stored value.
  *
- * The marker defers to any marker already recorded, which matters most for a revocation. A
+ * This path defers to any marker already recorded, which matters most for a revocation. A
  * save after one re-creates a stored record while the `REVOKED` marker still stands, so this
  * path can find a matching value to drop with a revocation in place, and lowering it would
  * leave a credential the user threw away sitting readable in clear text on a damaged vault.

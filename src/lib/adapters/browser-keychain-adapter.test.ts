@@ -651,6 +651,21 @@ describe("recovering from an unreadable record", () => {
 		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-still-good");
 	});
 
+	it("does not overwrite a marker it cannot recognise when a record is dropped", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await corruptStoredRecord("anthropic");
+		const foreign = { reason: "revoked-by-policy", v: 3 };
+		await writeMetaValue("legacy-retired:anthropic", foreign);
+
+		expect(await adapter.getKey("anthropic")).toBeNull();
+
+		// The same rule as the save path: this build writes only `settled`, so overwriting a
+		// marker it cannot interpret can only hold it level or lower it. The drop path needs
+		// its own witness because it is a separate guard.
+		expect(await readMetaValue("legacy-retired:anthropic")).toEqual(foreign);
+	});
+
 	it("does not create key material on a read after a record was dropped", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
@@ -1173,7 +1188,22 @@ describe("two tabs acting on the same provider", () => {
 	 * test to time out silently on a park that is never hit — a park landing somewhere
 	 * harmless would let these tests pass vacuously.
 	 */
-	function parkVaultOpen(nth: number): { reached: Promise<void>; release: () => void } {
+	interface Park {
+		/** Resolves once the park is hit, and rejects if it never is. */
+		reached: Promise<void>;
+		/** Let the parked operation continue. */
+		release: () => void;
+	}
+
+	/**
+	 * The scaffolding both parks share: a gate to hold on, and a `reached` that fails loudly.
+	 *
+	 * A park that lands somewhere harmless, or never lands at all, would let a race test pass
+	 * without sampling the race. `arrive()` is what a spy calls when it recognises its target;
+	 * if nothing calls it within the deadline, `reached` rejects with `missDescription()`
+	 * rather than leaving the test to time out with no explanation.
+	 */
+	function createPark(missDescription: () => string): Park & { arrive: () => Promise<void> } {
 		let release = () => {};
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
@@ -1184,12 +1214,28 @@ describe("two tabs acting on the same provider", () => {
 			signalReached = resolve;
 			signalMissed = reject;
 		});
-		const realOpen = globalThis.indexedDB.open.bind(globalThis.indexedDB);
+		const missed = setTimeout(() => signalMissed(new Error(missDescription())), 3_000);
+		// Every park must be awaited through `reached` — that await is what turns a missed park
+		// into a failure. This only keeps a test that aborts before reaching its await from
+		// emitting a late rejection that would be attributed to whichever test ran next.
+		void reached.catch(() => undefined);
+		return {
+			reached,
+			release,
+			arrive: () => {
+				clearTimeout(missed);
+				signalReached();
+				return gate;
+			},
+		};
+	}
+
+	function parkVaultOpen(nth: number): Park {
 		let seen = 0;
-		const missed = setTimeout(
-			() => signalMissed(new Error(`park never reached: wanted vault open #${nth}, saw ${seen}`)),
-			3_000,
+		const { reached, release, arrive } = createPark(
+			() => `park never reached: wanted vault open #${nth}, saw ${seen}`,
 		);
+		const realOpen = globalThis.indexedDB.open.bind(globalThis.indexedDB);
 		vi.spyOn(globalThis.indexedDB, "open").mockImplementation((name, version) => {
 			seen += 1;
 			if (seen !== nth) return realOpen(name, version);
@@ -1200,9 +1246,7 @@ describe("two tabs acting on the same provider", () => {
 				onblocked: null,
 				result: undefined,
 			} as unknown as IDBOpenDBRequest;
-			clearTimeout(missed);
-			signalReached();
-			void gate.then(() => {
+			void arrive().then(() => {
 				const real = realOpen(name, version);
 				const forward = (handler: keyof IDBOpenDBRequest) => (event: Event) => {
 					Object.defineProperty(parked, "result", { value: real.result, configurable: true });
@@ -1231,36 +1275,28 @@ describe("two tabs acting on the same provider", () => {
 	 * `importLegacySecret` reads the marker and the record count once before encrypting, then
 	 * re-reads both inside the write transaction. Parking a connection cannot sample the gap
 	 * between those two reads, because it stalls the tab before the pre-check rather than
-	 * after it. Encryption is the only await that sits in the middle, so gating the first
-	 * `subtle.encrypt` call is what puts another tab inside the window the in-transaction
-	 * guards exist to close.
+	 * after it. Encryption is the last await before the write transaction opens, so gating it
+	 * is what puts another tab inside the window the in-transaction guards exist to close.
+	 *
+	 * The park is identified by the plaintext being encrypted rather than by call order. An
+	 * ordinal would silently move to an unrelated `encrypt` the moment a test gained a setup
+	 * step that stores a key, and the migration would then run unparked while the test still
+	 * passed — the vacuous pass these tests exist to rule out.
 	 */
-	function parkMigrationEncrypt(): { reached: Promise<void>; release: () => void } {
-		let release = () => {};
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		let signalReached = () => {};
-		let signalMissed = (_reason: Error) => {};
-		const reached = new Promise<void>((resolve, reject) => {
-			signalReached = resolve;
-			signalMissed = reject;
-		});
-		const missed = setTimeout(
-			() => signalMissed(new Error("migration never reached encrypt")),
-			3_000,
+	function parkEncryptOf(plaintext: string): Park {
+		const seen: string[] = [];
+		const { reached, release, arrive } = createPark(
+			() => `park never reached: nothing encrypted ${plaintext}, saw [${seen.join(", ")}]`,
 		);
 		const realEncrypt = globalThis.crypto.subtle.encrypt.bind(globalThis.crypto.subtle);
-		let seen = 0;
 		vi.spyOn(globalThis.crypto.subtle, "encrypt").mockImplementation(async (...args) => {
-			seen += 1;
-			if (seen > 1) return realEncrypt(...args);
-			clearTimeout(missed);
-			signalReached();
-			await gate;
+			const [, , data] = args;
+			const encoded = new TextDecoder().decode(data as BufferSource);
+			seen.push(encoded);
+			if (encoded !== plaintext) return realEncrypt(...args);
+			await arrive();
 			return realEncrypt(...args);
 		});
-		void reached.catch(() => undefined);
 		return { reached, release };
 	}
 
@@ -1271,7 +1307,7 @@ describe("two tabs acting on the same provider", () => {
 
 		// Tab B has read an unsettled slot and an empty vault, and is now encrypting what it
 		// captured. Both reads were true when it made them.
-		const suspended = parkMigrationEncrypt();
+		const suspended = parkEncryptOf("sk-ant-revoked");
 		const migrating = tabB.getKey("anthropic");
 		await suspended.reached;
 
@@ -1295,7 +1331,7 @@ describe("two tabs acting on the same provider", () => {
 		const tabB = await openSecondTab();
 		const tabA = new BrowserKeychainAdapter();
 
-		const suspended = parkMigrationEncrypt();
+		const suspended = parkEncryptOf("sk-ant-old");
 		const migrating = tabB.getKey("anthropic");
 		await suspended.reached;
 
@@ -1339,7 +1375,7 @@ describe("two tabs acting on the same provider", () => {
 		// check and the write, so what this samples is the coarser ordering: a tab that opens
 		// its migration connection before the delete must still not hand back the revoked
 		// value. The narrower gap is covered by the two encrypt-parked tests above.
-		await expect(read).resolves.not.toBe("sk-ant-revoked");
+		await expect(read).resolves.toBeNull();
 
 		expect(await tabA.getKey("anthropic")).toBeNull();
 		expect(await tabB.getKey("anthropic")).toBeNull();
@@ -1423,6 +1459,124 @@ describe("durability and ordering", () => {
 		// commit time. The legacy migration erases the user's only clear-text copy on the
 		// strength of this resolution, so resolving early would risk destroying the key.
 		expect(order).toEqual(["committed", "resolved"]);
+	});
+
+	/**
+	 * Abort the transaction of the next write to `store`, after its request has succeeded.
+	 *
+	 * This is the failure `awaitWrite` exists for and the one no other fault helper reaches:
+	 * `failMetaStore` throws from `transaction()` before any handler is attached, and a
+	 * rejected request never reaches commit. A transaction that aborts after its requests
+	 * succeeded is what a commit-time quota or I/O failure looks like, and the only signal is
+	 * `onabort`. Resolving there instead of rejecting turns every writer into a silent
+	 * success — worst of all the migration, which erases the user's only clear-text copy on
+	 * the strength of that resolution.
+	 */
+	function abortWriteTo(store: string): void {
+		const realPut = IDBObjectStore.prototype.put;
+		const realDelete = IDBObjectStore.prototype.delete;
+		const abortOnSuccess = function (this: IDBObjectStore, request: IDBRequest): IDBRequest {
+			if (this.name === store) {
+				request.addEventListener("success", () => request.transaction?.abort());
+			}
+			return request;
+		};
+		vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+			this: IDBObjectStore,
+			...args: Parameters<IDBObjectStore["put"]>
+		) {
+			return abortOnSuccess.call(this, realPut.apply(this, args));
+		});
+		vi.spyOn(IDBObjectStore.prototype, "delete").mockImplementation(function (
+			this: IDBObjectStore,
+			...args: Parameters<IDBObjectStore["delete"]>
+		) {
+			return abortOnSuccess.call(this, realDelete.apply(this, args));
+		});
+	}
+
+	it("does not report a save whose transaction aborted at commit", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		abortWriteTo("secrets");
+
+		await expect(adapter.setKey("anthropic", "sk-ant-replacement")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		// Reporting success here would show the settings panel a key the vault does not hold,
+		// and every request would then fail with the old one still silently in place.
+		vi.restoreAllMocks();
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+	});
+
+	it("does not report a save that supersedes a clear-text slot when its transaction aborts", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-only-copy");
+		const adapter = new BrowserKeychainAdapter();
+		abortWriteTo("secrets");
+
+		await expect(adapter.setKey("anthropic", "sk-ant-new")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		// A save over a clear-text slot erases that slot once it has committed. Resolving on an
+		// aborted transaction would erase it with nothing stored, so the user would lose the
+		// old key and the new one at once while the panel showed the save as successful. This
+		// path is separate from the plain save: it writes the marker too, so it commits through
+		// its own handlers rather than the shared `awaitWrite`.
+		vi.restoreAllMocks();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-only-copy");
+		expect(await countSecrets()).toBe(0);
+	});
+
+	it("does not report a revocation whose transaction aborted at commit", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		abortWriteTo("secrets");
+
+		await expect(adapter.deleteKey("anthropic")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		// A delete that reports success while the record survives is the worst direction to
+		// fail in: the user believes a credential is gone and stops rotating it.
+		vi.restoreAllMocks();
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+		expect(await readMetaValue("legacy-retired:anthropic")).toBeUndefined();
+	});
+
+	it("does not erase the clear-text slot when the import transaction aborts", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-only-copy");
+		const adapter = new BrowserKeychainAdapter();
+		abortWriteTo("secrets");
+
+		await expect(adapter.getKey("anthropic")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		// The migration erases the slot only once the import has committed. If the import
+		// resolved on an aborted transaction the slot would go while nothing was stored, and
+		// the user's only copy of the credential would be gone with no error anywhere.
+		vi.restoreAllMocks();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-only-copy");
+		expect(await countSecrets()).toBe(0);
+	});
+
+	it("does not report an unreadable record dropped when its transaction aborts", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await corruptStoredRecord("anthropic");
+		abortWriteTo("secrets");
+
+		// The drop is what lets the panel offer a clean re-entry, so reporting it done while
+		// the damaged record survives would leave the user re-entering a key into a vault that
+		// keeps answering with the broken one.
+		await expect(adapter.getKey("anthropic")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		vi.restoreAllMocks();
+		expect(await countSecrets()).toBe(1);
 	});
 
 	it("does not resurrect a key when a read races a delete", async () => {
