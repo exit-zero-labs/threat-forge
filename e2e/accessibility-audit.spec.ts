@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { THEME_PRESETS } from "@/lib/themes/presets";
+import { TIPS } from "@/lib/tips";
 import { expect, test } from "./fixtures";
 import { assertNoSeriousAccessibilityViolations, scanAccessibility } from "./support/accessibility";
 import { installDeterministicClock } from "./support/base";
@@ -211,6 +212,130 @@ test.describe("Accessibility audit", () => {
 		await expect.poll(() => tip.evaluate((element) => element.style.opacity)).toBe("1");
 		await page.clock.runFor(400);
 		await expect.poll(() => tip.evaluate((element) => getComputedStyle(element).opacity)).toBe("1");
+	});
+
+	test("every canonical rotating tip stays above the usable footer at 1280x720", async ({
+		page,
+	}) => {
+		test.slow();
+		await page.setViewportSize({ width: 1280, height: 720 });
+		await installDeterministicClock(page);
+		await page.goto("/app");
+		await expect(page.getByTestId("empty-canvas")).toBeVisible();
+		await setReduceMotion(page, true);
+		await page.addInitScript((tipCount) => {
+			const nativeRandom = Math.random;
+			Math.random = () => {
+				const rawIndex = new URL(window.location.href).searchParams.get("e2eTipIndex");
+				const requestedIndex = rawIndex === null ? -1 : Number(rawIndex);
+				if (!Number.isInteger(requestedIndex) || requestedIndex < 0 || requestedIndex >= tipCount) {
+					return nativeRandom();
+				}
+				return (requestedIndex + 0.5) / tipCount;
+			};
+		}, TIPS.length);
+
+		const tipSelector = '[data-testid="rotating-tip-contrast-target"]';
+		const footerTargetSelector =
+			'[data-testid="empty-canvas"] > footer [data-testid="empty-canvas-contrast-target"]';
+
+		for (const [index, expectedTip] of TIPS.entries()) {
+			await test.step(`tip ${index + 1} of ${TIPS.length}`, async () => {
+				await page.goto(`/app?e2eTipIndex=${index}`);
+				const emptyCanvas = page.getByTestId("empty-canvas");
+				const tip = page.locator(tipSelector);
+				const footer = emptyCanvas.locator("footer");
+				await expect(emptyCanvas).toBeVisible();
+				await expect(tip).toHaveText(expectedTip);
+				await expect.poll(() => tip.evaluate((element) => element.style.transition)).toBe("none");
+
+				const emptyCanvasBox = await emptyCanvas.boundingBox();
+				const tipBox = await tip.boundingBox();
+				const footerBox = await footer.boundingBox();
+				expect(
+					emptyCanvasBox,
+					`${expectedTip}: empty canvas should have rendered geometry`,
+				).not.toBeNull();
+				expect(tipBox, `${expectedTip}: tip should have rendered geometry`).not.toBeNull();
+				expect(footerBox, `${expectedTip}: footer should have rendered geometry`).not.toBeNull();
+				if (!emptyCanvasBox || !tipBox || !footerBox) return;
+				expect(
+					footerBox.y + footerBox.height,
+					`${expectedTip}: footer should remain inside the empty canvas`,
+				).toBeLessThanOrEqual(emptyCanvasBox.y + emptyCanvasBox.height);
+				expect(
+					tipBox.y + tipBox.height,
+					`${expectedTip}: tip bottom should not cross footer top`,
+				).toBeLessThanOrEqual(footerBox.y);
+
+				const result = await scanAccessibility(page, {
+					include: [`${tipSelector}, ${footerTargetSelector}`],
+				});
+				expect(
+					result.incomplete.map((entry) => entry.id),
+					`${expectedTip}: tip/footer axe results should be complete`,
+				).toEqual([]);
+				expect(
+					result.violations
+						.filter((entry) => entry.id === "color-contrast")
+						.flatMap((entry) => entry.nodes.map((node) => node.target.join(" > "))),
+					`${expectedTip}: tip/footer targets should pass color contrast`,
+				).toEqual([]);
+				expect(
+					result.passes.find((entry) => entry.id === "color-contrast")?.nodes,
+					`${expectedTip}: axe should measure all four tip/footer contrast targets`,
+				).toHaveLength(4);
+			});
+		}
+
+		const longestTip = TIPS.reduce((longest, tip) => (tip.length > longest.length ? tip : longest));
+		const longestTipIndex = TIPS.indexOf(longestTip);
+		for (const height of [800, 851]) {
+			await test.step(`longest tip stays contained at 1280x${height}`, async () => {
+				await page.setViewportSize({ width: 1280, height });
+				await page.goto(`/app?e2eTipIndex=${longestTipIndex}`);
+
+				const emptyCanvas = page.getByTestId("empty-canvas");
+				const tip = page.locator(tipSelector);
+				const footer = emptyCanvas.locator("footer");
+				await expect(tip).toHaveText(longestTip);
+
+				const emptyCanvasBox = await emptyCanvas.boundingBox();
+				const tipBox = await tip.boundingBox();
+				const footerBox = await footer.boundingBox();
+				expect(emptyCanvasBox).not.toBeNull();
+				expect(tipBox).not.toBeNull();
+				expect(footerBox).not.toBeNull();
+				if (!emptyCanvasBox || !tipBox || !footerBox) return;
+				expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(
+					emptyCanvasBox.y + emptyCanvasBox.height,
+				);
+				expect(tipBox.y + tipBox.height).toBeLessThanOrEqual(footerBox.y);
+			});
+		}
+
+		const emptyCanvas = page.getByTestId("empty-canvas");
+		const footer = emptyCanvas.locator("footer");
+		const githubButton = footer.getByRole("button", { name: /GitHub/ });
+		await expect(githubButton).toBeEnabled();
+		// Exercise the real window.open path without making the regression depend on GitHub uptime.
+		await page
+			.context()
+			.route(/^https:\/\/github\.com\/exit-zero-labs\/threat-forge\/?$/, (route) =>
+				route.fulfill({ status: 200, contentType: "text/html", body: "" }),
+			);
+		const popupPromise = page.waitForEvent("popup");
+		await githubButton.click();
+		const popup = await popupPromise;
+		await expect(popup).toHaveURL(/^https:\/\/github\.com\/exit-zero-labs\/threat-forge\/?$/);
+		await popup.close();
+
+		const templateButton = emptyCanvas.getByRole("button", { name: /E-Commerce Platform/ });
+		await expect(templateButton).toBeEnabled();
+		await templateButton.click();
+		await expect(emptyCanvas).toBeHidden();
+		await expect(page.getByTestId("canvas-area")).toBeVisible();
+		await expect(page.locator(".react-flow__node").first()).toBeVisible();
 	});
 
 	test("pre-model component library is keyboard-scrollable with no unexcepted serious/critical violations", async ({

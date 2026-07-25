@@ -57,19 +57,20 @@ function EmptyCanvas() {
 	}, []);
 
 	return (
-		<div
-			data-testid="empty-canvas"
-			className="relative flex h-full flex-col items-center bg-background"
-		>
+		<div data-testid="empty-canvas" className="flex h-full flex-col items-center bg-background">
 			{/* Main content — centered with upward bias */}
-			<div className="flex flex-1 flex-col items-center justify-center pb-16">
-				<img src="/logo_square.png" alt="Threat Forge" className="mb-6 h-20 w-20 drop-shadow-md" />
+			<div className="flex flex-1 flex-col items-center justify-center pb-16 [@media(max-height:850px)]:pb-0">
+				<img
+					src="/logo_square.png"
+					alt="Threat Forge"
+					className="mb-6 h-20 w-20 drop-shadow-md [@media(max-height:850px)]:mb-3 [@media(max-height:850px)]:h-16 [@media(max-height:850px)]:w-16"
+				/>
 				<h2 className="text-xl font-semibold tracking-tight">Threat Forge</h2>
 				<p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
 					Create a new threat model or open an existing one to get started.
 				</p>
 
-				<div className="mt-6 flex gap-3">
+				<div className="mt-6 flex gap-3 [@media(max-height:850px)]:mt-4">
 					<button
 						type="button"
 						data-testid="btn-empty-new"
@@ -104,13 +105,13 @@ function EmptyCanvas() {
 					</div>
 				</div>
 
-				<div className="mt-8 h-12 max-w-md">
+				<div className="mt-8 h-12 max-w-md [@media(max-height:850px)]:mt-4 [@media(max-height:850px)]:h-8">
 					<RotatingTip />
 				</div>
 			</div>
 
 			{/* Footer */}
-			<footer className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-4 border-t border-border/50 px-4 py-3">
+			<footer className="flex w-full shrink-0 items-center justify-center gap-4 border-t border-border/50 px-4 py-3">
 				<span
 					data-testid="empty-canvas-contrast-target"
 					className="text-xs text-foreground opacity-95"
