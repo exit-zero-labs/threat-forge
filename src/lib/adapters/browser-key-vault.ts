@@ -673,8 +673,10 @@ export async function hasSecret(id: string): Promise<boolean> {
  * stands. This is the one direction that must override: a slot already settled for some other
  * reason has to be re-settled as revoked when the user throws the credential away, because
  * that is what makes the stale clear-text copy erasable on a vault too damaged to offer a
- * replacement. It is safe to make unconditional for the same reason: a revocation is the
- * strongest marker, so this write never lowers what it replaces.
+ * replacement. Against the two values this build knows, a revocation never lowers what it
+ * replaces. Against a value written by a later build it makes the same trade `RetiredReason`
+ * makes on the read side, and for the same reason: a marker of unknown strength is not a
+ * reason to leave a credential the user has just revoked recoverable.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {

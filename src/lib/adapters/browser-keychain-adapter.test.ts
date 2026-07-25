@@ -1262,10 +1262,6 @@ describe("two tabs acting on the same provider", () => {
 			});
 			return parked;
 		});
-		// Every park must be awaited through `reached` — that await is what turns a missed park
-		// into a failure. This only keeps a test that aborts before reaching its await from
-		// emitting a late rejection that would be attributed to whichever test ran next.
-		void reached.catch(() => undefined);
 		return { reached, release };
 	}
 
@@ -1289,11 +1285,16 @@ describe("two tabs acting on the same provider", () => {
 			() => `park never reached: nothing encrypted ${plaintext}, saw [${seen.join(", ")}]`,
 		);
 		const realEncrypt = globalThis.crypto.subtle.encrypt.bind(globalThis.crypto.subtle);
+		// Only the first match parks. Without this, a test whose other tab encrypts the same
+		// string would park that call too, on a gate the test releases once — a timeout with
+		// nothing pointing at the park as its cause.
+		let armed = true;
 		vi.spyOn(globalThis.crypto.subtle, "encrypt").mockImplementation(async (...args) => {
 			const [, , data] = args;
-			const encoded = new TextDecoder().decode(data as BufferSource);
+			const encoded = new TextDecoder().decode(data);
 			seen.push(encoded);
-			if (encoded !== plaintext) return realEncrypt(...args);
+			if (!armed || encoded !== plaintext) return realEncrypt(...args);
+			armed = false;
 			await arrive();
 			return realEncrypt(...args);
 		});
@@ -1434,6 +1435,9 @@ describe("two tabs acting on the same provider", () => {
 	});
 });
 
+// Tests here install storage faults that outlive the call under test. Where a post-condition
+// reads the vault back, `vi.restoreAllMocks()` runs first, so what it asserts is the real
+// stored state and not another trip through the fault.
 describe("durability and ordering", () => {
 	it("resolves a write only after its transaction has committed", async () => {
 		const order: string[] = [];
@@ -1462,15 +1466,29 @@ describe("durability and ordering", () => {
 	});
 
 	/**
-	 * Abort the transaction of the next write to `store`, after its request has succeeded.
+	 * Abort the transaction of every write to `store`, once its request has succeeded.
 	 *
 	 * This is the failure `awaitWrite` exists for and the one no other fault helper reaches:
 	 * `failMetaStore` throws from `transaction()` before any handler is attached, and a
 	 * rejected request never reaches commit. A transaction that aborts after its requests
-	 * succeeded is what a commit-time quota or I/O failure looks like, and the only signal is
-	 * `onabort`. Resolving there instead of rejecting turns every writer into a silent
-	 * success — worst of all the migration, which erases the user's only clear-text copy on
-	 * the strength of that resolution.
+	 * succeeded is what a commit-time quota or I/O failure looks like. Resolving instead of
+	 * rejecting turns a writer into a silent success — worst of all the migration, which
+	 * erases the user's only clear-text copy on the strength of that resolution.
+	 *
+	 * Which store to name matters. The spy stays armed and aborts every write to that store,
+	 * from the first matching request's `success`. Abort a store whose write is followed by
+	 * another request in the same transaction and that request fails with `AbortError`, so
+	 * `onerror` rejects before `onabort` ever runs — the test then passes while the handler it
+	 * is named for stays unwitnessed. Name the store written last, so `onabort` is the only
+	 * signal left; name a store written first to reach `onerror` deliberately.
+	 *
+	 * Two handlers stay out of reach this way: `installWrapKey` and `importLegacySecret` issue
+	 * their last request with nothing else in flight, so an abort can only ever surface as
+	 * `onabort` and their `onerror` has no witness. The remaining route is a request that
+	 * fails on its own, which `fake-indexeddb` will not produce for a well-formed write, and a
+	 * synthetic bubbled `error` event aborts the transaction rather than raising `error` on it
+	 * — a test written that way pins `onabort` again while claiming otherwise. Both are one
+	 * line rejecting exactly as their `onabort` twin does; if either is edited, edit both.
 	 */
 	function abortWriteTo(store: string): void {
 		const realPut = IDBObjectStore.prototype.put;
@@ -1495,6 +1513,25 @@ describe("durability and ordering", () => {
 		});
 	}
 
+	it("does not report a save whose wrapping key never committed", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-only-copy");
+		const adapter = new BrowserKeychainAdapter();
+		// The wrapping key is minted in its own transaction before the secret is encrypted, so
+		// it has the same contract and its own handlers.
+		abortWriteTo("wrap-key");
+
+		await expect(adapter.setKey("anthropic", "sk-ant-new")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		// Resolving on the uncommitted wrapping key would store ciphertext nothing can decrypt
+		// and erase the clear-text slot on the strength of it, so every later read fails as a
+		// damaged vault and the original key is gone.
+		vi.restoreAllMocks();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-only-copy");
+		expect(await countSecrets()).toBe(0);
+	});
+
 	it("does not report a save whose transaction aborted at commit", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
@@ -1504,8 +1541,8 @@ describe("durability and ordering", () => {
 			reason: "unavailable",
 		});
 
-		// Reporting success here would show the settings panel a key the vault does not hold,
-		// and every request would then fail with the old one still silently in place.
+		// Reporting success here would flip the settings panel to "configured" for a key the
+		// vault does not hold, while the previous key stays in place unannounced.
 		vi.restoreAllMocks();
 		expect(await adapter.getKey("anthropic")).toBe(SECRET);
 	});
@@ -1513,7 +1550,9 @@ describe("durability and ordering", () => {
 	it("does not report a save that supersedes a clear-text slot when its transaction aborts", async () => {
 		localStorage.setItem(LEGACY_SLOT, "sk-ant-only-copy");
 		const adapter = new BrowserKeychainAdapter();
-		abortWriteTo("secrets");
+		// The marker is the last request this transaction issues, so aborting on it leaves
+		// nothing pending and `onabort` is the handler under test.
+		abortWriteTo("meta");
 
 		await expect(adapter.setKey("anthropic", "sk-ant-new")).rejects.toMatchObject({
 			reason: "unavailable",
@@ -1529,10 +1568,43 @@ describe("durability and ordering", () => {
 		expect(await countSecrets()).toBe(0);
 	});
 
+	it("does not report a superseding save when a request in its transaction fails", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-only-copy");
+		const adapter = new BrowserKeychainAdapter();
+		// Aborting on the ciphertext leaves the marker read in flight, so this transaction ends
+		// through `error` where its sibling above ends through `abort`.
+		abortWriteTo("secrets");
+
+		await expect(adapter.setKey("anthropic", "sk-ant-new")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		vi.restoreAllMocks();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-only-copy");
+		expect(await countSecrets()).toBe(0);
+	});
+
+	it("does not report a drop when a request in its transaction fails", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await corruptStoredRecord("anthropic");
+		abortWriteTo("secrets");
+
+		await expect(adapter.getKey("anthropic")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+
+		vi.restoreAllMocks();
+		expect(await countSecrets()).toBe(1);
+	});
+
 	it("does not report a revocation whose transaction aborted at commit", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
-		abortWriteTo("secrets");
+		// The marker is issued before the delete here, so the delete is still in flight when
+		// the abort lands and the transaction reports `error` rather than `abort`. That is the
+		// other half of the same contract, and a separate handler.
+		abortWriteTo("meta");
 
 		await expect(adapter.deleteKey("anthropic")).rejects.toMatchObject({
 			reason: "unavailable",
@@ -1566,17 +1638,21 @@ describe("durability and ordering", () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
 		await corruptStoredRecord("anthropic");
-		abortWriteTo("secrets");
+		// As above: the marker settles last, so this pins `onabort` rather than the generic
+		// error path an outstanding request would take.
+		abortWriteTo("meta");
 
-		// The drop is what lets the panel offer a clean re-entry, so reporting it done while
-		// the damaged record survives would leave the user re-entering a key into a vault that
-		// keeps answering with the broken one.
+		// The drop is what stops `hasKey` counting the damaged record. Reporting it done while
+		// the record survives leaves the settings panel showing the provider as configured
+		// while every request fails for want of a key — the disagreement between the two
+		// predicates that the drop exists to resolve.
 		await expect(adapter.getKey("anthropic")).rejects.toMatchObject({
 			reason: "unavailable",
 		});
 
 		vi.restoreAllMocks();
 		expect(await countSecrets()).toBe(1);
+		expect(await adapter.hasKey("anthropic")).toBe(true);
 	});
 
 	it("does not resurrect a key when a read races a delete", async () => {
