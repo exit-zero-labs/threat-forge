@@ -8,6 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { yieldHostTask } from "./test-fixtures/host-task";
 import { resetKeyVault } from "./test-fixtures/key-vault";
 import "fake-indexeddb/auto";
 import { ProtocolException } from "@/lib/ai/protocol/errors";
@@ -160,18 +161,6 @@ async function awaitRequestIssued(): Promise<void> {
 		await yieldHostTask();
 	}
 	expect.unreachable("the transport never issued its request");
-}
-
-/** Yield one real host task. `MessageChannel` is used because `setTimeout` is faked here. */
-function yieldHostTask(): Promise<void> {
-	return new Promise((resolve) => {
-		const channel = new MessageChannel();
-		channel.port1.onmessage = () => {
-			channel.port1.close();
-			resolve();
-		};
-		channel.port2.postMessage(null);
-	});
 }
 
 beforeEach(async () => {

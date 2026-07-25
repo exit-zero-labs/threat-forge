@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
-import { KEY_VAULT_DB_NAME, KeyVaultError } from "./browser-key-vault";
+import { KEY_VAULT_DB_NAME, KEY_VAULT_DB_VERSION, KeyVaultError } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
+import { yieldHostTask } from "./test-fixtures/host-task";
 import { resetKeyVault } from "./test-fixtures/key-vault";
 
 /**
@@ -17,11 +18,7 @@ const LEGACY_SLOT = "tf-api-key-anthropic";
 
 /** Read every value held in the vault database, as one string, for substring scanning. */
 async function dumpVault(): Promise<string> {
-	const db = await new Promise<IDBDatabase>((resolve, reject) => {
-		const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error);
-	});
+	const db = await openVaultDb();
 	try {
 		const names = Array.from(db.objectStoreNames);
 		const dumps = await Promise.all(
@@ -148,11 +145,7 @@ describe("BrowserKeychainAdapter encrypted storage", () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
 
-		const db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
+		const db = await openVaultDb();
 		const wrapKey = await new Promise<unknown>((resolve, reject) => {
 			const request = db.transaction("wrap-key", "readonly").objectStore("wrap-key").getAll();
 			request.onsuccess = () => resolve(request.result[0]);
@@ -163,7 +156,7 @@ describe("BrowserKeychainAdapter encrypted storage", () => {
 		expect(wrapKey).toBeInstanceOf(CryptoKey);
 		expect((wrapKey as CryptoKey).extractable).toBe(false);
 		// The property that makes `extractable: false` meaningful: the material cannot be
-		// read back out even by code running on this origin.
+		// read back out through the Web Crypto API, even by code running on this origin.
 		await expect(globalThis.crypto.subtle.exportKey("raw", wrapKey as CryptoKey)).rejects.toThrow();
 	});
 
@@ -189,11 +182,7 @@ describe("BrowserKeychainAdapter encrypted storage", () => {
 		await adapter.setKey("anthropic", SECRET);
 		await adapter.setKey("openai", SECRET);
 
-		const db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
+		const db = await openVaultDb();
 		const records = await new Promise<{ iv: Uint8Array; ciphertext: Uint8Array }[]>(
 			(resolve, reject) => {
 				const request = db.transaction("secrets", "readonly").objectStore("secrets").getAll();
@@ -333,7 +322,7 @@ describe("failing closed when encrypted storage is unavailable", () => {
 		// `NotFoundError` from `transaction()`, which would otherwise reach the settings panel
 		// verbatim. No mock: this is the genuine exception the platform throws.
 		await new Promise<void>((resolve, reject) => {
-			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME, 1);
+			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME, KEY_VAULT_DB_VERSION);
 			request.onsuccess = () => {
 				request.result.close();
 				resolve();
@@ -431,23 +420,12 @@ describe("recovering from an unreadable record", () => {
 });
 
 describe("storage that never responds", () => {
-	/** Yield one real host task. `MessageChannel` is used because `setTimeout` is faked here. */
-	function yieldRealTask(): Promise<void> {
-		return new Promise((resolve) => {
-			const channel = new MessageChannel();
-			channel.port1.onmessage = () => {
-				channel.port1.close();
-				resolve();
-			};
-			channel.port2.postMessage(null);
-		});
-	}
-
 	it("gives up on a wedged open rather than hanging the caller forever", async () => {
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-		// Safari and Firefox private mode are both known to accept `open()` and then fire no
-		// event at all. An unbounded wait leaves the settings panel spinning forever, and
-		// because adapter calls are serialized per provider, wedges every later call too.
+		// A stalled storage layer can accept `open()` and then fire no event at all — the
+		// case reported against WebKit, and the shape any wedged implementation produces. An
+		// unbounded wait leaves the settings panel spinning forever, and because adapter calls
+		// are serialized per provider, wedges every later call too.
 		const open = vi.spyOn(globalThis.indexedDB, "open").mockReturnValue({
 			onsuccess: null,
 			onerror: null,
@@ -460,7 +438,7 @@ describe("storage that never responds", () => {
 		await vi.advanceTimersByTimeAsync(10_000);
 		// Raced rather than awaited directly: nothing but the vault's own bound can settle
 		// this call, so an unbounded implementation would hang the suite instead of failing it.
-		const error = await Promise.race([pending, yieldRealTask().then(() => "still pending")]);
+		const error = await Promise.race([pending, yieldHostTask().then(() => "still pending")]);
 
 		expect(error).toBeInstanceOf(KeyVaultError);
 		expect((error as KeyVaultError).reason).toBe("unavailable");
@@ -506,6 +484,41 @@ describe("a clear-text slot that will not erase", () => {
 		expect((error as KeyVaultError).reason).toBe("legacy-retained");
 		// The encrypted copy is still removed; only the claim of completeness is withheld.
 		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old-cleartext");
+	});
+	it("does not let a dismissed clear-text slot come back after a delete", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-compromised");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		await expect(adapter.deleteKey("anthropic")).rejects.toBeInstanceOf(KeyVaultError);
+
+		// The user removed a key they believe is compromised. The clear-text copy survived and
+		// they were told so — but the vault must not re-import it, or the app silently resumes
+		// signing provider requests with the credential they just revoked.
+		expect(await adapter.hasKey("anthropic")).toBe(false);
+		expect(await adapter.getKey("anthropic")).toBeNull();
+	});
+
+	it("does not report a key as removed when it cannot read the slot back", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		// A browser that blocks site data throws on both removal and read-back. An absent
+		// value and an unreadable one are not the same fact, and treating them alike reports
+		// a clear-text credential as erased when it was never touched.
+		vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+			throw new DOMException("blocked", "SecurityError");
+		});
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new DOMException("blocked", "SecurityError");
+		});
+
+		const error = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(KeyVaultError);
+		expect((error as KeyVaultError).reason).toBe("legacy-retained");
 	});
 });
 

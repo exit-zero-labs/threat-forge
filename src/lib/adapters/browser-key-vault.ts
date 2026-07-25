@@ -4,9 +4,9 @@
  * The browser has no OS keychain, so the key has to live in a web store. Rather than the
  * clear text `localStorage` this replaces, the vault keeps a non-extractable AES-GCM
  * `CryptoKey` in IndexedDB and persists only ciphertext. `extractable: false` means the
- * wrapping material cannot be read back out of the browser even by code running on this
- * origin — structured clone moves the handle into IndexedDB, but `exportKey` on it always
- * rejects.
+ * wrapping material cannot be read back out through the Web Crypto API, even by code running
+ * on this origin — structured clone moves the handle into IndexedDB, but `exportKey` on it
+ * always rejects.
  *
  * What this defends against: casual inspection of web storage. Extensions, devtools, and
  * tooling that read the origin's storage through the platform APIs now see ciphertext and a
@@ -30,12 +30,35 @@
 
 /** Key-vault database name. Disjoint from `WORKSPACE_STORAGE_NAMESPACE`. */
 export const KEY_VAULT_DB_NAME = "threatforge-keychain";
-const KEY_VAULT_DB_VERSION = 1;
+/**
+ * Key-vault schema version.
+ *
+ * Exported so tests can construct a database at exactly this version; opening at any other
+ * version triggers an upgrade and silently repairs the state a test is trying to arrange.
+ *
+ * Version 2 adds {@link STORE_META}. #133 has not shipped, so no version-1 database exists
+ * outside a development profile; the bump exists so those profiles gain the store instead of
+ * failing every operation with a missing-store error.
+ */
+export const KEY_VAULT_DB_VERSION = 2;
 
 /** Holds the single non-extractable wrapping key. */
 const STORE_WRAP = "wrap-key";
 /** Holds one ciphertext record per provider. */
 const STORE_SECRETS = "secrets";
+/**
+ * Holds markers that must outlive the records they describe.
+ *
+ * Separate from {@link STORE_SECRETS} because a marker's whole purpose is to survive the
+ * deletion of that provider's secret.
+ */
+const STORE_META = "meta";
+
+/**
+ * Marker key prefix recording that a provider's pre-#133 clear-text slot has been dealt with
+ * and must never be imported again.
+ */
+const LEGACY_RETIRED_PREFIX = "legacy-retired:";
 
 const WRAP_KEY_ID = "aes-gcm-256-v1";
 
@@ -202,10 +225,12 @@ function openVault(): Promise<IDBDatabase> {
 		}
 
 		let settled = false;
-		// Some browsers accept `open()` and then never fire any event — a documented
-		// private-mode failure mode. Without a bound the promise never settles, the settings
-		// spinner never clears, and (because adapter calls are serialized per provider) every
-		// later call for that provider is wedged behind it even after storage recovers.
+		// A browser can accept `open()` and then never fire any event; the long-standing
+		// WebKit report is the case actually observed in the wild, and any storage layer that
+		// stalls produces the same shape. Without a bound the promise never settles, the
+		// settings spinner never clears, and (because adapter calls are serialized per
+		// provider) every later call for that provider is wedged behind it even after storage
+		// recovers.
 		const timer = setTimeout(() => {
 			if (settled) return;
 			settled = true;
@@ -223,6 +248,7 @@ function openVault(): Promise<IDBDatabase> {
 			const db = request.result;
 			if (!db.objectStoreNames.contains(STORE_WRAP)) db.createObjectStore(STORE_WRAP);
 			if (!db.objectStoreNames.contains(STORE_SECRETS)) db.createObjectStore(STORE_SECRETS);
+			if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META);
 		};
 		request.onsuccess = () => {
 			// A timeout or `onblocked` may already have rejected; close the connection that
@@ -445,5 +471,28 @@ export async function deleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
 		const tx = db.transaction(STORE_SECRETS, "readwrite");
 		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).delete(id));
+	});
+}
+
+/**
+ * Record that `id`'s pre-#133 clear-text slot is settled and must never be imported again.
+ *
+ * The marker lives in the vault rather than in `localStorage` because the only situation that
+ * needs it is one where `localStorage` has already proven unreliable: a browser that refuses
+ * to erase the clear-text slot cannot be trusted to hold a note saying it was dismissed.
+ */
+export async function retireLegacySlot(id: string): Promise<void> {
+	await withVault(async (db) => {
+		const tx = db.transaction(STORE_META, "readwrite");
+		await awaitWrite(tx, tx.objectStore(STORE_META).put(true, `${LEGACY_RETIRED_PREFIX}${id}`));
+	});
+}
+
+/** Report whether {@link retireLegacySlot} has settled `id`'s clear-text slot. */
+export async function isLegacySlotRetired(id: string): Promise<boolean> {
+	return withVault(async (db) => {
+		const store = db.transaction(STORE_META, "readonly").objectStore(STORE_META);
+		const count = await awaitRequest(store.count(`${LEGACY_RETIRED_PREFIX}${id}`));
+		return count > 0;
 	});
 }

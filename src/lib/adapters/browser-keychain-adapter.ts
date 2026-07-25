@@ -1,5 +1,13 @@
 import type { AiProvider } from "@/stores/chat-store";
-import { deleteSecret, getSecret, hasSecret, KeyVaultError, putSecret } from "./browser-key-vault";
+import {
+	deleteSecret,
+	getSecret,
+	hasSecret,
+	isLegacySlotRetired,
+	KeyVaultError,
+	putSecret,
+	retireLegacySlot,
+} from "./browser-key-vault";
 import type { KeychainAdapter } from "./keychain-adapter";
 
 /**
@@ -13,38 +21,67 @@ function legacyStorageKey(provider: AiProvider): string {
 	return `${LEGACY_KEY_PREFIX}${provider}`;
 }
 
-/** Read the pre-#133 clear-text slot, tolerating a browser that blocks `localStorage`. */
-function readLegacyKey(provider: AiProvider): string | null {
+/**
+ * What the pre-#133 clear-text slot currently holds.
+ *
+ * `absent` and `unreadable` are kept apart deliberately. A browser that blocks site data
+ * throws on read while the value stays on disk, so collapsing the two — as this did before —
+ * lets the adapter report a live clear-text credential as erased.
+ */
+type LegacySlot =
+	| { readonly state: "present"; readonly value: string }
+	| { readonly state: "absent" }
+	| { readonly state: "unreadable" };
+
+function readLegacySlot(provider: AiProvider): LegacySlot {
 	try {
-		return localStorage.getItem(legacyStorageKey(provider));
+		const value = localStorage.getItem(legacyStorageKey(provider));
+		return value === null ? { state: "absent" } : { state: "present", value };
 	} catch {
-		return null;
+		return { state: "unreadable" };
 	}
 }
+
+/** The outcome of trying to erase the clear-text slot, as far as it can be established. */
+type LegacyErasure =
+	/** Confirmed gone. */
+	| "erased"
+	/** Still readable after the attempt: a live credential. */
+	| "retained"
+	/** Storage would not answer, so absence cannot be claimed either way. */
+	| "unverified";
 
 /**
  * Erase the pre-#133 clear-text slot, reporting whether it is actually gone.
  *
  * A browser can refuse the removal (storage policy, an extension shim, partitioned storage
  * quirks) while still serving reads, so the caller has to know: a surviving clear-text slot
- * is a live credential, and the migration below will read it again.
+ * is a live credential. The read-back, not the `removeItem` call, is what decides the answer.
  */
-function removeLegacyKey(provider: AiProvider): boolean {
+function removeLegacyKey(provider: AiProvider): LegacyErasure {
+	if (readLegacySlot(provider).state === "absent") return "erased";
 	try {
 		localStorage.removeItem(legacyStorageKey(provider));
 	} catch {
 		// Fall through to the read-back, which is what actually decides the outcome.
 	}
-	return readLegacyKey(provider) === null;
+	const after = readLegacySlot(provider);
+	if (after.state === "absent") return "erased";
+	return after.state === "present" ? "retained" : "unverified";
 }
 
 /**
  * Move a pre-#133 clear-text key into the encrypted vault, then erase the clear-text slot.
  *
  * The vault outranks the legacy slot. Migrating unconditionally would let a slot that could
- * not be erased overwrite the vault on every subsequent read — silently reverting a key the
- * user had just replaced, and resurrecting one they had just deleted — so a provider that
- * already has a stored secret is never re-migrated, only cleaned up.
+ * not be erased overwrite the vault on every subsequent read, silently reverting a key the
+ * user had just replaced, so a provider that already has a stored secret is never
+ * re-migrated, only cleaned up.
+ *
+ * That guard alone does not cover deletion, because after a delete there is no stored secret
+ * to outrank the slot. {@link retireLegacySlot} closes that: once the slot has been settled —
+ * erased during migration, or dismissed by {@link BrowserKeychainAdapter.deleteKey} — it is
+ * never imported again, so a credential the user revoked cannot come back on the next read.
  *
  * The erase happens only after the encrypted write has committed — {@link putSecret} resolves
  * at transaction commit, not at request success — so a failure part-way through leaves the
@@ -53,12 +90,17 @@ function removeLegacyKey(provider: AiProvider): boolean {
  * re-establish the storage posture #133 removed.
  */
 async function migrateLegacyKey(provider: AiProvider): Promise<void> {
-	const legacy = readLegacyKey(provider);
-	if (legacy === null) return;
+	const slot = readLegacySlot(provider);
+	// Checked before the vault is consulted, so the common case — no legacy slot, which is
+	// every profile created after #133 — costs no extra transaction.
+	if (slot.state !== "present") return;
+	if (await isLegacySlotRetired(provider)) return;
 	if (!(await hasSecret(provider))) {
-		await putSecret(provider, legacy);
+		await putSecret(provider, slot.value);
 	}
-	removeLegacyKey(provider);
+	if (removeLegacyKey(provider) === "erased") {
+		await retireLegacySlot(provider);
+	}
 }
 
 /**
@@ -102,7 +144,9 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 			// succeeded, and reporting an error would tell the user the opposite. It can no
 			// longer override the vault, and `deleteKey` is where a surviving clear-text
 			// credential becomes a claim that must not be made.
-			removeLegacyKey(provider);
+			if (removeLegacyKey(provider) === "erased") {
+				await retireLegacySlot(provider);
+			}
 		});
 	}
 
@@ -137,15 +181,22 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 
 	async deleteKey(provider: AiProvider): Promise<void> {
 		await withProviderLock(provider, async () => {
-			const legacyErased = removeLegacyKey(provider);
+			const erasure = removeLegacyKey(provider);
 			await deleteSecret(provider);
-			if (!legacyErased) {
-				// The encrypted copy is gone but a clear-text one survived, so the credential
-				// is still usable from this browser. Reporting success here would tell a user
-				// who is removing a possibly-compromised key that it is gone when it is not.
+			// The user asked for this credential to be gone. Even when the clear-text slot
+			// survives, it must never be imported again — otherwise the next read would
+			// re-encrypt the revoked key into the vault and the app would quietly resume
+			// signing provider requests with it.
+			await retireLegacySlot(provider);
+			if (erasure !== "erased") {
+				// The encrypted copy is gone but a clear-text one may still be readable from
+				// this browser. Reporting success would tell a user who is removing a
+				// possibly-compromised key that it is gone when it is not.
 				throw new KeyVaultError(
 					"legacy-retained",
-					"The API key was removed from encrypted storage, but this browser would not delete an older clear-text copy. Clear this site's browser data to remove it.",
+					erasure === "retained"
+						? "The API key was removed from encrypted storage, but this browser would not delete an older clear-text copy. Clear this site's browser data to remove it."
+						: "The API key was removed from encrypted storage, but this browser blocked the check for an older clear-text copy. Clear this site's browser data to be sure it is gone.",
 				);
 			}
 		});

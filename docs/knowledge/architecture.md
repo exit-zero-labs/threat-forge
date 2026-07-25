@@ -357,7 +357,7 @@ npm run ci:docker:build  # Docker lint + test + Tauri build
 
 | Layer | Approach |
 |-------|---------|
-| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: AES-GCM ciphertext in a dedicated IndexedDB database, wrapped by a non-extractable `CryptoKey`. Script on the origin can still use the key — the residual risk is stated in the UI and mitigated by the CSP. |
+| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: AES-GCM ciphertext in a dedicated IndexedDB database, wrapped by a non-extractable `CryptoKey`. Two residuals are specific to the browser and do not apply to desktop: script on the origin can use the key exactly as the app does (stated in the UI, mitigated by the CSP), and `extractable: false` is an API-level restriction rather than encryption at rest, so read access to the browser profile recovers the wrapping material and the ciphertext together. Only the desktop build keeps the key outside the browser profile. |
 | AI API Calls | Direct from user's machine with user's key; HTTPS only. Provider decoding, request validation, and error redaction are shared and typed — see [`ai-protocol.md`](ai-protocol.md) |
 | File Integrity | Explicit version checks and typed deserialization; unknown fields remain tolerated for forward compatibility |
 | Auto-Update | Tauri updater can verify signed update metadata once signing is provisioned; rollout and end-to-end verification remain roadmap gates |
