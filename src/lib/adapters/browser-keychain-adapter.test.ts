@@ -75,13 +75,17 @@ async function openVaultDb(): Promise<IDBDatabase> {
  * The migration reads the wrapping key twice — once to decide it may proceed, once to
  * encrypt under — and a loss landing between them is what a caller-side check cannot see.
  * Firing on the read itself makes that window deterministic instead of hoping a concurrent
- * write lands inside it. Returns a restore function; it is also self-disarming, so a run
- * that never reaches the read cannot corrupt a later assertion.
+ * write lands inside it. It fires at most once, so later assertions in the same test are not
+ * wiped a second time; `vi.restoreAllMocks()` in `afterEach` is what stops it leaking into
+ * the next test when an assertion fails before the read.
  */
-function wipeWrapKeyAfterRead(): () => void {
+function wipeWrapKeyAfterRead(): void {
 	const original = IDBObjectStore.prototype.get;
 	let armed = true;
-	IDBObjectStore.prototype.get = function patched(this: IDBObjectStore, query: IDBValidKey) {
+	vi.spyOn(IDBObjectStore.prototype, "get").mockImplementation(function patched(
+		this: IDBObjectStore,
+		query: IDBValidKey | IDBKeyRange,
+	) {
 		const request = original.call(this, query);
 		if (armed && this.name === "wrap-key") {
 			armed = false;
@@ -93,10 +97,7 @@ function wipeWrapKeyAfterRead(): () => void {
 			});
 		}
 		return request;
-	} as typeof IDBObjectStore.prototype.get;
-	return () => {
-		IDBObjectStore.prototype.get = original;
-	};
+	});
 }
 
 /** Replace the contents of the wrap-key store, simulating a damaged vault. */
@@ -591,6 +592,41 @@ describe("recovering from an unreadable record", () => {
 		expect(await adapter.hasKey("openai")).toBe(false);
 	});
 
+	it("recovers a clear-text copy left behind when the vault is started over", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.setKey("openai", "sk-openai-stored");
+		await writeWrapKeyStore([]);
+		localStorage.setItem("tf-api-key-openai", "sk-openai-cleartext");
+
+		await adapter.setKey("anthropic", "sk-ant-reentered");
+
+		// Re-entry mints a key that cannot read the `openai` record. Leaving that record in
+		// place would let the next read find it broken, drop it, and settle `openai` — erasing
+		// the clear-text copy that is still perfectly good. Discarding it with the old key
+		// instead leaves the slot importable, so the credential comes back.
+		expect(await adapter.getKey("openai")).toBe("sk-openai-cleartext");
+		expect(await adapter.getKey("anthropic")).toBe("sk-ant-reentered");
+	});
+
+	it("keeps a clear-text copy the user never revoked when the vault is damaged", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.setKey("openai", "sk-openai-stored");
+		await corruptStoredRecord("anthropic");
+		// The vault discards the unreadable record. The user asked for none of this.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		await writeWrapKeyStore([]);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-still-good");
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		// A dropped record settles the provider, but it is not a revocation, so it must not
+		// license erasing the clear-text copy while the vault cannot offer a replacement.
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-still-good");
+	});
+
 	it("refuses to mint over surviving records when the key disappears mid-migration", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
@@ -599,7 +635,7 @@ describe("recovering from an unreadable record", () => {
 		// The migration reads the wrapping key to decide it may proceed, then reads it again to
 		// encrypt under. Wiping the store between those two reads is the window a caller-side
 		// check cannot close, and the only way to reach the install path's own refusal.
-		const restore = wipeWrapKeyAfterRead();
+		wipeWrapKeyAfterRead();
 
 		const error = await adapter.getKey("openai").catch((caught: unknown) => caught);
 
@@ -609,7 +645,6 @@ describe("recovering from an unreadable record", () => {
 		expect(await countWrapKeys()).toBe(0);
 		expect(await countSecrets()).toBe(1);
 		expect(localStorage.getItem("tf-api-key-openai")).toBe("sk-openai-cleartext");
-		restore();
 	});
 });
 

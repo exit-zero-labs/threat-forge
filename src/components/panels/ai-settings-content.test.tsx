@@ -8,10 +8,12 @@ import { useSettingsStore } from "@/stores/settings-store";
 import { DEFAULT_USER_SETTINGS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
 
+let hasKey: (provider: string) => Promise<boolean> = async () => false;
+
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
 	getKeychainAdapter: () =>
 		Promise.resolve({
-			hasKey: async () => false,
+			hasKey: (provider: string) => hasKey(provider),
 			setKey: async () => undefined,
 			deleteKey: async () => undefined,
 		}),
@@ -27,8 +29,75 @@ function providerSelect(): HTMLSelectElement {
 
 beforeEach(() => {
 	localStorage.clear();
+	hasKey = async () => false;
 	useChatStore.setState({ provider: "anthropic" });
 	useSettingsStore.setState({ settings: { ...DEFAULT_USER_SETTINGS } });
+});
+
+describe("key storage that cannot answer", () => {
+	it("reports the fault and still shows the provider that answered", async () => {
+		hasKey = async (provider) => {
+			if (provider === "anthropic") throw new Error("Key storage in this browser is damaged.");
+			return true;
+		};
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+
+		// A rejection for one provider used to take the other's status down with it and surface
+		// nothing, so a damaged vault read as "no API key configured" — which invites the user to
+		// enter a key, the one action that cannot help.
+		expect(screen.getByText("Key storage in this browser is damaged.")).toBeInTheDocument();
+		fireEvent.change(providerSelect(), { target: { value: "openai" } });
+		expect(screen.getByText("API key configured")).toBeInTheDocument();
+	});
+
+	it("does not let a slow status check undo a save that landed first", async () => {
+		let release: () => void = () => undefined;
+		const stalled = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		hasKey = async () => {
+			await stalled;
+			return false;
+		};
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+		fireEvent.change(screen.getByPlaceholderText("sk-ant-..."), {
+			target: { value: "sk-ant-new" },
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		});
+		await act(async () => {
+			release();
+			await stalled;
+		});
+
+		// The check started before the save and reports the vault as it was. Applying it would
+		// tell the user the key they just saved is not there, and replace the confirmation with
+		// a stale reading of storage.
+		expect(screen.getByText("API key configured")).toBeInTheDocument();
+	});
+
+	it("says so when the storage adapter itself will not load", async () => {
+		hasKey = async () => {
+			throw new Error("unreachable");
+		};
+		vi.spyOn(
+			await import("@/lib/adapters/get-keychain-adapter"),
+			"getKeychainAdapter",
+		).mockRejectedValueOnce(new Error("chunk load failed"));
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+
+		expect(screen.getByText(/Key storage could not be loaded/)).toBeInTheDocument();
+	});
 });
 
 /**

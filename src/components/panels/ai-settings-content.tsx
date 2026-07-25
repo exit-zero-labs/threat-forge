@@ -1,5 +1,5 @@
 import { AlertTriangle, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
 import { getDefaultModelId, getModelById, getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
@@ -29,6 +29,9 @@ export function AiSettingsContent() {
 	const settings = useSettingsStore((s) => s.settings);
 	const updateSetting = useSettingsStore((s) => s.updateSetting);
 
+	// Set as soon as the user saves or deletes, so a slow status check that started before it
+	// cannot report the vault as it was and undo what they just did.
+	const mutated = useRef(false);
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
@@ -52,32 +55,42 @@ export function AiSettingsContent() {
 	const defaultModelLabel = getModelById(defaultModelId)?.label ?? defaultModelId;
 
 	useEffect(() => {
+		let current = true;
 		async function checkStatus() {
 			const adapter = await getKeychainAdapter().catch(() => null);
-			if (!adapter) return;
+			if (!current || mutated.current) return;
+			if (!adapter) {
+				setMessage({ type: "error", text: "Key storage could not be loaded. Reload and retry." });
+				return;
+			}
 			// Settled independently so one provider's failure does not erase the other's status.
-			// A damaged browser vault rejects for every provider that has a record, and reporting
-			// that as "no API key configured" hides a recoverable fault behind a state the user
-			// would try to fix by entering a key — which is the one thing that will not help.
+			// Unreadable storage rejects for both, and a vault too damaged to migrate rejects for
+			// a provider whose pre-encryption key is still waiting to be moved; reporting either
+			// as "no API key configured" points the user at entering a key, which is the one
+			// thing that will not help.
 			const [anthropic, openai] = await Promise.allSettled([
 				adapter.hasKey("anthropic"),
 				adapter.hasKey("openai"),
 			]);
+			// A save can land while this is in flight, and its result is the newer truth.
+			if (!current || mutated.current) return;
 			setKeyStatus({
 				anthropic: anthropic.status === "fulfilled" && anthropic.value,
 				openai: openai.status === "fulfilled" && openai.value,
 			});
 			const failure = [anthropic, openai].find((result) => result.status === "rejected");
-			if (failure?.status === "rejected") {
-				setMessage({ type: "error", text: errorText(failure.reason) });
-			}
+			if (failure) setMessage({ type: "error", text: errorText(failure.reason) });
 		}
 		void checkStatus();
+		return () => {
+			current = false;
+		};
 	}, []);
 
 	async function handleSave() {
 		if (!apiKey.trim()) return;
 
+		mutated.current = true;
 		setSaving(true);
 		setMessage(null);
 
@@ -100,6 +113,7 @@ export function AiSettingsContent() {
 	}
 
 	async function handleDelete() {
+		mutated.current = true;
 		setDeleting(true);
 		setMessage(null);
 
