@@ -80,9 +80,9 @@ export interface TransportCallbacks {
  * protocol — one shared decoder (`src/lib/ai/providers/sse.ts`) and one shared
  * mapper pair decode frames on both platforms. The single intentional difference
  * between them is where the API key lives and who performs the HTTPS request:
- * the browser transport reads the key from `localStorage` and fetches directly,
- * while the desktop transport hands the body to Rust, which holds the key and
- * owns the endpoint and headers.
+ * the browser transport decrypts the key from the local key vault and fetches
+ * directly, while the desktop transport hands the body to Rust, which holds the
+ * key and owns the endpoint and headers.
  */
 export interface ChatTransport {
 	/**

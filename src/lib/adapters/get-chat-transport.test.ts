@@ -8,7 +8,9 @@
  * `retry.ts`'s tests would not.
  */
 
+import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "fake-indexeddb/auto";
 import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import { ANTHROPIC_TEXT_STREAM } from "@/lib/ai/providers/test-fixtures/anthropic-fixtures";
 import { fakeErrorResponse, fakeStream } from "@/lib/ai/providers/test-fixtures/fake-stream";
@@ -38,17 +40,27 @@ function recordingCallbacks() {
 	} satisfies TransportCallbacks;
 }
 
+/**
+ * Reset the encrypted key vault. Since #133 browser keys live in IndexedDB, so a fresh
+ * factory — not `localStorage.clear()` — is what leaves no key stored.
+ */
+function resetKeyVault(): void {
+	globalThis.indexedDB = new IDBFactory();
+}
+
 beforeEach(async () => {
 	// The factory memoizes its transport in a module-level binding; reset the module
 	// registry so each test starts from a fresh, unwrapped-then-wrapped factory.
 	vi.resetModules();
 	vi.stubGlobal("fetch", vi.fn());
+	resetKeyVault();
 	await new BrowserKeychainAdapter().setKey("anthropic", "sk-ant-wiring-test");
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	localStorage.clear();
+	resetKeyVault();
 });
 
 describe("getChatTransport", () => {

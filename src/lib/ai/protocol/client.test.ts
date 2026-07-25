@@ -9,7 +9,9 @@
  * consumer callback never rejects the stream or the transport on either platform.
  */
 
+import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "fake-indexeddb/auto";
 import { BrowserChatTransport } from "@/lib/adapters/browser-chat-adapter";
 import { BrowserKeychainAdapter } from "@/lib/adapters/browser-keychain-adapter";
 import type {
@@ -107,14 +109,24 @@ const TEXT_FRAME = `event: content_block_delta\ndata: ${JSON.stringify({
 	delta: { type: "text_delta", text: "hi" },
 })}\n\n`;
 
+/**
+ * Reset the encrypted key vault. Since #133 browser keys live in IndexedDB, so a fresh
+ * factory — not `localStorage.clear()` — is what leaves no key stored.
+ */
+function resetKeyVault(): void {
+	globalThis.indexedDB = new IDBFactory();
+}
+
 beforeEach(() => {
 	relay.reset();
+	resetKeyVault();
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
 	localStorage.clear();
+	resetKeyVault();
 });
 
 describe("streamConversation orchestration", () => {

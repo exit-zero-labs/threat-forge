@@ -3,6 +3,8 @@ import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { useWorkspacePersistence } from "@/hooks/use-workspace-persistence";
+import { KEY_VAULT_DB_NAME } from "@/lib/adapters/browser-key-vault";
+import { BrowserKeychainAdapter } from "@/lib/adapters/browser-keychain-adapter";
 import { serializeThreatModelYaml } from "@/lib/thf-yaml";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
@@ -17,7 +19,12 @@ import { WORKSPACE_STORAGE_NAMESPACE } from "./types";
 /**
  * D6: the no-key-leakage boundary, proven at runtime rather than asserted. The workspace stores
  * hold only `.thf` text and the id/order/title/preferences manifest; a stored API key must never
- * appear in either, and the keychain's `tf-api-key-` namespace stays disjoint.
+ * appear in either, and the keychain's namespace stays disjoint.
+ *
+ * Since #133 the keychain is its own encrypted IndexedDB database rather than a `localStorage`
+ * slot, so disjointness is now a database-name separation as well as a value separation. The
+ * legacy `tf-api-key-` cases below are retained because that slot still exists on any profile
+ * that predates #133 until the adapter migrates it.
  */
 
 /**
@@ -183,6 +190,32 @@ describe("no key material reaches the workspace stores (D6)", () => {
 			...removeItem.mock.calls,
 		].map((call) => String(call[0]));
 		expect(touchedKeys.some((key) => /^tf-api-key-/.test(key))).toBe(false);
+	});
+
+	it("keeps a key stored through the real keychain out of the workspace stores", async () => {
+		// The strongest form of the proof: the key goes in through the production adapter
+		// rather than a hand-seeded slot, so it covers wherever the keychain actually writes.
+		await new BrowserKeychainAdapter().setKey("anthropic", KEYCHAIN_CANARY);
+
+		const storage = new IndexeddbWorkspaceStorage();
+		await storage.writeDocumentBody(DOC, serializeThreatModelYaml(modelWithoutSecret()));
+		useWorkspaceStore.getState().upsertManifestEntry({
+			id: DOC,
+			title: "Payment Service",
+			filePath: null,
+			order: 0,
+			createdAt: "2026-07-21T00:00:00.000Z",
+			updatedAt: "2026-07-21T00:00:00.000Z",
+		});
+
+		expect(await dumpIndexedDb()).not.toContain(KEYCHAIN_CANARY);
+		const localValues = Object.keys(localStorage).map((key) => localStorage.getItem(key) ?? "");
+		expect(localValues.some((value) => value.includes(KEYCHAIN_CANARY))).toBe(false);
+	});
+
+	it("stores keys in a different database from the workspace", () => {
+		// Two separate databases, so neither store can enumerate the other's records.
+		expect(KEY_VAULT_DB_NAME).not.toBe(WORKSPACE_STORAGE_NAMESPACE);
 	});
 
 	it("has no persistence module that imports a keychain adapter", () => {

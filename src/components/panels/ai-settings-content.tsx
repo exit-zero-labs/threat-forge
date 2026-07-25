@@ -12,6 +12,15 @@ const PROVIDERS: { value: AiProvider; label: string }[] = [
 	{ value: "openai", label: "OpenAI (GPT)" },
 ];
 
+/**
+ * Render a keychain failure for display. Adapters throw different shapes — the browser vault
+ * throws an `Error` carrying an authored, user-safe message, while the Tauri adapter rejects
+ * with a string from `invoke` — so the message is preferred when there is one.
+ */
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
 /** AI settings form content — used inside the settings dialog. */
 export function AiSettingsContent() {
 	const provider = useChatStore((s) => s.provider);
@@ -70,11 +79,11 @@ export function AiSettingsContent() {
 			setShowKey(false);
 			const successText = isTauri()
 				? "API key saved securely."
-				: "API key saved to browser storage.";
+				: "API key encrypted and saved in this browser.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
-			setMessage({ type: "error", text: String(err) });
+			setMessage({ type: "error", text: errorText(err) });
 		} finally {
 			setSaving(false);
 		}
@@ -88,11 +97,11 @@ export function AiSettingsContent() {
 			const adapter = await getKeychainAdapter();
 			await adapter.deleteKey(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: false }));
-			const successText = isTauri() ? "API key removed." : "API key removed from browser storage.";
+			const successText = isTauri() ? "API key removed." : "API key removed from this browser.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
-			setMessage({ type: "error", text: String(err) });
+			setMessage({ type: "error", text: errorText(err) });
 		} finally {
 			setDeleting(false);
 		}
@@ -256,7 +265,7 @@ export function AiSettingsContent() {
 			<p className="text-[10px] text-muted-foreground/70">
 				{isTauri()
 					? "API keys are encrypted at rest and stored locally. They are never sent anywhere except the selected AI provider."
-					: "API keys are stored in your browser's localStorage. For stronger security, use the desktop app which encrypts keys at rest. Keys are only sent to the selected AI provider."}
+					: "API keys are encrypted before being stored in this browser, using a key the browser will not export. Anything running on this page can still use the key, so prefer the desktop app on a shared machine. Keys are only sent to the selected AI provider."}
 			</p>
 		</div>
 	);

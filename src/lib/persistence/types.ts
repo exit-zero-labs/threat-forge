@@ -11,7 +11,8 @@ import type { DocumentId } from "@/types/document";
 
 /**
  * The single namespace shared by both browser stores: the localStorage manifest key and the
- * IndexedDB database name. Kept disjoint from the keychain's `tf-api-key-` namespace.
+ * IndexedDB database name. Kept disjoint from the keychain's own `threatforge-keychain`
+ * database, so document storage and key storage never share a store.
  */
 export const WORKSPACE_STORAGE_NAMESPACE = "threatforge-workspace";
 

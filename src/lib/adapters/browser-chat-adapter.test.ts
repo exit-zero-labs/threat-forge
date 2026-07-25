@@ -7,7 +7,9 @@
  * protocol, which the shared mappers own.
  */
 
+import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "fake-indexeddb/auto";
 import { ProtocolException } from "@/lib/ai/protocol/errors";
 import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import { buildOpenAiRequestBody } from "@/lib/ai/providers/openai";
@@ -131,15 +133,64 @@ function headerRecord(init: RequestInit): Record<string, string> {
 	return Object.fromEntries(new Headers(headers).entries());
 }
 
+/**
+ * Install fake timers for the transport's read-gap timeout only.
+ *
+ * The transport resolves the API key through the encrypted IndexedDB vault before it
+ * fetches, and IndexedDB delivers its events on real host tasks. Faking the whole timer
+ * surface would starve that scheduler and hang the key lookup, so only the two timer
+ * functions `waitForRead` actually uses are replaced.
+ */
+function useTransportFakeTimers(): void {
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+}
+
+/**
+ * Yield real host tasks until the transport has issued its request.
+ *
+ * `open()` resolves the API key through the encrypted IndexedDB vault first, and IndexedDB
+ * delivers its events on real tasks that `advanceTimersByTimeAsync` does not pump. Waiting
+ * for the `fetch` call is what proves the key lookup finished and the read-gap timer the
+ * test is about is now the pending work.
+ */
+async function awaitRequestIssued(): Promise<void> {
+	for (let attempt = 0; attempt < 1000; attempt += 1) {
+		if (vi.mocked(fetch).mock.calls.length > 0) return;
+		await yieldHostTask();
+	}
+	expect.unreachable("the transport never issued its request");
+}
+
+/** Yield one real host task. `MessageChannel` is used because `setTimeout` is faked here. */
+function yieldHostTask(): Promise<void> {
+	return new Promise((resolve) => {
+		const channel = new MessageChannel();
+		channel.port1.onmessage = () => {
+			channel.port1.close();
+			resolve();
+		};
+		channel.port2.postMessage(null);
+	});
+}
+
+/**
+ * Discard every stored key. Since #133 the keychain is an encrypted IndexedDB vault, so
+ * replacing the factory is what leaves the transport with nothing to sign a request with.
+ */
+function clearStoredKeys(): void {
+	globalThis.indexedDB = new IDBFactory();
+}
+
 beforeEach(async () => {
 	vi.stubGlobal("fetch", vi.fn());
+	clearStoredKeys();
 	await new BrowserKeychainAdapter().setKey("anthropic", ANTHROPIC_KEY);
 	await new BrowserKeychainAdapter().setKey("openai", "sk-openai-test-browser-key");
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
-	localStorage.clear();
+	clearStoredKeys();
 });
 
 describe("BrowserChatTransport request building", () => {
@@ -218,7 +269,7 @@ describe("BrowserChatTransport request building", () => {
 	});
 
 	it("refuses to send anything when no key is stored", async () => {
-		localStorage.clear();
+		clearStoredKeys();
 		const callbacks = recordingCallbacks();
 
 		await expect(
@@ -230,7 +281,7 @@ describe("BrowserChatTransport request building", () => {
 	});
 
 	it("names the missing key rather than reporting a transport failure", async () => {
-		localStorage.clear();
+		clearStoredKeys();
 
 		await expect(
 			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
@@ -351,13 +402,14 @@ describe("BrowserChatTransport streaming", () => {
 	});
 
 	it("fails a stream that goes silent instead of leaving open() pending forever", async () => {
-		vi.useFakeTimers();
+		useTransportFakeTimers();
 		try {
 			const provider = openResponse();
 			vi.mocked(fetch).mockResolvedValue(provider.response);
 			const callbacks = recordingCallbacks();
 
 			const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+			await awaitRequestIssued();
 			// Reach the first pending read, then hold the connection open and silent
 			// for one tick short of the relay's 300-second read timeout.
 			await vi.advanceTimersByTimeAsync(299_999);
@@ -380,7 +432,7 @@ describe("BrowserChatTransport streaming", () => {
 	});
 
 	it("keeps a slow but live stream open past the read timeout", async () => {
-		vi.useFakeTimers();
+		useTransportFakeTimers();
 		try {
 			const provider = openResponse();
 			vi.mocked(fetch).mockResolvedValue(provider.response);
@@ -485,7 +537,7 @@ describe("BrowserChatTransport cancellation", () => {
 		// first — the old order — would reject with `no_api_key`; a caller that
 		// aborted before the request even ran wants the stop, and the desktop
 		// transport reports it first, so this one must too.
-		localStorage.clear();
+		clearStoredKeys();
 		const controller = new AbortController();
 		controller.abort();
 		const callbacks = recordingCallbacks();
@@ -598,7 +650,7 @@ describe("BrowserChatTransport failure reporting", () => {
 	});
 
 	it("gives up on a stalled error body instead of leaving open() pending forever", async () => {
-		vi.useFakeTimers();
+		useTransportFakeTimers();
 		try {
 			// A non-2xx whose error body is present but never sends or closes. The
 			// success path already bounds a silent body per-gap; the error path must
@@ -614,6 +666,7 @@ describe("BrowserChatTransport failure reporting", () => {
 			const callbacks = recordingCallbacks();
 
 			const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+			await awaitRequestIssued();
 			await vi.advanceTimersByTimeAsync(299_999);
 			expect(callbacks.onHttpError).not.toHaveBeenCalled();
 
