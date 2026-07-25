@@ -24,6 +24,17 @@ async function addTrustBoundary(page: Page) {
  * Run with `--update-snapshots` to regenerate baselines:
  *   npx playwright test e2e/canvas-visual.spec.ts --update-snapshots
  *
+ * Baseline ownership, update, and review (issue #66, D8): only macOS-generated baselines are
+ * committed (font rendering/anti-aliasing differ on Linux, so CI skips this spec entirely — see
+ * the `test.skip(!!process.env.CI, ...)` below). The contributor/agent authoring a canvas-layout
+ * change owns regenerating baselines locally on macOS before requesting review, using the
+ * `--update-snapshots` command above. A PR that changes any file under
+ * `e2e/canvas-visual.spec.ts-snapshots/` must have its before/after PNGs reviewed as images — CI
+ * cannot see what changed, since it never runs this spec — using GitHub's native "Files changed"
+ * PNG diff view, so a reviewer without macOS access can review without checking out the branch.
+ * Record the reason for a baseline change in the PR description (mirroring the existing `#136`
+ * precedent noted in `docs/runbooks/diagnosing-ci-failures.md`).
+ *
  * NOTE on tests NOT included here:
  *
  * 1. Drag ghost preview: The palette's `setDragGhost()` creates a transient DOM

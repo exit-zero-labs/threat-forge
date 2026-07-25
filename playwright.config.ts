@@ -20,7 +20,7 @@ export default defineConfig({
 	],
 	use: {
 		baseURL: "http://localhost:3000",
-		trace: "on-first-retry",
+		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
 		// Pin the browser's reduced-motion preference across host environments (issue #65, D3).

@@ -49,6 +49,7 @@
 		"zustand": "^5.0.11"
 	},
 	"devDependencies": {
+		"@axe-core/playwright": "^4.12.1",
 		"@biomejs/biome": "^2.5.5",
 		"@cloudflare/workers-types": "5.20260721.1",
 		"@playwright/test": "^1.58.2",
