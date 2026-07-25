@@ -162,7 +162,12 @@ Produces a native desktop binary for your platform (~10MB).
 ```bash
 npx vitest --run                                       # Frontend test suite
 cargo test --manifest-path src-tauri/Cargo.toml        # Rust test suite
+npx playwright test                                    # Browser E2E test suite
 ```
+
+For a local agent (or a contributor) to launch a single deterministic browser scenario in headed
+mode and inspect its evidence, see
+[docs/runbooks/running-agent-e2e-scenarios.md](docs/runbooks/running-agent-e2e-scenarios.md).
 
 ### Lint
 

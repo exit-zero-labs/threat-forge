@@ -24,6 +24,7 @@
 		"test:e2e": "playwright test",
 		"test:e2e:ui": "playwright test --ui",
 		"test:e2e:headed": "playwright test --headed",
+		"test:e2e:agent": "node scripts/run-agent-scenario.mjs",
 		"ci:local": "bash scripts/ci-local.sh",
 		"ci:docker": "docker compose run --rm --build ci",
 		"ci:docker:build": "docker compose run --rm --build ci bash scripts/ci-local.sh --build",
