@@ -86,7 +86,7 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * and this is the only path a user who revoked a key and then left the provider alone will
  * ever run again.
  *
- * A marker records that the slot was settled, and one reason is not like the others. Only a
+ * A marker records that the slot was settled, and one reason is not like the other. Only a
  * revocation is the user throwing a credential away, so only a revocation is answered while
  * the vault is too damaged to decrypt anything; a slot superseded by a later save, or settled
  * because a record could not be read, waits for a readable vault instead of being erased on

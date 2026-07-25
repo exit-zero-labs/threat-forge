@@ -83,6 +83,10 @@ function retiredKey(id: string): string {
  * surface or diagnostic distinguishes a supersession from a drop, so naming them would
  * describe the writers rather than anything the vault decides. Two named values rather than a
  * boolean because the marker is persisted, and a name states which decision it licenses.
+ *
+ * Only `retireAndDeleteSecret` overwrites a marker that already stands. The other writers
+ * defer to whatever is there, so a value this build does not recognise is preserved rather
+ * than downgraded to one it does.
  */
 type RetiredReason = "revoked" | "settled";
 
@@ -344,16 +348,16 @@ function awaitRequest<T>(request: IDBRequest<T>): Promise<T> {
  * Callers here treat a resolved write as authoritative — the legacy migration erases the
  * user's only clear-text copy on the strength of it — so the commit is the only honest
  * point to resolve at. This matches `indexeddb-workspace-storage.ts`.
+ *
+ * Takes only the transaction. A failed request fires `error`, which bubbles to the
+ * transaction and aborts it, so reaching `oncomplete` already means every request the caller
+ * issued succeeded; tracking them individually would add a branch nothing can reach. Callers
+ * must issue their requests before awaiting, since a transaction commits as soon as its queue
+ * drains and control returns to the event loop.
  */
-function awaitWrite(tx: IDBTransaction, ...requests: IDBRequest[]): Promise<void> {
+function awaitWrite(tx: IDBTransaction): Promise<void> {
 	return new Promise((resolve, reject) => {
-		let succeeded = 0;
-		for (const request of requests) {
-			request.onsuccess = () => {
-				succeeded += 1;
-			};
-		}
-		tx.oncomplete = () => (succeeded === requests.length ? resolve() : reject(unavailable()));
+		tx.oncomplete = () => resolve();
 		tx.onabort = () => reject(unavailable());
 		tx.onerror = () => reject(unavailable());
 	});
@@ -537,10 +541,12 @@ type SlotSettlement = "supersede-slot" | "leave-slot";
  * the marker write fail are the same ones that later destroy the record, so the two are
  * correlated rather than independent.
  *
- * A revocation already recorded for this provider is never overwritten. It is the only reason
- * answered on a vault that cannot decrypt anything, so lowering it would disarm the one path
- * that erases a revoked clear-text credential. The read and the write share the transaction,
- * so no concurrent delete can land between them.
+ * A marker already recorded for this provider is never overwritten. Rewriting one that stands
+ * changes nothing this build reads, but it is a request that can fail, and it shares the
+ * transaction with the ciphertext — so a per-record meta fault would turn a save that used to
+ * commit into a rejection. It would also clobber a marker shape written by some later build,
+ * which this build cannot interpret and so must not downgrade. The read and the write share
+ * the transaction, so no concurrent delete can land between them.
  *
  * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
  * caller must surface that failure rather than storing the value in clear text.
@@ -556,7 +562,8 @@ export async function putSecret(
 		const record = await encryptSecret(db, secret, "always");
 		if (settlement === "leave-slot") {
 			const tx = db.transaction(STORE_SECRETS, "readwrite");
-			await awaitWrite(tx, tx.objectStore(STORE_SECRETS).put(record, id));
+			tx.objectStore(STORE_SECRETS).put(record, id);
+			await awaitWrite(tx);
 			return;
 		}
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
@@ -569,13 +576,13 @@ export async function putSecret(
 			// the transaction live across the decision.
 			const marker = meta.get(retiredKey(id));
 			marker.onsuccess = () => {
-				if (readRetiredReason(marker.result) === REVOKED) return;
+				if (readRetiredReason(marker.result) !== null) return;
 				meta.put(SETTLED, retiredKey(id));
 			};
 			// Neither write is tracked with a flag. A failed request fires `error`, which
-			// bubbles to the transaction and aborts it, so `oncomplete` already means both
-			// landed. A flag on the marker would be worse than redundant: it is written
-			// conditionally, so a cleared flag could not tell a deliberate skip from a loss.
+			// bubbles to the transaction and aborts it, so reaching `oncomplete` means every
+			// write that was issued landed. A flag on the marker would be worse than redundant:
+			// the write is conditional, so a cleared flag could not tell a skip from a loss.
 			tx.oncomplete = () => resolve();
 			tx.onabort = () => reject(unavailable());
 			tx.onerror = () => reject(unavailable());
@@ -656,19 +663,20 @@ export async function hasSecret(id: string): Promise<boolean> {
  * marker that could be cleared would not be durable. The cost is one small record per
  * provider the user has ever deleted a key for.
  *
- * The write is unconditional, where the other two writers defer to a revocation. This is the
- * one direction that must override: a slot already settled for some other reason has to be
- * re-settled as revoked when the user throws the credential away, because that is what makes
- * the stale clear-text copy erasable on a vault too damaged to offer a replacement.
+ * The write is unconditional, where the other two writers defer to any marker that already
+ * stands. This is the one direction that must override: a slot already settled for some other
+ * reason has to be re-settled as revoked when the user throws the credential away, because
+ * that is what makes the stale clear-text copy erasable on a vault too damaged to offer a
+ * replacement. Every other re-settling would only rewrite a decision with an equal one.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
-		// Both requests are issued before any `await`, because a transaction commits as soon as
+		// Both requests are issued before the `await`, because a transaction commits as soon as
 		// its request queue drains and control returns to the event loop.
-		const marked = tx.objectStore(STORE_META).put(REVOKED, retiredKey(id));
-		const deleted = tx.objectStore(STORE_SECRETS).delete(id);
-		await awaitWrite(tx, marked, deleted);
+		tx.objectStore(STORE_META).put(REVOKED, retiredKey(id));
+		tx.objectStore(STORE_SECRETS).delete(id);
+		await awaitWrite(tx);
 	});
 }
 
@@ -684,10 +692,10 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
  *
  * Does nothing for an `error` this vault did not raise for a stored value.
  *
- * The marker defers to a revocation already recorded. A save after one re-creates a stored
- * record while the `REVOKED` marker still stands, so this path can find a matching value to
- * drop with a revocation in place, and lowering it would leave a credential the user threw
- * away sitting readable in clear text on a damaged vault.
+ * The marker defers to any marker already recorded, which matters most for a revocation. A
+ * save after one re-creates a stored record while the `REVOKED` marker still stands, so this
+ * path can find a matching value to drop with a revocation in place, and lowering it would
+ * leave a credential the user threw away sitting readable in clear text on a damaged vault.
  */
 export async function dropUnreadableSecret(id: string, error: KeyVaultError): Promise<void> {
 	if (!corruptRecords.has(error)) return;
@@ -713,7 +721,7 @@ export async function dropUnreadableSecret(id: string, error: KeyVaultError): Pr
 				secrets.delete(id);
 				const marker = meta.get(retiredKey(id));
 				marker.onsuccess = () => {
-					if (readRetiredReason(marker.result) === REVOKED) return;
+					if (readRetiredReason(marker.result) !== null) return;
 					meta.put(SETTLED, retiredKey(id));
 				};
 			};

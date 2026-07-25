@@ -101,6 +101,20 @@ function wipeWrapKeyAfterRead(): void {
 	});
 }
 
+/** Read a raw value back out of the vault's meta store. */
+async function readMetaValue(key: string): Promise<unknown> {
+	const db = await openVaultDb();
+	try {
+		return await new Promise<unknown>((resolve, reject) => {
+			const request = db.transaction("meta", "readonly").objectStore("meta").get(key);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	} finally {
+		db.close();
+	}
+}
+
 /** Write a raw value into the vault's meta store, standing in for another build. */
 async function writeMetaValue(key: string, value: unknown): Promise<void> {
 	const db = await openVaultDb();
@@ -652,6 +666,23 @@ describe("recovering from an unreadable record", () => {
 		expect(await countWrapKeys()).toBe(0);
 	});
 
+	it("does not overwrite a marker it cannot recognise", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.deleteKey("anthropic");
+		const foreign = { reason: "revoked-by-policy", v: 3 };
+		await writeMetaValue("legacy-retired:anthropic", foreign);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-settled");
+
+		await adapter.setKey("anthropic", "sk-ant-new");
+
+		// Reading an unrecognised marker fails closed, so writing over one has to be refused
+		// for the same reason: this build cannot tell whether it is weaker than what it would
+		// replace. Downgrading a stronger marker from a later build to `settled` would strip
+		// the authority to erase a revoked clear-text slot on a vault that cannot decrypt.
+		expect(await readMetaValue("legacy-retired:anthropic")).toEqual(foreign);
+	});
+
 	it("treats a marker it cannot recognise as a marker", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
@@ -1194,6 +1225,94 @@ describe("two tabs acting on the same provider", () => {
 		return { reached, release };
 	}
 
+	/**
+	 * Hold the migration between its pre-check and the transaction that decides.
+	 *
+	 * `importLegacySecret` reads the marker and the record count once before encrypting, then
+	 * re-reads both inside the write transaction. Parking a connection cannot sample the gap
+	 * between those two reads, because it stalls the tab before the pre-check rather than
+	 * after it. Encryption is the only await that sits in the middle, so gating the first
+	 * `subtle.encrypt` call is what puts another tab inside the window the in-transaction
+	 * guards exist to close.
+	 */
+	function parkMigrationEncrypt(): { reached: Promise<void>; release: () => void } {
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let signalReached = () => {};
+		let signalMissed = (_reason: Error) => {};
+		const reached = new Promise<void>((resolve, reject) => {
+			signalReached = resolve;
+			signalMissed = reject;
+		});
+		const missed = setTimeout(
+			() => signalMissed(new Error("migration never reached encrypt")),
+			3_000,
+		);
+		const realEncrypt = globalThis.crypto.subtle.encrypt.bind(globalThis.crypto.subtle);
+		let seen = 0;
+		vi.spyOn(globalThis.crypto.subtle, "encrypt").mockImplementation(async (...args) => {
+			seen += 1;
+			if (seen > 1) return realEncrypt(...args);
+			clearTimeout(missed);
+			signalReached();
+			await gate;
+			return realEncrypt(...args);
+		});
+		void reached.catch(() => undefined);
+		return { reached, release };
+	}
+
+	it("does not import a clear-text slot revoked while the migration was encrypting", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
+		const tabB = await openSecondTab();
+		const tabA = new BrowserKeychainAdapter();
+
+		// Tab B has read an unsettled slot and an empty vault, and is now encrypting what it
+		// captured. Both reads were true when it made them.
+		const suspended = parkMigrationEncrypt();
+		const migrating = tabB.getKey("anthropic");
+		await suspended.reached;
+
+		// The user revokes the provider in the foreground tab and is told it worked.
+		await expect(tabA.deleteKey("anthropic")).resolves.toBeUndefined();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+
+		suspended.release();
+		// Tab B resumes holding a credential the user has since thrown away. Its pre-check is
+		// stale, so only the marker re-read inside the write transaction can stop it storing
+		// the value — and a resurrection here is silent, since the migration reports the key
+		// it captured either way.
+		await migrating;
+
+		expect(await tabA.hasKey("anthropic")).toBe(false);
+		expect(await countSecrets()).toBe(0);
+	});
+
+	it("does not import a clear-text slot replaced while the migration was encrypting", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
+		const tabB = await openSecondTab();
+		const tabA = new BrowserKeychainAdapter();
+
+		const suspended = parkMigrationEncrypt();
+		const migrating = tabB.getKey("anthropic");
+		await suspended.reached;
+
+		// The user types a new key in the foreground tab. That save writes a marker too, so the
+		// count re-read is only load-bearing for the window where a record exists without one:
+		// a save whose slot was already absent takes the `leave-slot` path.
+		localStorage.removeItem(LEGACY_SLOT);
+		await tabA.setKey("anthropic", "sk-ant-replacement");
+
+		suspended.release();
+		await migrating;
+
+		// Reverting to the old key would be indistinguishable from the save silently failing.
+		expect(await tabA.getKey("anthropic")).toBe("sk-ant-replacement");
+		expect(await countSecrets()).toBe(1);
+	});
+
 	it("does not resurrect a revoked key when a read races the delete", async () => {
 		const tabA = new BrowserKeychainAdapter();
 		await tabA.setKey("anthropic", SECRET);
@@ -1215,9 +1334,11 @@ describe("two tabs acting on the same provider", () => {
 		await expect(tabA.deleteKey("anthropic")).resolves.toBeUndefined();
 
 		suspended.release();
-		// Tab B now resumes against a vault the delete has already changed. With the guard read
-		// and the write in separate transactions, tab B still believes nothing is stored and
-		// writes the clear-text value it captured — and nothing anywhere reports a problem.
+		// Tab B now resumes against a vault the delete has already changed. Parking the
+		// connection stalls it before its pre-check rather than inside the window between that
+		// check and the write, so what this samples is the coarser ordering: a tab that opens
+		// its migration connection before the delete must still not hand back the revoked
+		// value. The narrower gap is covered by the two encrypt-parked tests above.
 		await expect(read).resolves.not.toBe("sk-ant-revoked");
 
 		expect(await tabA.getKey("anthropic")).toBeNull();
