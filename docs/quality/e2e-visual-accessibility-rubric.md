@@ -23,9 +23,9 @@ not claim any of them replace human visual review.
 
 `e2e/support/accessibility.ts`'s `KNOWN_ACCESSIBILITY_EXCEPTIONS` allowlists exact,
 pre-existing `{ ruleId, target }` node pairs — never a whole rule — each tied to its own tracking
-issue (`#218` contrast, `#220` tablist structure). A new node under an already-allowlisted rule
-still fails the gate; only removing the fix from its tracking issue, or genuinely fixing the
-underlying UI, should ever shrink this list.
+issue (`#220` tablist structure). A new node under an already-allowlisted rule still fails the gate;
+only removing the fix from its tracking issue, or genuinely fixing the underlying UI, should ever
+shrink this list.
 
 ## What "automated" and "partially automated" actually verify
 

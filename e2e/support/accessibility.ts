@@ -28,14 +28,18 @@ type AccessibilityViolationNode = AccessibilityViolation["nodes"][number];
 
 /**
  * Run an axe-core scan against the current page. This is the sole AxeBuilder integration point;
- * extend its options when scoped scanning gains a real caller instead of constructing AxeBuilder
- * in another module.
+ * optional `include` selectors scope a scan to specific regression targets without changing the
+ * full-page default used by the accessibility gate.
  */
 export function scanAccessibility(
 	page: Page,
-	opts?: { tags?: string[] },
+	opts?: { tags?: string[]; include?: readonly string[] },
 ): Promise<AxeAnalyzeResult> {
-	return new AxeBuilder({ page }).withTags(opts?.tags ?? ["wcag2a", "wcag2aa"]).analyze();
+	const builder = new AxeBuilder({ page }).withTags(opts?.tags ?? ["wcag2a", "wcag2aa"]);
+	for (const selector of opts?.include ?? []) {
+		builder.include(selector);
+	}
+	return builder.analyze();
 }
 
 /** The exact normalized axe target selector this module matches exceptions against everywhere. */
@@ -84,9 +88,6 @@ export interface AccessibilityException {
  * over from the plan's earlier 4.10.2 probe. Each entry is one exact node target, never a whole
  * rule id: a new node under the same rule elsewhere still fails.
  *
- * - `color-contrast` (serious): the pre-model welcome screen's de-emphasized caption text, using
- *   Tailwind `text-muted-foreground/60` and `/40` opacity utilities — a deliberate low-emphasis
- *   design choice that fails strict WCAG AA contrast by construction. Tracked by #218.
  * - `aria-required-children` (critical): the document tab strip's `role="tablist"` container,
  *   whose actual `role="tab"` children are one level deeper than axe-core expects, alongside
  *   sibling close/pin buttons per this repo's deliberate tab-accessibility design
@@ -95,14 +96,6 @@ export interface AccessibilityException {
  *   recorded on its tracking issue rather than resolved here. Tracked by #220.
  */
 export const KNOWN_ACCESSIBILITY_EXCEPTIONS: readonly AccessibilityException[] = [
-	{ ruleId: "color-contrast", target: ".mb-3", issue: 218 },
-	{
-		ruleId: "color-contrast",
-		target: ".bottom-0 > .text-muted-foreground\\/60:nth-child(1)",
-		issue: 218,
-	},
-	{ ruleId: "color-contrast", target: ".hover\\:text-muted-foreground", issue: 218 },
-	{ ruleId: "color-contrast", target: ".text-muted-foreground\\/40", issue: 218 },
 	{ ruleId: "aria-required-children", target: ".overscroll-x-contain", issue: 220 },
 ];
 
