@@ -230,6 +230,7 @@ function AppearanceSection() {
 				<ToggleSwitch
 					checked={settings.reduceMotion}
 					onChange={(v) => updateSetting("reduceMotion", v)}
+					testId="toggle-reduce-motion"
 				/>
 			</SettingRow>
 
@@ -448,15 +449,18 @@ function SettingRow({
 function ToggleSwitch({
 	checked,
 	onChange,
+	testId,
 }: {
 	checked: boolean;
 	onChange: (value: boolean) => void;
+	testId?: string;
 }) {
 	return (
 		<button
 			type="button"
 			role="switch"
 			aria-checked={checked}
+			data-testid={testId}
 			onClick={() => onChange(!checked)}
 			className={cn(
 				"relative h-5 w-9 shrink-0 rounded-full transition-colors",
