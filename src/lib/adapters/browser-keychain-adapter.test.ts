@@ -85,10 +85,19 @@ async function writeWrapKeyStore(entries: [unknown, string][]): Promise<void> {
 }
 
 async function countWrapKeys(): Promise<number> {
+	return countStore("wrap-key");
+}
+
+/** Count the stored secret records. */
+async function countSecrets(): Promise<number> {
+	return countStore("secrets");
+}
+
+async function countStore(store: string): Promise<number> {
 	const db = await openVaultDb();
 	try {
 		return await new Promise<number>((resolve, reject) => {
-			const request = db.transaction("wrap-key", "readonly").objectStore("wrap-key").count();
+			const request = db.transaction(store, "readonly").objectStore(store).count();
 			request.onsuccess = () => resolve(request.result);
 			request.onerror = () => reject(request.error);
 		});
@@ -440,6 +449,24 @@ describe("recovering from an unreadable record", () => {
 		// records that are silently undecryptable under a brand-new key.
 		expect(await countWrapKeys()).toBe(0);
 	});
+
+	it("does not create key material while a clear-text slot is waiting to migrate", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([]);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		// The migration declines — a secret is already stored — but deciding that must not
+		// involve encrypting, because encrypting mints a wrapping key. Minting one here would
+		// re-key the vault behind the user's back, and the stored record, still encrypted under
+		// the lost key, would go from diagnosably unreadable to silently undecryptable.
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		expect(await countWrapKeys()).toBe(0);
+		// The record must survive, so restoring the profile's storage restores the key.
+		expect(await countSecrets()).toBe(1);
+	});
 });
 
 describe("storage that never responds", () => {
@@ -573,9 +600,9 @@ describe("a clear-text slot that will not erase", () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
 
-		// The marker is what stops the clear-text slot being re-imported. If it is written
-		// after the record is deleted, a failure here leaves no stored secret to outrank the
-		// slot and no marker to stop it — and the revoked key returns on the next read.
+		// The marker is what stops the clear-text slot being re-imported. Were it a separate
+		// operation from the delete, a failure here would leave no stored secret to outrank the
+		// slot and no marker to stop it — and the revoked key would return on the next read.
 		const metaFailure = failMetaStore();
 
 		const failure = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
@@ -728,15 +755,19 @@ describe("two tabs acting on the same provider", () => {
 	}
 
 	/**
-	 * Hold the `nth` vault connection open request until released, and report when it is hit.
+	 * Hold the `nth` vault connection opened from now on, and report when it is reached.
 	 *
-	 * A migration is a check followed by an act, and the window that matters is the one
-	 * between them — where a tab has decided the slot is safe to import but has not yet
-	 * written it. Each vault operation opens its own connection, so suspending an open parks
-	 * the tab in that gap. Real IndexedDB and real Web Crypto still do the work; only the
-	 * delivery of one connection is deferred, which is what a scheduler does to a backgrounded
-	 * tab. Starting both tabs together instead samples whichever interleaving the event loop
-	 * happens to pick, and passes against code that has the race.
+	 * Every vault operation opens its own connection, so suspending one parks a tab between
+	 * two of its operations — the gap a check-then-act spans, and the gap a backgrounded tab
+	 * sits in when the scheduler deprioritizes it. Real IndexedDB and real Web Crypto still do
+	 * the work; only the delivery of one connection is deferred. Starting two tabs together
+	 * instead samples whichever interleaving the event loop happens to pick, and passes
+	 * against code that has the race.
+	 *
+	 * `nth` counts connections rather than naming an operation, so it moves if the operations
+	 * under test change how many they open. `reached` therefore rejects instead of leaving the
+	 * test to time out silently on a park that is never hit — a park landing somewhere
+	 * harmless would let these tests pass vacuously.
 	 */
 	function parkVaultOpen(nth: number): { reached: Promise<void>; release: () => void } {
 		let release = () => {};
@@ -744,11 +775,17 @@ describe("two tabs acting on the same provider", () => {
 			release = resolve;
 		});
 		let signalReached = () => {};
-		const reached = new Promise<void>((resolve) => {
+		let signalMissed = (_reason: Error) => {};
+		const reached = new Promise<void>((resolve, reject) => {
 			signalReached = resolve;
+			signalMissed = reject;
 		});
 		const realOpen = globalThis.indexedDB.open.bind(globalThis.indexedDB);
 		let seen = 0;
+		const missed = setTimeout(
+			() => signalMissed(new Error(`park never reached: wanted vault open #${nth}, saw ${seen}`)),
+			1_000,
+		);
 		vi.spyOn(globalThis.indexedDB, "open").mockImplementation((name, version) => {
 			seen += 1;
 			if (seen !== nth) return realOpen(name, version);
@@ -759,6 +796,7 @@ describe("two tabs acting on the same provider", () => {
 				onblocked: null,
 				result: undefined,
 			} as unknown as IDBOpenDBRequest;
+			clearTimeout(missed);
 			signalReached();
 			void gate.then(() => {
 				const real = realOpen(name, version);
@@ -788,9 +826,13 @@ describe("two tabs acting on the same provider", () => {
 		// Tab B starts migrating the clear-text slot and stalls part-way through. No fault is
 		// injected into storage and both tabs' operations succeed on their own terms; the only
 		// thing arranged is the order, which a backgrounded tab produces by itself.
+		// #1 is the migration's own connection; #2 is the read that follows it.
 		const suspended = parkVaultOpen(2);
 		const read = tabB.getKey("anthropic");
 		await suspended.reached;
+		// Parked before the delete, so the race really is being sampled: the vault still holds
+		// the key tab A is about to remove.
+		expect(await countSecrets()).toBe(1);
 
 		// The user revokes the key in the foreground tab, and is told it worked.
 		await expect(tabA.deleteKey("anthropic")).resolves.toBeUndefined();
@@ -806,18 +848,28 @@ describe("two tabs acting on the same provider", () => {
 		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
 	});
 
-	it("keeps a delete final when the other tab migrates afterwards", async () => {
+	it("does not discard a key re-entered elsewhere while a damaged one is dropped", async () => {
 		const tabA = new BrowserKeychainAdapter();
 		await tabA.setKey("anthropic", SECRET);
-		await tabA.deleteKey("anthropic");
-		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
-
-		// The marker outlives the tab that wrote it, so a tab opened later — or one that was
-		// idle through the delete — still discards the slot instead of importing it.
+		await corruptStoredRecord("anthropic");
 		const tabB = await openSecondTab();
 
-		expect(await tabB.getKey("anthropic")).toBeNull();
-		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+		// Tab A reads a damaged record and decides to drop it. Suspending the connection that
+		// drop opens puts the decision and the deletion either side of a real gap — which is
+		// where the user goes when a key stops working: to another tab, to re-enter it.
+		// #1 is the read that finds the damage; #2 is the drop it decides on.
+		const suspended = parkVaultOpen(2);
+		const read = tabA.getKey("anthropic");
+		await suspended.reached;
+		await tabB.setKey("anthropic", "sk-ant-reentered");
+		suspended.release();
+
+		await expect(read).resolves.toBeNull();
+		// The drop must apply to the record it was decided for, not to whatever is stored by
+		// the time it runs. Otherwise the key the user just re-entered disappears with no error
+		// anywhere, and a retirement marker is left behind that nothing can clear.
+		expect(await tabB.getKey("anthropic")).toBe("sk-ant-reentered");
+		expect(await tabA.getKey("anthropic")).toBe("sk-ant-reentered");
 	});
 });
 

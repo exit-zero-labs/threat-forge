@@ -49,9 +49,9 @@ const STORE_SECRETS = "secrets";
 /**
  * Holds markers that describe a provider rather than store its secret.
  *
- * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`. A
- * marker keyed into the secrets store would also collide with the provider ids that store
- * uses as keys, which is what {@link LEGACY_RETIRED_PREFIX} exists to avoid.
+ * Separate from {@link STORE_SECRETS} so every record in that store is a `SecretRecord`: a
+ * marker keyed into it would survive a delete by exact key, and every reader of that store
+ * would have to tolerate two unrelated record shapes.
  */
 const STORE_META = "meta";
 
@@ -106,6 +106,20 @@ export class KeyVaultError extends Error {
 		this.name = "KeyVaultError";
 		this.reason = reason;
 	}
+}
+
+/**
+ * The record each `corrupt` error was raised for.
+ *
+ * Held here rather than on the error so nothing that logs or serializes a `KeyVaultError` can
+ * pick up stored ciphertext, and keyed weakly so it disappears with the error.
+ */
+const corruptRecords = new WeakMap<KeyVaultError, SecretRecord>();
+
+function corruptRecord(record: SecretRecord): KeyVaultError {
+	const error = new KeyVaultError("corrupt", CORRUPT_MESSAGE);
+	corruptRecords.set(error, record);
+	return error;
 }
 
 const UNAVAILABLE_MESSAGE =
@@ -390,12 +404,6 @@ async function withVault<T>(operation: (db: IDBDatabase) => Promise<T>): Promise
 	}
 }
 
-/**
- * Encrypt `secret` under the vault's wrapping key and store it for `id`.
- *
- * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
- * caller must surface that failure rather than storing the value in clear text.
- */
 /** Encrypt `secret` under the vault's wrapping key, minting one if the vault has none. */
 async function encryptSecret(db: IDBDatabase, secret: string): Promise<SecretRecord> {
 	const subtle = requireSubtle();
@@ -411,6 +419,12 @@ async function encryptSecret(db: IDBDatabase, secret: string): Promise<SecretRec
 	return { iv, ciphertext: new Uint8Array(encrypted) };
 }
 
+/**
+ * Encrypt `secret` under the vault's wrapping key and store it for `id`.
+ *
+ * @throws KeyVaultError when the vault cannot be opened or Web Crypto is unavailable. The
+ * caller must surface that failure rather than storing the value in clear text.
+ */
 export async function putSecret(id: string, secret: string): Promise<void> {
 	await withVault(async (db) => {
 		const record = await encryptSecret(db, secret);
@@ -435,6 +449,7 @@ export async function getSecret(id: string): Promise<string | null> {
 		const stored = await awaitRequest(store.get(id));
 		if (stored === undefined) return null;
 		const record = readSecretRecord(stored);
+		// Unreadable as a record at all, so there is nothing to compare a later drop against.
 		if (!record) throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
 
 		const wrapKey = await readWrapKey(db);
@@ -452,7 +467,7 @@ export async function getSecret(id: string): Promise<string | null> {
 			// a fault in the crypto layer, not evidence about this record — classifying it as
 			// `corrupt` would let a transient failure delete a perfectly good key.
 			if (isOperationError(error)) {
-				throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
+				throw corruptRecord(record);
 			}
 			throw vaultCorrupt();
 		}
@@ -485,6 +500,12 @@ export async function hasSecret(id: string): Promise<boolean> {
  * The marker lives in the vault rather than in `localStorage` because the only situation that
  * needs it is one where `localStorage` has already proven unreliable: a browser that refuses
  * to erase the clear-text slot cannot be trusted to hold a note saying it was dismissed.
+ *
+ * It is written on every delete, including for providers that never had a clear-text slot,
+ * and there is no way to clear one. Both are deliberate: deciding whether a slot exists would
+ * mean reading `localStorage`, which is exactly the source this marker exists to stop
+ * trusting, and a marker that could be cleared would not be a durable record of the user's
+ * intent. The cost is one small record per provider the user has ever deleted a key for.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
@@ -498,8 +519,51 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
 }
 
 /**
- * Store `secret` for `id` only if the vault has neither a secret nor a retirement marker for
- * it, and report whether it was stored.
+ * Drop the record that `error` was raised for, and settle `id`'s clear-text slot with it.
+ *
+ * Conditional on the stored bytes still being the ones that failed to decrypt. Reading,
+ * decrypting and then deleting spans several transactions, so another tab can save a working
+ * key in between — and deleting by id alone would throw that key away and leave behind a
+ * retirement marker no path can clear. Comparing inside the write transaction makes the drop
+ * apply only to the damaged record it was decided for.
+ *
+ * Does nothing when `error` carries no record, which is the case for a value too malformed to
+ * read back as one. There is nothing to compare then, and dropping unconditionally is the
+ * behaviour this exists to avoid.
+ */
+export async function dropUnreadableSecret(id: string, error: KeyVaultError): Promise<void> {
+	const expected = corruptRecords.get(error);
+	if (!expected) return;
+	await withVault(async (db) => {
+		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
+		const secrets = tx.objectStore(STORE_SECRETS);
+		await new Promise<void>((resolve, reject) => {
+			// Chained inside the callback rather than awaited, to keep the transaction live.
+			const current = secrets.get(id);
+			current.onsuccess = () => {
+				const stored = readSecretRecord(current.result);
+				if (!stored || !sameRecord(stored, expected)) return;
+				secrets.delete(id);
+				tx.objectStore(STORE_META).put(true, `${LEGACY_RETIRED_PREFIX}${id}`);
+			};
+			tx.oncomplete = () => resolve();
+			tx.onabort = () => reject(unavailable());
+			tx.onerror = () => reject(unavailable());
+		});
+	});
+}
+
+function sameRecord(a: SecretRecord, b: SecretRecord): boolean {
+	return (
+		a.iv.length === b.iv.length &&
+		a.ciphertext.length === b.ciphertext.length &&
+		a.iv.every((byte, index) => byte === b.iv[index]) &&
+		a.ciphertext.every((byte, index) => byte === b.ciphertext[index])
+	);
+}
+
+/**
+ * Store `secret` for `id` only if the vault has neither a secret nor a retirement marker.
  *
  * Migration is a check-then-act, and split across transactions it loses to a concurrent
  * delete: a tab that reads "not retired, not stored", is descheduled while another tab
@@ -510,18 +574,27 @@ export async function retireAndDeleteSecret(id: string): Promise<void> {
  * transaction either wholly precedes the delete, whose marker and delete then apply on top,
  * or wholly follows it and sees the marker.
  *
- * Encryption happens before the transaction opens, since awaiting Web Crypto inside one would
- * let it commit early. Encrypting a value that then turns out not to need storing is wasted
- * work in a path that runs once per profile, not a correctness problem.
+ * Encryption happens before the write transaction opens, since awaiting Web Crypto inside one
+ * would let it commit early.
  */
-export async function importLegacySecret(id: string, secret: string): Promise<boolean> {
+export async function importLegacySecret(id: string, secret: string): Promise<void> {
 	return withVault(async (db) => {
+		// Read-only pre-check, purely so the common declines cost nothing and, more importantly,
+		// so `encryptSecret` is not reached on a read. Encrypting mints a wrapping key when the
+		// vault has none, which would turn the diagnosable "records exist but the key is gone"
+		// state into a silent one — the invariant `getSecret` documents. The authoritative
+		// answer is still the in-transaction check below; this only declines early.
+		const check = db.transaction([STORE_SECRETS, STORE_META], "readonly");
+		const retiredEarly = check.objectStore(STORE_META).count(`${LEGACY_RETIRED_PREFIX}${id}`);
+		const existingEarly = check.objectStore(STORE_SECRETS).count(id);
+		if ((await awaitRequest(retiredEarly)) > 0) return;
+		if ((await awaitRequest(existingEarly)) > 0) return;
+
 		const record = await encryptSecret(db, secret);
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
 		const meta = tx.objectStore(STORE_META);
 		const secrets = tx.objectStore(STORE_SECRETS);
-		return new Promise<boolean>((resolve, reject) => {
-			let stored = false;
+		return new Promise<void>((resolve, reject) => {
 			// Chained inside the success callbacks rather than awaited, to keep the transaction
 			// live across the decision.
 			const retired = meta.count(`${LEGACY_RETIRED_PREFIX}${id}`);
@@ -533,13 +606,10 @@ export async function importLegacySecret(id: string, secret: string): Promise<bo
 					// A stored secret outranks the slot: importing would revert a key the user
 					// replaced while the browser was refusing to erase the old clear-text one.
 					if (existing.result > 0) return;
-					const put = secrets.put(record, id);
-					put.onsuccess = () => {
-						stored = true;
-					};
+					secrets.put(record, id);
 				};
 			};
-			tx.oncomplete = () => resolve(stored);
+			tx.oncomplete = () => resolve();
 			tx.onabort = () => reject(unavailable());
 			tx.onerror = () => reject(unavailable());
 		});
