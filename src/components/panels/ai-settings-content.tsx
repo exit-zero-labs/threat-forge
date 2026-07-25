@@ -53,13 +53,23 @@ export function AiSettingsContent() {
 
 	useEffect(() => {
 		async function checkStatus() {
-			try {
-				const adapter = await getKeychainAdapter();
-				const anthropicStatus = await adapter.hasKey("anthropic");
-				const openaiStatus = await adapter.hasKey("openai");
-				setKeyStatus({ anthropic: anthropicStatus, openai: openaiStatus });
-			} catch {
-				// Ignore errors — show as unconfigured
+			const adapter = await getKeychainAdapter().catch(() => null);
+			if (!adapter) return;
+			// Settled independently so one provider's failure does not erase the other's status.
+			// A damaged browser vault rejects for every provider that has a record, and reporting
+			// that as "no API key configured" hides a recoverable fault behind a state the user
+			// would try to fix by entering a key — which is the one thing that will not help.
+			const [anthropic, openai] = await Promise.allSettled([
+				adapter.hasKey("anthropic"),
+				adapter.hasKey("openai"),
+			]);
+			setKeyStatus({
+				anthropic: anthropic.status === "fulfilled" && anthropic.value,
+				openai: openai.status === "fulfilled" && openai.value,
+			});
+			const failure = [anthropic, openai].find((result) => result.status === "rejected");
+			if (failure?.status === "rejected") {
+				setMessage({ type: "error", text: errorText(failure.reason) });
 			}
 		}
 		void checkStatus();

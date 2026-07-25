@@ -59,8 +59,7 @@ const STORE_META = "meta";
  * and must never be imported again.
  *
  * Built in one place because the pre-check, the authoritative guard and both writers must
- * agree; a guard that reads a different key than the writer writes reads as "not retired"
- * forever, and the caller erases the clear-text slot on the strength of it.
+ * agree on it.
  */
 function retiredKey(id: string): string {
 	return `legacy-retired:${id}`;
@@ -323,7 +322,7 @@ function awaitWrite(tx: IDBTransaction, ...requests: IDBRequest[]): Promise<void
  * commits as soon as the event loop drains with no pending request against it — holding one
  * open across `generateKey` would silently drop the write.
  */
-async function getOrCreateWrapKey(db: IDBDatabase): Promise<CryptoKey> {
+async function getOrCreateWrapKey(db: IDBDatabase, mint: MintPolicy): Promise<CryptoKey> {
 	const subtle = requireSubtle();
 
 	const existing = await readWrapKey(db);
@@ -333,8 +332,19 @@ async function getOrCreateWrapKey(db: IDBDatabase): Promise<CryptoKey> {
 		"encrypt",
 		"decrypt",
 	]);
-	return installWrapKey(db, candidate);
+	return installWrapKey(db, candidate, mint);
 }
+
+/**
+ * Whether a caller may create the vault's wrapping key when the vault holds records it
+ * cannot read.
+ *
+ * `"always"` is for re-entry: the user is supplying a fresh credential, so a vault whose key
+ * is gone has to be able to start over or they are locked out permanently.
+ * `"only-when-empty"` is for migration, which is not a user asking to store anything — it
+ * runs on a read — so it must not decide that unreadable records are disposable.
+ */
+type MintPolicy = "always" | "only-when-empty";
 
 /** Read the stored wrapping key, or `null` when the vault has not been initialized yet. */
 async function readWrapKey(db: IDBDatabase): Promise<CryptoKey | null> {
@@ -359,10 +369,20 @@ async function readWrapKey(db: IDBDatabase): Promise<CryptoKey | null> {
  * and orphaning everything already encrypted under it. Resolution waits for the commit so a
  * caller never encrypts under a wrapping key whose write later aborts, which would leave a
  * permanently undecryptable record behind.
+ *
+ * Under `"only-when-empty"` the same transaction also counts the secrets, so a vault that
+ * still holds records refuses to mint rather than orphaning them. That check belongs here
+ * and not in the caller: a caller that looks first and mints second loses to a wrap-key wipe
+ * landing in between, which is precisely the state this refuses to create.
  */
-function installWrapKey(db: IDBDatabase, candidate: CryptoKey): Promise<CryptoKey> {
+function installWrapKey(
+	db: IDBDatabase,
+	candidate: CryptoKey,
+	mint: MintPolicy,
+): Promise<CryptoKey> {
 	return new Promise((resolve, reject) => {
-		const tx = db.transaction(STORE_WRAP, "readwrite");
+		const stores = mint === "always" ? [STORE_WRAP] : [STORE_WRAP, STORE_SECRETS];
+		const tx = db.transaction(stores, "readwrite");
 		const read = tx.objectStore(STORE_WRAP).get(WRAP_KEY_ID);
 		let winner: CryptoKey | null = null;
 		let failure: KeyVaultError | null = null;
@@ -381,8 +401,23 @@ function installWrapKey(db: IDBDatabase, candidate: CryptoKey): Promise<CryptoKe
 				tx.abort();
 				return;
 			}
-			winner = candidate;
-			tx.objectStore(STORE_WRAP).put(candidate, WRAP_KEY_ID);
+			if (mint === "always") {
+				winner = candidate;
+				tx.objectStore(STORE_WRAP).put(candidate, WRAP_KEY_ID);
+				return;
+			}
+			const stored = tx.objectStore(STORE_SECRETS).count();
+			stored.onsuccess = () => {
+				if (stored.result > 0) {
+					// Records survive but their key does not. A new key cannot read them, so
+					// minting one would convert a diagnosable vault into permanently silent loss.
+					failure = vaultCorrupt();
+					tx.abort();
+					return;
+				}
+				winner = candidate;
+				tx.objectStore(STORE_WRAP).put(candidate, WRAP_KEY_ID);
+			};
 		};
 
 		tx.oncomplete = () => (winner ? resolve(winner) : reject(failure ?? unavailable()));
@@ -411,9 +446,13 @@ async function withVault<T>(operation: (db: IDBDatabase) => Promise<T>): Promise
 }
 
 /** Encrypt `secret` under the vault's wrapping key, minting one if the vault has none. */
-async function encryptSecret(db: IDBDatabase, secret: string): Promise<SecretRecord> {
+async function encryptSecret(
+	db: IDBDatabase,
+	secret: string,
+	mint: MintPolicy,
+): Promise<SecretRecord> {
 	const subtle = requireSubtle();
-	const wrapKey = await getOrCreateWrapKey(db);
+	const wrapKey = await getOrCreateWrapKey(db, mint);
 	const iv = globalThis.crypto.getRandomValues(new Uint8Array(IV_BYTES));
 	const encrypted = await subtle.encrypt(
 		{ name: "AES-GCM", iv },
@@ -433,7 +472,7 @@ async function encryptSecret(db: IDBDatabase, secret: string): Promise<SecretRec
  */
 export async function putSecret(id: string, secret: string): Promise<void> {
 	await withVault(async (db) => {
-		const record = await encryptSecret(db, secret);
+		const record = await encryptSecret(db, secret, "always");
 		const tx = db.transaction(STORE_SECRETS, "readwrite");
 		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).put(record, id));
 	});
@@ -508,8 +547,8 @@ export async function hasSecret(id: string): Promise<boolean> {
  *
  * It is written on every delete, including for providers that never had a clear-text slot,
  * and there is no way to clear one. Both are deliberate: whether a slot exists is decided by
- * a `localStorage` read that can throw or lie, and a durable record must not be gated on one;
- * and a marker that could be cleared would not be durable. The cost is one small record per
+ * a `localStorage` read that can throw, and a durable record must not be gated on one; and a
+ * marker that could be cleared would not be durable. The cost is one small record per
  * provider the user has ever deleted a key for.
  */
 export async function retireAndDeleteSecret(id: string): Promise<void> {
@@ -604,16 +643,20 @@ export async function importLegacySecret(id: string, secret: string): Promise<vo
 			awaitRequest(check.objectStore(STORE_SECRETS).count(id)),
 			awaitRequest(check.objectStore(STORE_SECRETS).count()),
 		]);
-		// Checked before either decline, because both of them are answers, and this vault is in
-		// no state to give one. The wrapping key is shared, so minting a replacement would
-		// orphan every record already stored under the old one — and declining would let the
-		// caller erase the clear-text slot, which on an unreadable vault is the user's only
-		// remaining copy. Failing keeps the state diagnosable and both copies intact.
-		if (storedCount > 0 && !(await readWrapKey(db))) throw vaultCorrupt();
+		// Answerable without a wrapping key, and answered first: the marker is a durable record
+		// that the user revoked this credential, so the slot is a stale copy that should still
+		// be erased on sight even while the vault is damaged.
 		if (retiredCount > 0) return;
+		// Every other outcome needs the wrapping key, so a vault that has records and cannot
+		// produce one is refused rather than answered. Declining here would let the caller
+		// erase the clear-text slot, which on an unreadable vault is the user's only remaining
+		// copy. `encryptSecret` will not mint over surviving records either — that refusal is
+		// atomic and authoritative; this one only makes the answer diagnosable and keeps a
+		// readable copy alive.
+		if (storedCount > 0 && !(await readWrapKey(db))) throw vaultCorrupt();
 		if (existingCount > 0) return;
 
-		const record = await encryptSecret(db, secret);
+		const record = await encryptSecret(db, secret, "only-when-empty");
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
 		const meta = tx.objectStore(STORE_META);
 		const secrets = tx.objectStore(STORE_SECRETS);

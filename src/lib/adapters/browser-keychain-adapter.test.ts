@@ -69,6 +69,36 @@ async function openVaultDb(): Promise<IDBDatabase> {
 	});
 }
 
+/**
+ * Empty the wrap-key store immediately after the next read of it, then stop.
+ *
+ * The migration reads the wrapping key twice — once to decide it may proceed, once to
+ * encrypt under — and a loss landing between them is what a caller-side check cannot see.
+ * Firing on the read itself makes that window deterministic instead of hoping a concurrent
+ * write lands inside it. Returns a restore function; it is also self-disarming, so a run
+ * that never reaches the read cannot corrupt a later assertion.
+ */
+function wipeWrapKeyAfterRead(): () => void {
+	const original = IDBObjectStore.prototype.get;
+	let armed = true;
+	IDBObjectStore.prototype.get = function patched(this: IDBObjectStore, query: IDBValidKey) {
+		const request = original.call(this, query);
+		if (armed && this.name === "wrap-key") {
+			armed = false;
+			const db = this.transaction.db;
+			request.addEventListener("success", () => {
+				// Opened on the same connection and from inside the handler, so it is created
+				// before any transaction the caller opens next and therefore commits first.
+				db.transaction("wrap-key", "readwrite").objectStore("wrap-key").clear();
+			});
+		}
+		return request;
+	} as typeof IDBObjectStore.prototype.get;
+	return () => {
+		IDBObjectStore.prototype.get = original;
+	};
+}
+
 /** Replace the contents of the wrap-key store, simulating a damaged vault. */
 async function writeWrapKeyStore(entries: [unknown, string][]): Promise<void> {
 	const db = await openVaultDb();
@@ -503,6 +533,84 @@ describe("recovering from an unreadable record", () => {
 		// The record must survive, so restoring the profile's storage restores the key.
 		expect(await countSecrets()).toBe(1);
 	});
+
+	it("drops a stored value too malformed to read back as a record", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		const db = await openVaultDb();
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("secrets", "readwrite");
+			tx.objectStore("secrets").put({ iv: "not-bytes", ciphertext: "nope" }, "anthropic");
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+		db.close();
+
+		// Nothing here can be compared byte for byte, but the record still has to go. Left in
+		// place it is counted forever: the panel shows the provider as configured while every
+		// request fails for want of a key, and no path removes it.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await adapter.hasKey("anthropic")).toBe(false);
+		expect(await countSecrets()).toBe(0);
+	});
+
+	it("erases a clear-text slot the user already revoked even while the vault is damaged", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.setKey("openai", "sk-openai-stored");
+		await adapter.deleteKey("anthropic");
+		await writeWrapKeyStore([]);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked-cleartext");
+
+		// The marker says the user revoked this credential, and reading a marker needs no
+		// wrapping key — so this answers even though the vault cannot decrypt anything, and the
+		// stale clear-text copy does not outlive the damage. Refusing here instead would leave
+		// a revoked key sitting in `localStorage` until the profile was repaired.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+		// The other provider's record is untouched: nothing was minted to strand it.
+		expect(await countSecrets()).toBe(1);
+		expect(await countWrapKeys()).toBe(0);
+	});
+
+	it("lets the user store a new key after the wrapping key is lost", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.setKey("openai", "sk-openai-stored");
+		await writeWrapKeyStore([]);
+
+		// Migration refuses to mint over surviving records, but this is the user handing over a
+		// fresh credential. Refusing here too would leave the vault permanently unusable with no
+		// in-app way out, so storing has to be able to start the vault over.
+		await expect(adapter.setKey("anthropic", "sk-ant-reentered")).resolves.toBeUndefined();
+		expect(await adapter.getKey("anthropic")).toBe("sk-ant-reentered");
+		// The record that predates the new key cannot be read under it. Recovery does not
+		// resurrect it — it is dropped on the next read, so the panel stops claiming a key the
+		// user cannot use.
+		expect(await adapter.getKey("openai")).toBeNull();
+		expect(await adapter.hasKey("openai")).toBe(false);
+	});
+
+	it("refuses to mint over surviving records when the key disappears mid-migration", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		localStorage.setItem("tf-api-key-openai", "sk-openai-cleartext");
+
+		// The migration reads the wrapping key to decide it may proceed, then reads it again to
+		// encrypt under. Wiping the store between those two reads is the window a caller-side
+		// check cannot close, and the only way to reach the install path's own refusal.
+		const restore = wipeWrapKeyAfterRead();
+
+		const error = await adapter.getKey("openai").catch((caught: unknown) => caught);
+
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		// A key installed here could not read the `anthropic` record, so installing one would
+		// destroy it silently. Refusing keeps both the record and the clear-text slot.
+		expect(await countWrapKeys()).toBe(0);
+		expect(await countSecrets()).toBe(1);
+		expect(localStorage.getItem("tf-api-key-openai")).toBe("sk-openai-cleartext");
+		restore();
+	});
 });
 
 describe("storage that never responds", () => {
@@ -850,8 +958,9 @@ describe("two tabs acting on the same provider", () => {
 			});
 			return parked;
 		});
-		// A test that builds a park and never awaits `reached` would otherwise surface the miss
-		// as an unhandled rejection instead of a failure.
+		// Every park must be awaited through `reached` — that await is what turns a missed park
+		// into a failure. This only keeps a test that aborts before reaching its await from
+		// emitting a late rejection that would be attributed to whichever test ran next.
 		void reached.catch(() => undefined);
 		return { reached, release };
 	}
@@ -887,24 +996,31 @@ describe("two tabs acting on the same provider", () => {
 		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
 	});
 
-	it("drops a stored value too malformed to read back as a record", async () => {
-		const adapter = new BrowserKeychainAdapter();
-		await adapter.setKey("anthropic", SECRET);
-		const db = await openVaultDb();
+	it("does not discard a key re-entered elsewhere while an unparseable one is dropped", async () => {
+		const tabA = new BrowserKeychainAdapter();
+		await tabA.setKey("anthropic", SECRET);
+		const seed = await openVaultDb();
 		await new Promise<void>((resolve, reject) => {
-			const tx = db.transaction("secrets", "readwrite");
+			const tx = seed.transaction("secrets", "readwrite");
 			tx.objectStore("secrets").put({ iv: "not-bytes", ciphertext: "nope" }, "anthropic");
 			tx.oncomplete = () => resolve();
 			tx.onerror = () => reject(tx.error);
 		});
-		db.close();
+		seed.close();
+		const tabB = await openSecondTab();
 
-		// Nothing here can be compared byte for byte, but the record still has to go. Left in
-		// place it is counted forever: the panel shows the provider as configured while every
-		// request fails for want of a key, and no path removes it.
-		expect(await adapter.getKey("anthropic")).toBeNull();
-		expect(await adapter.hasKey("anthropic")).toBe(false);
-		expect(await countSecrets()).toBe(0);
+		// The same gap as the damaged-record case, but for a value with no bytes to compare.
+		// "Unreadable" is all that identifies it, so the drop has to re-establish that and not
+		// fall back to deleting by id.
+		const suspended = parkVaultOpen(2);
+		const read = tabA.getKey("anthropic");
+		await suspended.reached;
+		await tabB.setKey("anthropic", "sk-ant-reentered");
+		suspended.release();
+
+		await expect(read).resolves.toBeNull();
+		expect(await tabB.getKey("anthropic")).toBe("sk-ant-reentered");
+		expect(await tabA.getKey("anthropic")).toBe("sk-ant-reentered");
 	});
 
 	it("does not discard a key re-entered elsewhere while a damaged one is dropped", async () => {
