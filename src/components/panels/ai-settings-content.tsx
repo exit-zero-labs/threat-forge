@@ -7,6 +7,19 @@ import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
+/** Authored so a bundler or network detail never reaches the user as an error message. */
+const ADAPTER_LOAD_ERROR = "Key storage could not be loaded. Reload the page and try again.";
+
+/**
+ * Load the keychain adapter, or `null` when the module itself will not load.
+ *
+ * Adapters author their own user-safe messages; a failure to load one does not, and would
+ * otherwise render a bundle URL and a hash as the explanation.
+ */
+async function loadAdapter(): Promise<Awaited<ReturnType<typeof getKeychainAdapter>> | null> {
+	return getKeychainAdapter().catch(() => null);
+}
+
 const PROVIDERS: { value: AiProvider; label: string }[] = [
 	{ value: "anthropic", label: "Anthropic (Claude)" },
 	{ value: "openai", label: "OpenAI (GPT)" },
@@ -29,9 +42,10 @@ export function AiSettingsContent() {
 	const settings = useSettingsStore((s) => s.settings);
 	const updateSetting = useSettingsStore((s) => s.updateSetting);
 
-	// Set as soon as the user saves or deletes, so a slow status check that started before it
-	// cannot report the vault as it was and undo what they just did.
-	const mutated = useRef(false);
+	// Providers the user has saved or deleted since mount. A status check that started before
+	// one of those lands would report the vault as it was, so its answer is not applied over
+	// them — but only over them, so the other provider still gets its status and its faults.
+	const mutated = useRef(new Set<AiProvider>());
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
@@ -57,10 +71,10 @@ export function AiSettingsContent() {
 	useEffect(() => {
 		let current = true;
 		async function checkStatus() {
-			const adapter = await getKeychainAdapter().catch(() => null);
-			if (!current || mutated.current) return;
+			const adapter = await loadAdapter();
+			if (!current) return;
 			if (!adapter) {
-				setMessage({ type: "error", text: "Key storage could not be loaded. Reload and retry." });
+				setMessage({ type: "error", text: ADAPTER_LOAD_ERROR });
 				return;
 			}
 			// Settled independently so one provider's failure does not erase the other's status.
@@ -72,14 +86,23 @@ export function AiSettingsContent() {
 				adapter.hasKey("anthropic"),
 				adapter.hasKey("openai"),
 			]);
-			// A save can land while this is in flight, and its result is the newer truth.
-			if (!current || mutated.current) return;
-			setKeyStatus({
-				anthropic: anthropic.status === "fulfilled" && anthropic.value,
-				openai: openai.status === "fulfilled" && openai.value,
+			if (!current) return;
+			const answers: [AiProvider, PromiseSettledResult<boolean>][] = [
+				["anthropic", anthropic],
+				["openai", openai],
+			];
+			const fresh = answers.filter(([name]) => !mutated.current.has(name));
+			setKeyStatus((prev) => {
+				const next = { ...prev };
+				for (const [name, answer] of fresh) {
+					next[name] = answer.status === "fulfilled" && answer.value;
+				}
+				return next;
 			});
-			const failure = [anthropic, openai].find((result) => result.status === "rejected");
-			if (failure) setMessage({ type: "error", text: errorText(failure.reason) });
+			const failure = fresh.find(([, answer]) => answer.status === "rejected")?.[1];
+			if (failure?.status === "rejected") {
+				setMessage({ type: "error", text: errorText(failure.reason) });
+			}
 		}
 		void checkStatus();
 		return () => {
@@ -90,13 +113,16 @@ export function AiSettingsContent() {
 	async function handleSave() {
 		if (!apiKey.trim()) return;
 
-		mutated.current = true;
 		setSaving(true);
 		setMessage(null);
 
 		try {
-			const adapter = await getKeychainAdapter();
+			const adapter = await loadAdapter();
+			if (!adapter) throw new Error(ADAPTER_LOAD_ERROR);
 			await adapter.setKey(provider, apiKey.trim());
+			// Recorded once the write has actually landed, so a save that fails does not leave
+			// the mount check discarded and the panel stuck reporting no key at all.
+			mutated.current.add(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: true }));
 			setApiKey("");
 			setShowKey(false);
@@ -113,13 +139,14 @@ export function AiSettingsContent() {
 	}
 
 	async function handleDelete() {
-		mutated.current = true;
 		setDeleting(true);
 		setMessage(null);
 
 		try {
-			const adapter = await getKeychainAdapter();
+			const adapter = await loadAdapter();
+			if (!adapter) throw new Error(ADAPTER_LOAD_ERROR);
 			await adapter.deleteKey(provider);
+			mutated.current.add(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: false }));
 			const successText = isTauri() ? "API key removed." : "API key removed from this browser.";
 			setMessage({ type: "success", text: successText });

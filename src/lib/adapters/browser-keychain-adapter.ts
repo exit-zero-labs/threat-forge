@@ -5,6 +5,7 @@ import {
 	hasSecret,
 	importLegacySecret,
 	KeyVaultError,
+	markSupersededSlot,
 	putSecret,
 	retireAndDeleteSecret,
 } from "./browser-key-vault";
@@ -84,9 +85,14 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * a credential the user revoked cannot come back on the next read. A settled slot is still
  * erased on sight — the browser that refused the removal may since have started allowing it,
  * and this is the only path a user who revoked a key and then left the provider alone will
- * ever run again. Discarding rather than importing is the right reading of the marker: it is
- * set when the user deletes a credential and when a damaged record is dropped, and in both
- * cases the slot holds a value this vault has already settled.
+ * ever run again.
+ *
+ * A marker is set for three different reasons and they are not interchangeable. Only a
+ * revocation is the user throwing a credential away, so only a revocation is answered while
+ * the vault is too damaged to decrypt anything; a slot superseded by a later save, or settled
+ * because a record could not be read, waits for a readable vault instead of being erased on
+ * the strength of a copy that may be the last one. On a healthy vault all three discard the
+ * slot rather than importing it.
  *
  * Both guards are evaluated inside {@link importLegacySecret}'s own transaction rather than
  * here, because a check in this function and a write in another transaction can straddle a
@@ -166,7 +172,13 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 			// succeeded, and reporting an error would tell the user the opposite. It can no
 			// longer override the vault, and `deleteKey` is where a surviving clear-text
 			// credential becomes a claim that must not be made.
-			removeLegacyKey(provider);
+			if (removeLegacyKey(provider) === "erased") return;
+			// The slot survived, so the stored record is the only thing outranking it — and
+			// that record does not survive the vault being restarted after its wrapping key is
+			// lost. Settling the slot now keeps the replaced credential from coming back once
+			// the record is gone. Best effort: the save has already committed, and failing it
+			// here would report the opposite of what happened.
+			await markSupersededSlot(provider).catch(() => undefined);
 		});
 	}
 

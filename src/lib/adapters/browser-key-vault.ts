@@ -68,21 +68,37 @@ function retiredKey(id: string): string {
 /**
  * Why a provider's clear-text slot was settled.
  *
- * `"revoked"` is the user deleting a credential. `"dropped"` is this vault discarding a
- * record it could not read, which the user never asked for. Both block re-import, but only a
- * revocation licenses erasing the clear-text copy while the vault is too damaged to offer a
- * replacement — a dropped record leaves that copy as the last one there is.
+ * `"revoked"` is the user deleting a credential. `"superseded"` is a stored key replacing a
+ * clear-text slot the browser would not erase. `"dropped"` is this vault discarding a record
+ * it could not read, which the user never asked for.
+ *
+ * All three block re-import. They differ only while the vault holds records it cannot
+ * decrypt: there a revocation is still answered, because the user threw the credential away,
+ * and the other two are refused, because the clear-text copy may be the last one there is and
+ * the user asked for neither. On a readable vault all three discard the slot alike.
  */
-type RetiredReason = "revoked" | "dropped";
+type RetiredReason = "revoked" | "superseded" | "dropped";
 
 const REVOKED: RetiredReason = "revoked";
+const SUPERSEDED: RetiredReason = "superseded";
 const DROPPED: RetiredReason = "dropped";
 
-/** Read a provider's retirement marker, or `null` when it has none. */
+/**
+ * Read a provider's retirement marker, or `null` when it has none.
+ *
+ * Fails closed on anything present but unrecognised. A false negative here re-imports a
+ * clear-text credential the vault has already settled — the exact resurrection the marker
+ * exists to prevent — so an unreadable marker is still a marker. Only `undefined`, which is
+ * what IndexedDB returns for a key that was never written, means no marker.
+ *
+ * `true` is the shape written before markers carried a reason, and it only ever meant an
+ * unconditional decline, which is what a revocation is.
+ */
 function readRetiredReason(stored: unknown): RetiredReason | null {
-	if (stored === REVOKED) return REVOKED;
-	if (stored === DROPPED) return DROPPED;
-	return null;
+	if (stored === undefined) return null;
+	if (stored === REVOKED || stored === true) return REVOKED;
+	if (stored === SUPERSEDED) return SUPERSEDED;
+	return DROPPED;
 }
 
 const WRAP_KEY_ID = "aes-gcm-256-v1";
@@ -579,6 +595,26 @@ export async function hasSecret(id: string): Promise<boolean> {
  * marker that could be cleared would not be durable. The cost is one small record per
  * provider the user has ever deleted a key for.
  */
+/**
+ * Record that `id`'s clear-text slot has been superseded by a stored key.
+ *
+ * A stored record is what stops a slot the browser refuses to erase from overwriting a key
+ * the user replaced. That record is not permanent: restarting the vault after its wrapping
+ * key is lost clears it, and then nothing outranks the slot and the replaced credential comes
+ * back on the next read. This marker is the ranking fact made durable, written at the one
+ * moment it is known — a save that found the slot still readable afterwards.
+ *
+ * It is not a revocation. The user replaced a credential rather than throwing one away, and
+ * the slot may still be the only readable copy on a damaged vault, so it declines re-import
+ * without licensing an erase.
+ */
+export async function markSupersededSlot(id: string): Promise<void> {
+	await withVault(async (db) => {
+		const tx = db.transaction(STORE_META, "readwrite");
+		await awaitWrite(tx, tx.objectStore(STORE_META).put(SUPERSEDED, retiredKey(id)));
+	});
+}
+
 export async function retireAndDeleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
 		const tx = db.transaction([STORE_SECRETS, STORE_META], "readwrite");
@@ -672,8 +708,8 @@ export async function importLegacySecret(id: string, secret: string): Promise<vo
 		const retired = readRetiredReason(retiredMarker);
 		// Answerable without a wrapping key, and answered first: a revocation is a durable
 		// record that the user threw this credential away, so the stale clear-text copy is
-		// erased on sight even while the vault is damaged. A `"dropped"` marker is not that —
-		// the user never asked for it — so it waits behind the guard below.
+		// erased on sight even while the vault is damaged. The other reasons are not that —
+		// the user asked for neither — so they wait behind the guard below.
 		if (retired === REVOKED) return;
 		// Every other outcome needs the wrapping key, so a vault that has records and cannot
 		// produce one is refused rather than answered. Declining here would let the caller

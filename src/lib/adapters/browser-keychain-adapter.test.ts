@@ -100,6 +100,18 @@ function wipeWrapKeyAfterRead(): void {
 	});
 }
 
+/** Write a raw value into the vault's meta store, standing in for another build. */
+async function writeMetaValue(key: string, value: unknown): Promise<void> {
+	const db = await openVaultDb();
+	await new Promise<void>((resolve, reject) => {
+		const tx = db.transaction("meta", "readwrite");
+		tx.objectStore("meta").put(value, key);
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+	});
+	db.close();
+}
+
 /** Replace the contents of the wrap-key store, simulating a damaged vault. */
 async function writeWrapKeyStore(entries: [unknown, string][]): Promise<void> {
 	const db = await openVaultDb();
@@ -586,10 +598,56 @@ describe("recovering from an unreadable record", () => {
 		await expect(adapter.setKey("anthropic", "sk-ant-reentered")).resolves.toBeUndefined();
 		expect(await adapter.getKey("anthropic")).toBe("sk-ant-reentered");
 		// The record that predates the new key cannot be read under it. Recovery does not
-		// resurrect it — it is dropped on the next read, so the panel stops claiming a key the
-		// user cannot use.
+		// resurrect it — starting the vault over discards it in the same transaction that
+		// installs the new key, so the panel stops claiming a key the user cannot use.
 		expect(await adapter.getKey("openai")).toBeNull();
 		expect(await adapter.hasKey("openai")).toBe(false);
+	});
+
+	it("still honours a revocation recorded before markers carried a reason", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.setKey("openai", "sk-openai-stored");
+		await adapter.deleteKey("anthropic");
+		// The shape earlier builds on this branch wrote. It only ever meant an unconditional
+		// decline, and reading it as "no marker" hands back the credential the user revoked.
+		await writeMetaValue("legacy-retired:anthropic", true);
+		await writeWrapKeyStore([]);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
+
+		// Read on a damaged vault, which is where the reasons stop being interchangeable: only
+		// a revocation is answered without a wrapping key. Reading the old shape as anything
+		// weaker would leave the revoked copy sitting in clear text.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("does not create key material on a read after a record was dropped", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await corruptStoredRecord("anthropic");
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		await writeWrapKeyStore([]);
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-cleartext");
+
+		// The vault is empty now, so nothing is stranded and the marker answers on its own. What
+		// must not happen is reaching the encrypt step to get there: that mints a wrapping key,
+		// and a read must never create key material whatever the vault happens to hold.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await countWrapKeys()).toBe(0);
+	});
+
+	it("treats a marker it cannot recognise as a marker", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.deleteKey("anthropic");
+		await writeMetaValue("legacy-retired:anthropic", { reason: "from-a-later-build" });
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-revoked");
+
+		// A marker written by a build this one does not understand still says the vault settled
+		// this credential. Reading it as absence re-imports something already dealt with, so an
+		// unrecognised marker declines rather than failing open.
+		expect(await adapter.getKey("anthropic")).toBeNull();
 	});
 
 	it("recovers a clear-text copy left behind when the vault is started over", async () => {
@@ -685,6 +743,44 @@ describe("a clear-text slot that will not erase", () => {
 	function refuseLegacyRemoval(): MockInstance<Storage["removeItem"]> {
 		return vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
 	}
+
+	it("does not reinstate a replaced key when the vault is started over", async () => {
+		refuseLegacyRemoval();
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
+		const adapter = new BrowserKeychainAdapter();
+		// The old clear-text key migrates in; the browser will not erase the slot.
+		expect(await adapter.getKey("anthropic")).toBe("sk-ant-old");
+		await adapter.setKey("anthropic", "sk-ant-rotated");
+		await writeWrapKeyStore([]);
+
+		// A save for an unrelated provider restarts the vault, taking the record that outranked
+		// the slot with it. Nothing about that says the user wants their old key back, and
+		// reinstating it would hand a credential they deliberately rotated away from to every
+		// outbound request — triggered by a save for a different provider entirely.
+		await adapter.setKey("openai", "sk-openai-new");
+
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await adapter.getKey("openai")).toBe("sk-openai-new");
+	});
+
+	it("keeps a superseded clear-text copy while the vault cannot offer a replacement", async () => {
+		const refusal = refuseLegacyRemoval();
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", "sk-ant-rotated");
+		await adapter.setKey("openai", "sk-openai-stored");
+		await writeWrapKeyStore([]);
+		// The browser starts allowing removals again, so from here an erase would really land.
+		refusal.mockRestore();
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		// Replacing a key is not throwing one away. With the vault unable to decrypt the
+		// replacement, the superseded copy is the only readable credential left, so it is kept
+		// and the damage is reported instead of quietly erasing it.
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old");
+	});
 
 	/**
 	 * Make any transaction touching the vault's marker store fail, leaving the rest working.

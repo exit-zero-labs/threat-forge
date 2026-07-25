@@ -9,14 +9,14 @@ import { DEFAULT_USER_SETTINGS } from "@/types/settings";
 import { AiSettingsContent } from "./ai-settings-content";
 
 let hasKey: (provider: string) => Promise<boolean> = async () => false;
+let loadAdapter: () => Promise<unknown> = async () => ({
+	hasKey: (provider: string) => hasKey(provider),
+	setKey: async () => undefined,
+	deleteKey: async () => undefined,
+});
 
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
-	getKeychainAdapter: () =>
-		Promise.resolve({
-			hasKey: (provider: string) => hasKey(provider),
-			setKey: async () => undefined,
-			deleteKey: async () => undefined,
-		}),
+	getKeychainAdapter: () => loadAdapter(),
 }));
 
 function modelSelect(): HTMLSelectElement {
@@ -29,7 +29,13 @@ function providerSelect(): HTMLSelectElement {
 
 beforeEach(() => {
 	localStorage.clear();
+	vi.restoreAllMocks();
 	hasKey = async () => false;
+	loadAdapter = async () => ({
+		hasKey: (provider: string) => hasKey(provider),
+		setKey: async () => undefined,
+		deleteKey: async () => undefined,
+	});
 	useChatStore.setState({ provider: "anthropic" });
 	useSettingsStore.setState({ settings: { ...DEFAULT_USER_SETTINGS } });
 });
@@ -83,20 +89,69 @@ describe("key storage that cannot answer", () => {
 		expect(screen.getByText("API key configured")).toBeInTheDocument();
 	});
 
-	it("says so when the storage adapter itself will not load", async () => {
-		hasKey = async () => {
-			throw new Error("unreachable");
+	it("still applies the status of a provider the user did not touch", async () => {
+		let release: () => void = () => undefined;
+		const stalled = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		hasKey = async (provider) => {
+			await stalled;
+			return provider === "openai";
 		};
-		vi.spyOn(
-			await import("@/lib/adapters/get-keychain-adapter"),
-			"getKeychainAdapter",
-		).mockRejectedValueOnce(new Error("chunk load failed"));
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+		fireEvent.change(screen.getByPlaceholderText("sk-ant-..."), {
+			target: { value: "sk-ant-new" },
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		});
+		await act(async () => {
+			release();
+			await stalled;
+		});
+
+		// Only the saved provider's answer is stale. Discarding the whole check would leave the
+		// other provider reading "No API key configured" for a key that is really there, until
+		// the panel is closed and reopened.
+		fireEvent.change(providerSelect(), { target: { value: "openai" } });
+		expect(screen.getByText("API key configured")).toBeInTheDocument();
+	});
+
+	it("says so when the storage adapter itself will not load", async () => {
+		loadAdapter = async () => {
+			throw new Error("Failed to fetch dynamically imported module: /assets/x-9f2a1c.js");
+		};
 
 		await act(async () => {
 			render(<AiSettingsContent />);
 		});
 
 		expect(screen.getByText(/Key storage could not be loaded/)).toBeInTheDocument();
+		// A bundle path and content hash are not an explanation, and this is a surface that
+		// otherwise only ever shows messages the app authored.
+		expect(screen.queryByText(/dynamically imported module/)).not.toBeInTheDocument();
+	});
+
+	it("does not put a bundler failure in front of the user when saving", async () => {
+		loadAdapter = async () => {
+			throw new Error("Failed to fetch dynamically imported module: /assets/x-9f2a1c.js");
+		};
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+		fireEvent.change(screen.getByPlaceholderText("sk-ant-..."), {
+			target: { value: "sk-ant-new" },
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		});
+
+		expect(screen.getByText(/Key storage could not be loaded/)).toBeInTheDocument();
+		expect(screen.queryByText(/dynamically imported module/)).not.toBeInTheDocument();
 	});
 });
 
