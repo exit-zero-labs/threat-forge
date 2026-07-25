@@ -10,20 +10,12 @@
  * `null`.
  */
 
-import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resetKeyVault } from "./test-fixtures/key-vault";
 import "fake-indexeddb/auto";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import type { KeychainAdapter } from "./keychain-adapter";
 import { TauriKeychainAdapter } from "./tauri-keychain-adapter";
-
-/**
- * Reset the encrypted key vault. Since #133 browser keys live in IndexedDB, so a fresh
- * factory — not `localStorage.clear()` — is what leaves no key stored.
- */
-function resetKeyVault(): void {
-	globalThis.indexedDB = new IDBFactory();
-}
 
 beforeEach(() => {
 	resetKeyVault();

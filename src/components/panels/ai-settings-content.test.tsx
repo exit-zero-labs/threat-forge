@@ -31,6 +31,24 @@ beforeEach(() => {
 	useSettingsStore.setState({ settings: { ...DEFAULT_USER_SETTINGS } });
 });
 
+/**
+ * #133 requires the browser's storage limit to be stated in the UI without overstating the
+ * protection. This pins that sentence so it cannot silently regress or drift into a claim
+ * the implementation does not make. `isTauri()` is false under jsdom, so this is the
+ * browser copy.
+ */
+describe("the browser security notice", () => {
+	it("states that the key is encrypted and that page script can still use it", async () => {
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+
+		const notice = screen.getByText(/encrypted before being stored in this browser/i);
+		expect(notice).toHaveTextContent("a key the browser will not export");
+		expect(notice).toHaveTextContent("Anything running on this page can still use the key");
+	});
+});
+
 describe("a current catalog model", () => {
 	it("renders selected, with its description, and no legacy warning", async () => {
 		await act(async () => {

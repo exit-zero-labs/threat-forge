@@ -7,8 +7,8 @@
  * protocol, which the shared mappers own.
  */
 
-import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetKeyVault } from "./test-fixtures/key-vault";
 import "fake-indexeddb/auto";
 import { ProtocolException } from "@/lib/ai/protocol/errors";
 import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
@@ -173,24 +173,16 @@ function yieldHostTask(): Promise<void> {
 	});
 }
 
-/**
- * Discard every stored key. Since #133 the keychain is an encrypted IndexedDB vault, so
- * replacing the factory is what leaves the transport with nothing to sign a request with.
- */
-function clearStoredKeys(): void {
-	globalThis.indexedDB = new IDBFactory();
-}
-
 beforeEach(async () => {
 	vi.stubGlobal("fetch", vi.fn());
-	clearStoredKeys();
+	resetKeyVault();
 	await new BrowserKeychainAdapter().setKey("anthropic", ANTHROPIC_KEY);
 	await new BrowserKeychainAdapter().setKey("openai", "sk-openai-test-browser-key");
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
-	clearStoredKeys();
+	resetKeyVault();
 });
 
 describe("BrowserChatTransport request building", () => {
@@ -269,7 +261,7 @@ describe("BrowserChatTransport request building", () => {
 	});
 
 	it("refuses to send anything when no key is stored", async () => {
-		clearStoredKeys();
+		resetKeyVault();
 		const callbacks = recordingCallbacks();
 
 		await expect(
@@ -281,7 +273,7 @@ describe("BrowserChatTransport request building", () => {
 	});
 
 	it("names the missing key rather than reporting a transport failure", async () => {
-		clearStoredKeys();
+		resetKeyVault();
 
 		await expect(
 			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
@@ -439,6 +431,9 @@ describe("BrowserChatTransport streaming", () => {
 			const callbacks = recordingCallbacks();
 
 			const open = new BrowserChatTransport().open(anthropicRequest, callbacks);
+			// The key lookup is an IndexedDB round trip on real host tasks, so wait for the
+			// request to actually be in flight before driving the fake clock.
+			await awaitRequestIssued();
 			// The bound is per-gap, not per-request: a legitimate stream has no
 			// bounded duration, so a keep-alive inside every gap must not expire it.
 			for (let gap = 0; gap < 3; gap += 1) {
@@ -537,7 +532,7 @@ describe("BrowserChatTransport cancellation", () => {
 		// first — the old order — would reject with `no_api_key`; a caller that
 		// aborted before the request even ran wants the stop, and the desktop
 		// transport reports it first, so this one must too.
-		clearStoredKeys();
+		resetKeyVault();
 		const controller = new AbortController();
 		controller.abort();
 		const callbacks = recordingCallbacks();

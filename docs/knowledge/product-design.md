@@ -100,7 +100,7 @@ requires a separately scoped issue and privacy review.
 - **File conflicts — planned:** Detecting externally changed `.thf` files and offering recovery is tracked in [roadmap Phase 1](../plans/roadmap.md#phase-1--multi-document-local-first-workspace).
 - **Large models — design target:** Validate responsiveness with representative large-model fixtures before making a shipped performance claim.
 - **Invalid files — shipped:** Schema validation rejects invalid files with user-safe errors.
-- **API key security — shipped:** Desktop keys are AES-256-GCM encrypted at rest; browser keys use `localStorage` with an explicit in-app warning. Keys are never written to threat model files.
+- **API key security — shipped:** Desktop keys are AES-256-GCM encrypted at rest; browser keys are AES-GCM encrypted in IndexedDB under a non-extractable key, with the residual same-origin-script risk stated in the UI. Keys are never written to threat model files.
 
 ## Accessibility
 

@@ -51,7 +51,7 @@ The following are in scope for security reports:
 
 ThreatForge follows these security principles:
 
-- **API keys** use AES-256-GCM encrypted storage on desktop; the browser stores keys in `localStorage` with an explicit in-app warning. Keys are never written to threat model files
+- **API keys** use AES-256-GCM encrypted storage on desktop; in the browser they are AES-GCM encrypted in IndexedDB under a non-extractable key the browser will not export. Script running on the page can still use the key, which the in-app copy states plainly. Keys are never written to threat model files
 - **AI API calls** go directly from the user's machine with the user's key -- no proxy server
 - **LLM output** is treated as untrusted input; the Markdown renderer escapes raw HTML by default
 - **Native file I/O** is handled by Rust commands; path traversal and arbitrary file access remain explicitly in scope for security reports

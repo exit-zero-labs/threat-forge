@@ -34,16 +34,37 @@ function removeLegacyKey(provider: AiProvider): void {
 /**
  * Move a pre-#133 clear-text key into the encrypted vault, then erase the clear-text slot.
  *
- * The erase happens only after the encrypted write resolves, so a failure part-way through
- * leaves the user's key intact rather than destroying it. If the vault is unavailable the
- * error propagates: callers must not fall back to reading clear text, because that would
- * quietly re-establish the storage posture #133 removed.
+ * The erase happens only after the encrypted write has committed — {@link putSecret} resolves
+ * at transaction commit, not at request success — so a failure part-way through leaves the
+ * user's key intact rather than destroying it. If the vault is unavailable the error
+ * propagates: callers must not fall back to reading clear text, because that would quietly
+ * re-establish the storage posture #133 removed.
  */
 async function migrateLegacyKey(provider: AiProvider): Promise<void> {
 	const legacy = readLegacyKey(provider);
 	if (legacy === null) return;
 	await putSecret(provider, legacy);
 	removeLegacyKey(provider);
+}
+
+/**
+ * Per-provider operation chains, so this tab's keychain calls never interleave.
+ *
+ * Every public method is a read-modify-write across two stores, so an unordered `getKey` and
+ * `deleteKey` can interleave such that the migration re-inserts the key the user just
+ * deleted. Serializing per provider removes that window. Cross-tab races are out of scope
+ * here; IndexedDB's own transaction serialization is what keeps the vault itself consistent.
+ */
+const providerOperations = new Map<AiProvider, Promise<unknown>>();
+
+function withProviderLock<T>(provider: AiProvider, operation: () => Promise<T>): Promise<T> {
+	const pending = (providerOperations.get(provider) ?? Promise.resolve()).then(operation);
+	// The stored link never rejects, so one failed operation cannot poison the queue.
+	providerOperations.set(
+		provider,
+		pending.catch(() => undefined),
+	);
+	return pending;
 }
 
 /**
@@ -60,32 +81,46 @@ async function migrateLegacyKey(provider: AiProvider): Promise<void> {
  */
 export class BrowserKeychainAdapter implements KeychainAdapter {
 	async setKey(provider: AiProvider, key: string): Promise<void> {
-		await putSecret(provider, key);
-		// A stored key supersedes any pre-#133 clear-text value for the same provider.
-		removeLegacyKey(provider);
+		await withProviderLock(provider, async () => {
+			await putSecret(provider, key);
+			// A stored key supersedes any pre-#133 clear-text value for the same provider.
+			removeLegacyKey(provider);
+		});
 	}
 
 	async hasKey(provider: AiProvider): Promise<boolean> {
-		await migrateLegacyKey(provider);
-		return hasSecret(provider);
+		return withProviderLock(provider, async () => {
+			await migrateLegacyKey(provider);
+			return hasSecret(provider);
+		});
 	}
 
 	/** Browser-only: read a stored key back so the transport can sign a request. */
 	async getKey(provider: AiProvider): Promise<string | null> {
-		await migrateLegacyKey(provider);
-		try {
-			return await getSecret(provider);
-		} catch (error) {
-			// An undecryptable record is reported as "no key configured" so the caller shows
-			// the normal unconfigured path and the user can simply re-enter the key. Any other
-			// failure is a real fault and must not be swallowed.
-			if (error instanceof KeyVaultError && error.reason === "corrupt") return null;
-			throw error;
-		}
+		return withProviderLock(provider, async () => {
+			await migrateLegacyKey(provider);
+			try {
+				return await getSecret(provider);
+			} catch (error) {
+				if (error instanceof KeyVaultError && error.reason === "corrupt") {
+					// This provider's record is unreadable, so it is worth nothing: drop it and
+					// report the provider as unconfigured. Without the delete, `hasKey` would keep
+					// counting the record and the settings panel would show the provider as
+					// configured while every request failed for want of a key.
+					await deleteSecret(provider);
+					return null;
+				}
+				// A `vault-corrupt` or `unavailable` fault affects every provider and re-entering
+				// a key cannot fix it, so it must reach the user instead of reading as "no key".
+				throw error;
+			}
+		});
 	}
 
 	async deleteKey(provider: AiProvider): Promise<void> {
-		removeLegacyKey(provider);
-		await deleteSecret(provider);
+		await withProviderLock(provider, async () => {
+			removeLegacyKey(provider);
+			await deleteSecret(provider);
+		});
 	}
 }

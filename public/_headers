@@ -4,11 +4,13 @@
 # _headers file, so the policy below is served for every route of the web app.
 #
 # The web build is the platform that needs a CSP: it holds the BYOK API key in
-# localStorage (webview-readable), whereas the desktop build keeps the key in Rust
-# and its CSP lives in src-tauri/tauri.conf.json. The primary key defense here is
-# script-src 'self' (with default-src 'self'): no inline or third-party script can
-# execute except the pinned analytics beacon, so an injected payload has no
-# foothold to read localStorage in the first place. connect-src is the
+# IndexedDB as AES-GCM ciphertext under a non-extractable wrapping key (#133),
+# whereas the desktop build keeps the key in Rust and its CSP lives in
+# src-tauri/tauri.conf.json. Encryption at rest does not defend against script on
+# this origin, which can reach the same wrapping key and decrypt exactly as the app
+# does — so script-src 'self' (with default-src 'self') is the primary defense for
+# the key, not a secondary one: no inline or third-party script can execute except
+# the pinned analytics beacon. connect-src is the
 # defense-in-depth backstop — it is kept as narrow as the app's real network
 # surface allows, because a wide allowlist is an exfiltration drop if the primary
 # defense is ever bypassed:

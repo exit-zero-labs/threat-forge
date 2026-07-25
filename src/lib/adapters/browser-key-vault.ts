@@ -13,7 +13,7 @@
  *
  * What it does not defend against: script execution on the ThreatForge origin. Such script
  * can reach the same handle and use it to decrypt, exactly as the application does. That
- * residual risk is accepted (#133) and is mitigated separately by the strict CSP (#156). Do
+ * residual risk is accepted (#133) and is mitigated separately by the deployed CSP (#156). Do
  * not describe this storage as protecting against a compromised page.
  *
  * The database is deliberately separate from the workspace database so document storage and
@@ -38,13 +38,20 @@ const IV_BYTES = 12;
 export type KeyVaultErrorReason =
 	/** IndexedDB or Web Crypto is missing, blocked, or otherwise unusable here. */
 	| "unavailable"
-	/** A stored record exists but could not be decrypted into a usable key. */
-	| "corrupt";
+	/** One provider's record exists but could not be decrypted. Re-entering that key fixes it. */
+	| "corrupt"
+	/**
+	 * The wrapping key itself is unusable, so no provider's record can be decrypted. This is
+	 * distinct from `corrupt` because re-entering a key does not help: the write path needs
+	 * the same wrapping key and fails identically.
+	 */
+	| "vault-corrupt";
 
 /**
  * A vault failure carrying a user-safe message. Raw `DOMException` text and internal detail
  * are never propagated, so nothing about the stored key or the host can leak through an
- * error surfaced in the UI.
+ * error surfaced in the UI. {@link withVault} enforces that by remapping every non-vault
+ * error it sees.
  */
 export class KeyVaultError extends Error {
 	readonly reason: KeyVaultErrorReason;
@@ -59,9 +66,15 @@ export class KeyVaultError extends Error {
 const UNAVAILABLE_MESSAGE =
 	"Encrypted key storage is unavailable in this browser, so the API key cannot be stored.";
 const CORRUPT_MESSAGE = "The stored API key could not be read and needs to be entered again.";
+const VAULT_CORRUPT_MESSAGE =
+	"Encrypted key storage in this browser is damaged. Clear this site's browser data, then add your API key again.";
 
 function unavailable(): KeyVaultError {
 	return new KeyVaultError("unavailable", UNAVAILABLE_MESSAGE);
+}
+
+function vaultCorrupt(): KeyVaultError {
+	return new KeyVaultError("vault-corrupt", VAULT_CORRUPT_MESSAGE);
 }
 
 /** A stored secret: the AES-GCM nonce and ciphertext for one provider's key. */
@@ -73,15 +86,30 @@ interface SecretRecord {
 /**
  * Coerce a value read back from IndexedDB into bytes.
  *
- * Structured clone can hand back a typed array constructed in a different realm from the
- * one running this check, so `value instanceof Uint8Array` is unreliable. `ArrayBuffer.isView`
- * tests the internal slot instead and holds across realms, which is the property needed here.
+ * `value instanceof Uint8Array` compares against one realm's constructor, and a value that
+ * arrived through structured clone need not have been constructed in that realm — under
+ * vitest, jsdom's `window.Uint8Array` and the Node realm that materializes stored records
+ * are different constructors, so `instanceof` returns false for a perfectly good array.
+ * `ArrayBuffer.isView` tests the internal slot instead and holds regardless of realm, which
+ * is the property a deserialization boundary needs.
  */
 function asBytes(value: unknown): Uint8Array<ArrayBuffer> | null {
 	if (!ArrayBuffer.isView(value)) return null;
 	// Copied rather than aliased so the result is always backed by a plain `ArrayBuffer`,
 	// which is what Web Crypto accepts as a `BufferSource`.
 	return Uint8Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+}
+
+/**
+ * Report whether a value read back from IndexedDB is a `CryptoKey`.
+ *
+ * Same realm hazard as {@link asBytes}, and the same reasoning: `instanceof CryptoKey` would
+ * be a false negative for a key cloned in another realm, and a false negative here reads as
+ * "the vault is damaged" for a vault that is fine. `Symbol.toStringTag` is part of the
+ * platform object and survives the boundary, so it is the check that actually holds.
+ */
+function isCryptoKey(value: unknown): value is CryptoKey {
+	return Object.prototype.toString.call(value) === "[object CryptoKey]";
 }
 
 /** Recover a secret record from a stored value, or `null` when it is not one. */
@@ -122,22 +150,59 @@ function openVault(): Promise<IDBDatabase> {
 			return;
 		}
 
+		let settled = false;
 		request.onupgradeneeded = () => {
 			const db = request.result;
 			if (!db.objectStoreNames.contains(STORE_WRAP)) db.createObjectStore(STORE_WRAP);
 			if (!db.objectStoreNames.contains(STORE_SECRETS)) db.createObjectStore(STORE_SECRETS);
 		};
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(unavailable());
-		request.onblocked = () => reject(unavailable());
+		request.onsuccess = () => {
+			// `onblocked` may already have rejected; close the connection rather than leaking it.
+			if (settled) {
+				request.result.close();
+				return;
+			}
+			settled = true;
+			resolve(request.result);
+		};
+		request.onerror = () => {
+			settled = true;
+			reject(unavailable());
+		};
+		request.onblocked = () => {
+			if (settled) return;
+			settled = true;
+			reject(unavailable());
+		};
 	});
 }
 
-/** Await one IndexedDB request, mapping any failure to a user-safe vault error. */
+/** Await one IndexedDB read request, mapping any failure to a user-safe vault error. */
 function awaitRequest<T>(request: IDBRequest<T>): Promise<T> {
 	return new Promise((resolve, reject) => {
 		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(unavailable());
+	});
+}
+
+/**
+ * Await a write, resolving only once its transaction has committed.
+ *
+ * A successful `IDBRequest` does not mean the data is durable: the transaction can still
+ * abort afterwards on a commit-time quota or I/O failure, and the write is then lost.
+ * Callers here treat a resolved write as authoritative — the legacy migration erases the
+ * user's only clear-text copy on the strength of it — so the commit is the only honest
+ * point to resolve at. This matches `indexeddb-workspace-storage.ts`.
+ */
+function awaitWrite(tx: IDBTransaction, request: IDBRequest): Promise<void> {
+	return new Promise((resolve, reject) => {
+		let succeeded = false;
+		request.onsuccess = () => {
+			succeeded = true;
+		};
+		tx.oncomplete = () => (succeeded ? resolve() : reject(unavailable()));
+		tx.onabort = () => reject(unavailable());
+		tx.onerror = () => reject(unavailable());
 	});
 }
 
@@ -165,11 +230,11 @@ async function getOrCreateWrapKey(db: IDBDatabase): Promise<CryptoKey> {
 async function readWrapKey(db: IDBDatabase): Promise<CryptoKey | null> {
 	const store = db.transaction(STORE_WRAP, "readonly").objectStore(STORE_WRAP);
 	const stored = await awaitRequest(store.get(WRAP_KEY_ID));
-	if (stored instanceof CryptoKey) return stored;
+	if (isCryptoKey(stored)) return stored;
 	if (stored !== undefined) {
 		// A record is present but is not a usable key: refuse rather than silently replacing
 		// it, because overwriting would permanently orphan every secret encrypted under it.
-		throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
+		throw vaultCorrupt();
 	}
 	return null;
 }
@@ -181,35 +246,52 @@ async function readWrapKey(db: IDBDatabase): Promise<CryptoKey | null> {
  * The re-read and the write are chained inside the request callback so they share one live
  * `readwrite` transaction. That makes the check-and-set atomic: two tabs initializing the
  * vault concurrently converge on a single key instead of the second overwriting the first
- * and orphaning everything already encrypted under it.
+ * and orphaning everything already encrypted under it. Resolution waits for the commit so a
+ * caller never encrypts under a wrapping key whose write later aborts, which would leave a
+ * permanently undecryptable record behind.
  */
 function installWrapKey(db: IDBDatabase, candidate: CryptoKey): Promise<CryptoKey> {
 	return new Promise((resolve, reject) => {
-		const store = db.transaction(STORE_WRAP, "readwrite").objectStore(STORE_WRAP);
-		const read = store.get(WRAP_KEY_ID);
-		read.onerror = () => reject(unavailable());
+		const tx = db.transaction(STORE_WRAP, "readwrite");
+		const read = tx.objectStore(STORE_WRAP).get(WRAP_KEY_ID);
+		let winner: CryptoKey | null = null;
+		let failure: KeyVaultError | null = null;
+
 		read.onsuccess = () => {
-			const stored = read.result;
-			if (stored instanceof CryptoKey) {
-				resolve(stored);
+			if (isCryptoKey(read.result)) {
+				// Another context won the race; adopt its key and write nothing.
+				winner = read.result;
 				return;
 			}
-			if (stored !== undefined) {
-				reject(new KeyVaultError("corrupt", CORRUPT_MESSAGE));
+			if (read.result !== undefined) {
+				failure = vaultCorrupt();
+				tx.abort();
 				return;
 			}
-			const write = store.put(candidate, WRAP_KEY_ID);
-			write.onerror = () => reject(unavailable());
-			write.onsuccess = () => resolve(candidate);
+			winner = candidate;
+			tx.objectStore(STORE_WRAP).put(candidate, WRAP_KEY_ID);
 		};
+
+		tx.oncomplete = () => (winner ? resolve(winner) : reject(failure ?? unavailable()));
+		tx.onabort = () => reject(failure ?? unavailable());
+		tx.onerror = () => reject(failure ?? unavailable());
 	});
 }
 
-/** Run `operation` against an open vault, always closing the connection. */
+/**
+ * Run `operation` against an open vault, always closing the connection.
+ *
+ * Anything that is not already a {@link KeyVaultError} is remapped, so a raw `DOMException`
+ * from `transaction()` or a Web Crypto rejection cannot reach the UI with internal detail
+ * attached. Only messages authored in this module are ever surfaced.
+ */
 async function withVault<T>(operation: (db: IDBDatabase) => Promise<T>): Promise<T> {
 	const db = await openVault();
 	try {
 		return await operation(db);
+	} catch (error) {
+		if (error instanceof KeyVaultError) throw error;
+		throw unavailable();
 	} finally {
 		db.close();
 	}
@@ -234,16 +316,19 @@ export async function putSecret(id: string, secret: string): Promise<void> {
 		// Persisted as a view rather than a raw `ArrayBuffer` so both fields read back through
 		// the same realm-independent check.
 		const record: SecretRecord = { iv, ciphertext: new Uint8Array(encrypted) };
-		const store = db.transaction(STORE_SECRETS, "readwrite").objectStore(STORE_SECRETS);
-		await awaitRequest(store.put(record, id));
+		const tx = db.transaction(STORE_SECRETS, "readwrite");
+		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).put(record, id));
 	});
 }
 
 /**
  * Decrypt and return the secret stored for `id`, or `null` when none is stored.
  *
- * @throws KeyVaultError with reason `corrupt` when a record exists but cannot be decrypted,
- * which is reported distinctly from "no key stored" so the UI can prompt for re-entry.
+ * @throws KeyVaultError with reason `corrupt` when this record exists but cannot be
+ * decrypted, or `vault-corrupt` when the wrapping key itself is unusable and no record can
+ * be read. Reading never creates key material: minting a wrapping key here would turn a
+ * diagnosable "records exist but the key is gone" state into records that are silently
+ * undecryptable forever.
  */
 export async function getSecret(id: string): Promise<string | null> {
 	return withVault(async (db) => {
@@ -254,7 +339,8 @@ export async function getSecret(id: string): Promise<string | null> {
 		const record = readSecretRecord(stored);
 		if (!record) throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
 
-		const wrapKey = await getOrCreateWrapKey(db);
+		const wrapKey = await readWrapKey(db);
+		if (!wrapKey) throw vaultCorrupt();
 		let plaintext: ArrayBuffer;
 		try {
 			plaintext = await subtle.decrypt(
@@ -263,8 +349,7 @@ export async function getSecret(id: string): Promise<string | null> {
 				record.ciphertext,
 			);
 		} catch {
-			// AES-GCM authentication failed: the record was truncated, tampered with, or was
-			// written under a wrapping key that no longer exists.
+			// AES-GCM authentication failed: the record was truncated or tampered with.
 			throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
 		}
 		return new TextDecoder().decode(plaintext);
@@ -288,7 +373,7 @@ export async function hasSecret(id: string): Promise<boolean> {
  */
 export async function deleteSecret(id: string): Promise<void> {
 	await withVault(async (db) => {
-		const store = db.transaction(STORE_SECRETS, "readwrite").objectStore(STORE_SECRETS);
-		await awaitRequest(store.delete(id));
+		const tx = db.transaction(STORE_SECRETS, "readwrite");
+		await awaitWrite(tx, tx.objectStore(STORE_SECRETS).delete(id));
 	});
 }

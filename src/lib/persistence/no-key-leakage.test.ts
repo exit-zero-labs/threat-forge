@@ -67,7 +67,7 @@ function modelWithoutSecret(): ThreatModel {
 	};
 }
 
-/** Enumerate every record in every IndexedDB store as one string for substring scanning. */
+/** Enumerate every record in the workspace database's stores as one string for scanning. */
 async function dumpIndexedDb(): Promise<string> {
 	const db = await openWorkspaceDb();
 	try {
@@ -214,7 +214,8 @@ describe("no key material reaches the workspace stores (D6)", () => {
 	});
 
 	it("stores keys in a different database from the workspace", () => {
-		// Two separate databases, so neither store can enumerate the other's records.
+		// A rename-collision guard: if either namespace were ever changed to match the other,
+		// the scan above would stop being a disjointness proof and would silently still pass.
 		expect(KEY_VAULT_DB_NAME).not.toBe(WORKSPACE_STORAGE_NAMESPACE);
 	});
 

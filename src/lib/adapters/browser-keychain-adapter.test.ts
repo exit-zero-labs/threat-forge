@@ -61,6 +61,43 @@ function describeStoredValue(value: unknown): string {
 	return Object.values(value).map(describeStoredValue).join(",");
 }
 
+/** Open the vault database directly, to inspect or damage it the way a test needs. */
+async function openVaultDb(): Promise<IDBDatabase> {
+	return new Promise<IDBDatabase>((resolve, reject) => {
+		const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
+		request.onsuccess = () => resolve(request.result);
+		request.onerror = () => reject(request.error);
+	});
+}
+
+/** Replace the contents of the wrap-key store, simulating a damaged vault. */
+async function writeWrapKeyStore(entries: [unknown, string][]): Promise<void> {
+	const db = await openVaultDb();
+	await new Promise<void>((resolve, reject) => {
+		const tx = db.transaction("wrap-key", "readwrite");
+		const store = tx.objectStore("wrap-key");
+		store.clear();
+		for (const [value, key] of entries) store.put(value, key);
+		tx.oncomplete = () => resolve();
+		tx.onerror = () => reject(tx.error);
+		tx.onabort = () => reject(tx.error);
+	});
+	db.close();
+}
+
+async function countWrapKeys(): Promise<number> {
+	const db = await openVaultDb();
+	try {
+		return await new Promise<number>((resolve, reject) => {
+			const request = db.transaction("wrap-key", "readonly").objectStore("wrap-key").count();
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+	} finally {
+		db.close();
+	}
+}
+
 beforeEach(() => {
 	globalThis.indexedDB = new IDBFactory();
 	localStorage.clear();
@@ -284,6 +321,28 @@ describe("failing closed when encrypted storage is unavailable", () => {
 		expect((error as KeyVaultError).message).not.toContain("/var/db/foo");
 		expect((error as KeyVaultError).message).not.toContain("IDBFactory");
 	});
+
+	it("redacts a failure raised after the database is open", async () => {
+		// `open()` succeeding is not the only way in. A vault database that already exists at
+		// the expected version but has no stores opens cleanly and then raises a real
+		// `NotFoundError` from `transaction()`, which would otherwise reach the settings panel
+		// verbatim. No mock: this is the genuine exception the platform throws.
+		await new Promise<void>((resolve, reject) => {
+			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME, 1);
+			request.onsuccess = () => {
+				request.result.close();
+				resolve();
+			};
+			request.onerror = () => reject(request.error);
+		});
+		const adapter = new BrowserKeychainAdapter();
+
+		const error = await adapter.setKey("anthropic", SECRET).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(KeyVaultError);
+		expect((error as KeyVaultError).reason).toBe("unavailable");
+		expect((error as KeyVaultError).message).not.toContain("objectStore");
+	});
 });
 
 describe("recovering from an unreadable record", () => {
@@ -292,11 +351,7 @@ describe("recovering from an unreadable record", () => {
 		await adapter.setKey("anthropic", SECRET);
 
 		// Truncate the ciphertext so AES-GCM authentication fails on read.
-		const db = await new Promise<IDBDatabase>((resolve, reject) => {
-			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
-			request.onsuccess = () => resolve(request.result);
-			request.onerror = () => reject(request.error);
-		});
+		const db = await openVaultDb();
 		await new Promise<void>((resolve, reject) => {
 			const store = db.transaction("secrets", "readwrite").objectStore("secrets");
 			const read = store.get("anthropic");
@@ -315,7 +370,95 @@ describe("recovering from an unreadable record", () => {
 
 		// The user sees the ordinary "no key configured" path and can simply re-enter it.
 		expect(await adapter.getKey("anthropic")).toBeNull();
+		// ...and the two predicates agree, so the settings panel cannot show the provider as
+		// configured while every request fails for want of a key.
+		expect(await adapter.hasKey("anthropic")).toBe(false);
+
 		await adapter.setKey("anthropic", "sk-ant-reentered");
 		expect(await adapter.getKey("anthropic")).toBe("sk-ant-reentered");
+	});
+
+	it("surfaces a damaged wrapping key instead of reporting no key configured", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		// A wrapping key that is not a usable key makes every record undecryptable. Reporting
+		// that as "no key configured" would send the user into re-entry, which fails the same
+		// way, so the fault has to reach them instead.
+		await writeWrapKeyStore([["not-a-crypto-key", "aes-gcm-256-v1"]]);
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+		expect(error).toBeInstanceOf(KeyVaultError);
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+	});
+
+	it("never creates key material on the read path", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([]);
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		// Minting a wrapping key here would convert a diagnosable "the key is gone" state into
+		// records that are silently undecryptable under a brand-new key.
+		expect(await countWrapKeys()).toBe(0);
+	});
+});
+
+describe("durability and ordering", () => {
+	it("resolves a write only after its transaction has committed", async () => {
+		const order: string[] = [];
+		const realTransaction = IDBDatabase.prototype.transaction;
+		vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (
+			this: IDBDatabase,
+			...args: Parameters<IDBDatabase["transaction"]>
+		) {
+			const tx = realTransaction.apply(this, args);
+			// Track the secret write specifically: the wrapping key is written in a separate
+			// transaction, and its commit must not be mistaken for this one's.
+			if (args[0] === "secrets" && args[1] === "readwrite") {
+				tx.addEventListener("complete", () => order.push("committed"));
+			}
+			return tx;
+		});
+
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		order.push("resolved");
+
+		// A request succeeding does not mean the transaction committed; it can still abort at
+		// commit time. The legacy migration erases the user's only clear-text copy on the
+		// strength of this resolution, so resolving early would risk destroying the key.
+		expect(order).toEqual(["committed", "resolved"]);
+	});
+
+	it("does not resurrect a key when a read races a delete", async () => {
+		localStorage.setItem(LEGACY_SLOT, SECRET);
+		const adapter = new BrowserKeychainAdapter();
+
+		// A migrating read and a delete issued together: whichever order they run in, the
+		// user pressed "remove", so the key must not survive.
+		await Promise.all([adapter.getKey("anthropic"), adapter.deleteKey("anthropic")]);
+
+		expect(await adapter.hasKey("anthropic")).toBe(false);
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(localStorage.getItem(LEGACY_SLOT)).toBeNull();
+	});
+
+	it("converges on one wrapping key when two providers initialize the vault at once", async () => {
+		const adapter = new BrowserKeychainAdapter();
+
+		// Separate providers run concurrently, each opening its own connection, which is the
+		// same race two tabs run on first use.
+		await Promise.all([
+			adapter.setKey("anthropic", SECRET),
+			adapter.setKey("openai", "sk-openai-concurrent"),
+		]);
+
+		// A second wrapping key would have orphaned whichever secret was written under the first.
+		expect(await countWrapKeys()).toBe(1);
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+		expect(await adapter.getKey("openai")).toBe("sk-openai-concurrent");
 	});
 });

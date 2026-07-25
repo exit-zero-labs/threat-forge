@@ -265,7 +265,7 @@ export function AiSettingsContent() {
 			<p className="text-[10px] text-muted-foreground/70">
 				{isTauri()
 					? "API keys are encrypted at rest and stored locally. They are never sent anywhere except the selected AI provider."
-					: "API keys are encrypted before being stored in this browser, using a key the browser will not export. Anything running on this page can still use the key, so prefer the desktop app on a shared machine. Keys are only sent to the selected AI provider."}
+					: "API keys are encrypted before being stored in this browser, using a key the browser will not export. Anything running on this page can still use the key. The desktop app keeps the key outside the browser entirely. Keys are only sent to the selected AI provider."}
 			</p>
 		</div>
 	);

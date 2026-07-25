@@ -32,9 +32,10 @@ ThreatForge desktop runtime (Tauri v2)
 - File I/O → Local filesystem (`.thf` files)
 - Auto-Updater → GitHub Releases (desktop; can verify signed update metadata once signing is provisioned)
 
-In the browser, AI requests also go directly to the configured provider. Browser keys use
-local browser storage with an explicit UI warning; desktop keys use the encrypted Rust
-storage path. Browser file operations use import/download adapters instead of Tauri IPC.
+In the browser, AI requests also go directly to the configured provider. Browser keys are
+AES-GCM encrypted in a dedicated IndexedDB database under a non-extractable wrapping key;
+desktop keys use the encrypted Rust storage path. Browser file operations use import/download
+adapters instead of Tauri IPC.
 
 The AI chat path — the provider-neutral message and event model, the browser/desktop
 transport split and why the desktop key stays in Rust, tool-schema generation, context
@@ -355,7 +356,7 @@ npm run ci:docker:build  # Docker lint + test + Tauri build
 
 | Layer | Approach |
 |-------|---------|
-| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: local storage with an explicit UI warning. |
+| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: AES-GCM ciphertext in a dedicated IndexedDB database, wrapped by a non-extractable `CryptoKey`. Script on the origin can still use the key — the residual risk is stated in the UI and mitigated by the CSP. |
 | AI API Calls | Direct from user's machine with user's key; HTTPS only. Provider decoding, request validation, and error redaction are shared and typed — see [`ai-protocol.md`](ai-protocol.md) |
 | File Integrity | Explicit version checks and typed deserialization; unknown fields remain tolerated for forward compatibility |
 | Auto-Update | Tauri updater can verify signed update metadata once signing is provisioned; rollout and end-to-end verification remain roadmap gates |
