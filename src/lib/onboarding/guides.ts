@@ -109,7 +109,7 @@ export const AI_ASSISTANT_GUIDE: OnboardingGuide = {
 			targetSelector: "[data-testid='btn-settings-dialog']",
 			title: "Configure API Key",
 			content:
-				"To use AI features, open Settings and add your API key (OpenAI or Anthropic). Desktop keys are encrypted at rest; browser keys are stored in localStorage.",
+				"To use AI features, open Settings and add your API key (OpenAI or Anthropic). Desktop keys are encrypted at rest; browser keys are encrypted using a key your browser will not export.",
 			placement: "bottom",
 		},
 		{

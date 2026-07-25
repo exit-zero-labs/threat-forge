@@ -1,8 +1,8 @@
-import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { KEY_VAULT_DB_NAME, KeyVaultError } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
+import { resetKeyVault } from "./test-fixtures/key-vault";
 
 /**
  * #133: browser BYOK keys are encrypted at rest under a non-extractable wrapping key.
@@ -57,7 +57,9 @@ function describeStoredValue(value: unknown): string {
 		);
 	}
 	if (typeof value !== "object" || value === null) return String(value);
-	if (value.constructor?.name === "CryptoKey") return "CryptoKey";
+	// Branded the same way production does, so this helper cannot disagree with the
+	// vault about what counts as a key.
+	if (Object.prototype.toString.call(value) === "[object CryptoKey]") return "CryptoKey";
 	return Object.values(value).map(describeStoredValue).join(",");
 }
 
@@ -99,12 +101,15 @@ async function countWrapKeys(): Promise<number> {
 }
 
 beforeEach(() => {
-	globalThis.indexedDB = new IDBFactory();
+	resetKeyVault();
 	localStorage.clear();
 });
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	// Restored here, not only at the end of the tests that install them: a test that fails
+	// while timers are faked would otherwise hang every test that follows it.
+	vi.useRealTimers();
 });
 
 describe("BrowserKeychainAdapter encrypted storage", () => {
@@ -392,6 +397,25 @@ describe("recovering from an unreadable record", () => {
 		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
 	});
 
+	it("does not discard a record when the crypto layer itself fails", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		// Not an authentication failure — a fault in the platform. Read as "this record is
+		// corrupt" it would delete a perfectly good key, and since the user's re-entry would
+		// meet the same fault, they would loop through save-and-vanish indefinitely.
+		const decrypt = vi
+			.spyOn(crypto.subtle, "decrypt")
+			.mockRejectedValue(new Error("crypto unavailable"));
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+
+		decrypt.mockRestore();
+		// The record was never touched, so the key is readable again once the fault clears.
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+	});
+
 	it("never creates key material on the read path", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);
@@ -403,6 +427,124 @@ describe("recovering from an unreadable record", () => {
 		// Minting a wrapping key here would convert a diagnosable "the key is gone" state into
 		// records that are silently undecryptable under a brand-new key.
 		expect(await countWrapKeys()).toBe(0);
+	});
+});
+
+describe("storage that never responds", () => {
+	/** Yield one real host task. `MessageChannel` is used because `setTimeout` is faked here. */
+	function yieldRealTask(): Promise<void> {
+		return new Promise((resolve) => {
+			const channel = new MessageChannel();
+			channel.port1.onmessage = () => {
+				channel.port1.close();
+				resolve();
+			};
+			channel.port2.postMessage(null);
+		});
+	}
+
+	it("gives up on a wedged open rather than hanging the caller forever", async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		// Safari and Firefox private mode are both known to accept `open()` and then fire no
+		// event at all. An unbounded wait leaves the settings panel spinning forever, and
+		// because adapter calls are serialized per provider, wedges every later call too.
+		const open = vi.spyOn(globalThis.indexedDB, "open").mockReturnValue({
+			onsuccess: null,
+			onerror: null,
+			onblocked: null,
+			onupgradeneeded: null,
+		} as unknown as IDBOpenDBRequest);
+		const adapter = new BrowserKeychainAdapter();
+
+		const pending = adapter.getKey("anthropic").catch((caught: unknown) => caught);
+		await vi.advanceTimersByTimeAsync(10_000);
+		// Raced rather than awaited directly: nothing but the vault's own bound can settle
+		// this call, so an unbounded implementation would hang the suite instead of failing it.
+		const error = await Promise.race([pending, yieldRealTask().then(() => "still pending")]);
+
+		expect(error).toBeInstanceOf(KeyVaultError);
+		expect((error as KeyVaultError).reason).toBe("unavailable");
+
+		open.mockRestore();
+		vi.useRealTimers();
+		// The provider is not left wedged: a later call runs against recovered storage.
+		await adapter.setKey("anthropic", SECRET);
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+	});
+});
+
+describe("a clear-text slot that will not erase", () => {
+	/** Make `localStorage.removeItem` a no-op, as a browser refusing the removal would. */
+	function refuseLegacyRemoval(): void {
+		vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
+	}
+
+	it("does not let the stale slot overwrite a newly saved key", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+
+		await adapter.setKey("anthropic", SECRET);
+
+		// Migration must not run again once the vault holds a key, or every later read would
+		// silently revert the user to the clear-text value they just replaced.
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+	});
+
+	it("refuses to report a key as removed while a clear-text copy survives", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		// Telling a user who is removing a possibly-compromised key that it is gone, while it
+		// is still readable in clear text, is the most dangerous lie this adapter could tell.
+		const error = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(KeyVaultError);
+		expect((error as KeyVaultError).reason).toBe("legacy-retained");
+		// The encrypted copy is still removed; only the claim of completeness is withheld.
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old-cleartext");
+	});
+});
+
+describe("a wrapping key of the wrong shape", () => {
+	it("is rejected as a vault fault rather than destroying the stored record", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		// A real CryptoKey that cannot decrypt. Accepted, it would fail at `decrypt`, read as
+		// "this record is corrupt", and get a perfectly good ciphertext deleted.
+		//
+		// Two defenses cover this — the wrapping key is rejected on shape, and a non-
+		// authentication decrypt failure is not classified as record corruption — so removing
+		// either one alone leaves this passing. It is kept as the end-to-end property because
+		// the property, not the mechanism, is what must hold.
+		const encryptOnly = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+			"encrypt",
+		]);
+		await writeWrapKeyStore([[encryptOnly, "aes-gcm-256-v1"]]);
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+
+		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
+		// The record survives, so restoring the correct wrapping key would recover it.
+		expect(await adapter.hasKey("anthropic")).toBe(true);
+	});
+
+	it("refuses to save under it rather than reporting a save that cannot be read back", async () => {
+		const encryptOnly = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+			"encrypt",
+		]);
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([[encryptOnly, "aes-gcm-256-v1"]]);
+
+		// Otherwise the panel reports success and the key vanishes on the next read, forever.
+		await expect(adapter.setKey("anthropic", "sk-ant-second")).rejects.toBeInstanceOf(
+			KeyVaultError,
+		);
 	});
 });
 

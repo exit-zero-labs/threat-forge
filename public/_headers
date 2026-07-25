@@ -7,10 +7,10 @@
 # IndexedDB as AES-GCM ciphertext under a non-extractable wrapping key (#133),
 # whereas the desktop build keeps the key in Rust and its CSP lives in
 # src-tauri/tauri.conf.json. Encryption at rest does not defend against script on
-# this origin, which can reach the same wrapping key and decrypt exactly as the app
-# does — so script-src 'self' (with default-src 'self') is the primary defense for
-# the key, not a secondary one: no inline or third-party script can execute except
-# the pinned analytics beacon. connect-src is the
+# this origin, which can reach the same wrapping key and decrypt exactly as the
+# app does — so script-src 'self' (with default-src 'self') is the primary
+# defense for the key, not a secondary one: no inline script can execute, and the
+# only third-party script origin is the analytics beacon below. connect-src is the
 # defense-in-depth backstop — it is kept as narrow as the app's real network
 # surface allows, because a wide allowlist is an exfiltration drop if the primary
 # defense is ever bypassed:
@@ -36,6 +36,16 @@
 # (ReactFlow, shadcn), matching the desktop CSP; inline styles cannot read the key.
 # object-src / base-uri / form-action / frame-ancestors close the plugin, base-tag,
 # form-hijack, and clickjacking vectors that default-src does not cover on its own.
+#
+# Known residual: static.cloudflareinsights.com is allowed in script-src without an
+# integrity hash, because the beacon is versionless and Cloudflare may change it at
+# any time — an SRI hash would break analytics on their next deploy rather than
+# protect anything. That origin is therefore trusted to the same degree as 'self'
+# for key confidentiality: script served from it could read the vault exactly as
+# the app does. The exposure is accepted for a first-party analytics vendor already
+# terminating TLS for this site, and it is the reason no other third-party script
+# origin is admitted. Removing it entirely (self-hosted or server-side analytics)
+# is the only way to close it; see #232.
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://cloudflareinsights.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff

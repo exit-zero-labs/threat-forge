@@ -15,6 +15,7 @@ import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import { buildOpenAiRequestBody } from "@/lib/ai/providers/openai";
 import type { SseFrame } from "@/lib/ai/providers/sse";
 import { BrowserChatTransport } from "./browser-chat-adapter";
+import { KEY_VAULT_DB_NAME } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import type { ProviderStreamRequest, TransportCallbacks } from "./chat-adapter";
 import { PROVIDER_ENDPOINTS } from "./provider-endpoints";
@@ -278,6 +279,31 @@ describe("BrowserChatTransport request building", () => {
 		await expect(
 			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
 		).rejects.toMatchObject({ error: { code: "no_api_key" } });
+	});
+
+	it("carries the vault's recovery instruction instead of a generic failure", async () => {
+		// A damaged wrapping key makes every stored key unreadable. Reported as a bare
+		// rejection this would reach the user as "The AI request could not be completed",
+		// which tells them nothing they can act on.
+		const db = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
+			request.onsuccess = () => resolve(request.result);
+			request.onerror = () => reject(request.error);
+		});
+		await new Promise<void>((resolve, reject) => {
+			const tx = db.transaction("wrap-key", "readwrite");
+			tx.objectStore("wrap-key").put("not-a-crypto-key", "aes-gcm-256-v1");
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(tx.error);
+		});
+		db.close();
+
+		await expect(
+			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
+		).rejects.toMatchObject({
+			error: { code: "no_api_key", message: expect.stringContaining("browser data") },
+		});
+		expect(fetch).not.toHaveBeenCalled();
 	});
 });
 

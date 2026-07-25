@@ -112,7 +112,7 @@ export interface ChatTransport {
  * It lives here rather than in either transport because the code is what
  * consumers branch on — a settings prompt is the only useful response, and a
  * retry never is — and the two platforms discover the same condition in
- * different places: the browser reads `localStorage` before fetching, while
+ * different places: the browser reads its encrypted vault before fetching, while
  * desktop learns it from the relay's refusal, since only Rust can see the
  * encrypted store.
  */

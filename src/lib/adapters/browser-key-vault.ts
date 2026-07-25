@@ -8,13 +8,21 @@
  * origin — structured clone moves the handle into IndexedDB, but `exportKey` on it always
  * rejects.
  *
- * What this defends against: inspection of the browser profile on disk, and extensions or
- * tooling that read web storage, which now see ciphertext and an unexportable handle.
+ * What this defends against: casual inspection of web storage. Extensions, devtools, and
+ * tooling that read the origin's storage through the platform APIs now see ciphertext and a
+ * handle whose `exportKey` always rejects, and a scan of the profile for a key-shaped string
+ * no longer finds one.
  *
- * What it does not defend against: script execution on the ThreatForge origin. Such script
- * can reach the same handle and use it to decrypt, exactly as the application does. That
- * residual risk is accepted (#133) and is mitigated separately by the deployed CSP (#156). Do
- * not describe this storage as protecting against a compromised page.
+ * What it does not defend against, and must not be described as defending against:
+ *
+ * - Script execution on the ThreatForge origin. Such script can reach the same handle and use
+ *   it to decrypt, exactly as the application does. That residual risk is accepted (#133) and
+ *   is mitigated separately by the deployed CSP (#156).
+ * - An attacker with read access to the browser profile directory. `extractable: false` is an
+ *   API-level restriction enforced by the Web Crypto implementation, not encryption at rest:
+ *   browsers serialize the wrapping key's material into the same IndexedDB backing store that
+ *   holds the ciphertext, so both are recoverable together off disk. Only the desktop build
+ *   keeps the key out of the browser profile.
  *
  * The database is deliberately separate from the workspace database so document storage and
  * key storage never share a namespace; see `src/lib/persistence/no-key-leakage.test.ts`.
@@ -34,6 +42,13 @@ const WRAP_KEY_ID = "aes-gcm-256-v1";
 /** AES-GCM standard nonce length. A fresh nonce is drawn for every encryption. */
 const IV_BYTES = 12;
 
+/**
+ * How long to wait for `indexedDB.open` before giving up. Opening a local database is a
+ * sub-millisecond operation in a healthy browser, so this only ever fires when the store is
+ * wedged; it is generous enough that a loaded machine never trips it.
+ */
+const OPEN_TIMEOUT_MS = 10_000;
+
 /** Why a vault operation could not complete. */
 export type KeyVaultErrorReason =
 	/** IndexedDB or Web Crypto is missing, blocked, or otherwise unusable here. */
@@ -45,7 +60,13 @@ export type KeyVaultErrorReason =
 	 * distinct from `corrupt` because re-entering a key does not help: the write path needs
 	 * the same wrapping key and fails identically.
 	 */
-	| "vault-corrupt";
+	| "vault-corrupt"
+	/**
+	 * A pre-#133 clear-text slot could not be erased, so a usable credential is still sitting
+	 * in this browser's storage. Reported so no caller can claim a key was removed when it
+	 * was not.
+	 */
+	| "legacy-retained";
 
 /**
  * A vault failure carrying a user-safe message. Raw `DOMException` text and internal detail
@@ -100,16 +121,46 @@ function asBytes(value: unknown): Uint8Array<ArrayBuffer> | null {
 	return Uint8Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
 }
 
-/**
- * Report whether a value read back from IndexedDB is a `CryptoKey`.
- *
- * Same realm hazard as {@link asBytes}, and the same reasoning: `instanceof CryptoKey` would
- * be a false negative for a key cloned in another realm, and a false negative here reads as
- * "the vault is damaged" for a vault that is fine. `Symbol.toStringTag` is part of the
- * platform object and survives the boundary, so it is the check that actually holds.
- */
 function isCryptoKey(value: unknown): value is CryptoKey {
 	return Object.prototype.toString.call(value) === "[object CryptoKey]";
+}
+
+/**
+ * Report whether a value read back from IndexedDB is a wrapping key this vault can use.
+ *
+ * The algorithm and usages are checked, not just the type. A `CryptoKey` of the wrong shape
+ * — say encrypt-only, or HMAC — would otherwise be accepted and then fail at `decrypt`,
+ * which reads as "this record is corrupt" and gets the record deleted. Rejecting it here
+ * classifies the fault as vault-wide, which is what it is.
+ *
+ * Unlike the {@link asBytes} hazard, no environment here has been observed to break
+ * `instanceof CryptoKey`; the brand check is deliberate symmetry rather than a fix for a
+ * reproduced failure. It is the right default at this boundary because the cost of a false
+ * negative is severe and silent. `Symbol.toStringTag` cannot be forged through structured
+ * clone, which drops symbol-keyed properties.
+ */
+function isWrapKey(value: unknown): value is CryptoKey {
+	if (!isCryptoKey(value)) return false;
+	return (
+		value.algorithm.name === "AES-GCM" &&
+		value.usages.includes("encrypt") &&
+		value.usages.includes("decrypt")
+	);
+}
+
+/**
+ * Report whether a rejection is a Web Crypto `OperationError`, which is how AES-GCM reports
+ * an authentication failure — the one decrypt failure that really does mean "this record is
+ * damaged" rather than "this vault is broken".
+ *
+ * Checked by name rather than `instanceof DOMException` because that check demonstrably
+ * fails here: the error Node's Web Crypto throws is not an instance of the `DOMException`
+ * jsdom installs as the global, so `instanceof` reports `false` for a genuine authentication
+ * failure. This is the same cross-realm hazard {@link asBytes} guards against.
+ */
+function isOperationError(error: unknown): boolean {
+	if (typeof error !== "object" || error === null || !("name" in error)) return false;
+	return error.name === "OperationError";
 }
 
 /** Recover a secret record from a stored value, or `null` when it is not one. */
@@ -151,29 +202,39 @@ function openVault(): Promise<IDBDatabase> {
 		}
 
 		let settled = false;
+		// Some browsers accept `open()` and then never fire any event — a documented
+		// private-mode failure mode. Without a bound the promise never settles, the settings
+		// spinner never clears, and (because adapter calls are serialized per provider) every
+		// later call for that provider is wedged behind it even after storage recovers.
+		const timer = setTimeout(() => {
+			if (settled) return;
+			settled = true;
+			reject(unavailable());
+		}, OPEN_TIMEOUT_MS);
+
+		const finish = (outcome: () => void): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			outcome();
+		};
+
 		request.onupgradeneeded = () => {
 			const db = request.result;
 			if (!db.objectStoreNames.contains(STORE_WRAP)) db.createObjectStore(STORE_WRAP);
 			if (!db.objectStoreNames.contains(STORE_SECRETS)) db.createObjectStore(STORE_SECRETS);
 		};
 		request.onsuccess = () => {
-			// `onblocked` may already have rejected; close the connection rather than leaking it.
+			// A timeout or `onblocked` may already have rejected; close the connection that
+			// arrived late rather than leaking it.
 			if (settled) {
 				request.result.close();
 				return;
 			}
-			settled = true;
-			resolve(request.result);
+			finish(() => resolve(request.result));
 		};
-		request.onerror = () => {
-			settled = true;
-			reject(unavailable());
-		};
-		request.onblocked = () => {
-			if (settled) return;
-			settled = true;
-			reject(unavailable());
-		};
+		request.onerror = () => finish(() => reject(unavailable()));
+		request.onblocked = () => finish(() => reject(unavailable()));
 	});
 }
 
@@ -230,7 +291,7 @@ async function getOrCreateWrapKey(db: IDBDatabase): Promise<CryptoKey> {
 async function readWrapKey(db: IDBDatabase): Promise<CryptoKey | null> {
 	const store = db.transaction(STORE_WRAP, "readonly").objectStore(STORE_WRAP);
 	const stored = await awaitRequest(store.get(WRAP_KEY_ID));
-	if (isCryptoKey(stored)) return stored;
+	if (isWrapKey(stored)) return stored;
 	if (stored !== undefined) {
 		// A record is present but is not a usable key: refuse rather than silently replacing
 		// it, because overwriting would permanently orphan every secret encrypted under it.
@@ -258,12 +319,15 @@ function installWrapKey(db: IDBDatabase, candidate: CryptoKey): Promise<CryptoKe
 		let failure: KeyVaultError | null = null;
 
 		read.onsuccess = () => {
-			if (isCryptoKey(read.result)) {
+			if (isWrapKey(read.result)) {
 				// Another context won the race; adopt its key and write nothing.
 				winner = read.result;
 				return;
 			}
 			if (read.result !== undefined) {
+				// Guards a cross-context TOCTOU only: another tab would have to write a
+				// non-key into the slot between `readWrapKey`'s transaction and this one. No
+				// test reaches it, because the app itself never writes such a value.
 				failure = vaultCorrupt();
 				tx.abort();
 				return;
@@ -348,9 +412,15 @@ export async function getSecret(id: string): Promise<string | null> {
 				wrapKey,
 				record.ciphertext,
 			);
-		} catch {
-			// AES-GCM authentication failed: the record was truncated or tampered with.
-			throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
+		} catch (error) {
+			// An `OperationError` is an AES-GCM authentication failure: this record really was
+			// truncated or tampered with, and the caller may discard it. Any other rejection is
+			// a fault in the crypto layer, not evidence about this record — classifying it as
+			// `corrupt` would let a transient failure delete a perfectly good key.
+			if (isOperationError(error)) {
+				throw new KeyVaultError("corrupt", CORRUPT_MESSAGE);
+			}
+			throw vaultCorrupt();
 		}
 		return new TextDecoder().decode(plaintext);
 	});

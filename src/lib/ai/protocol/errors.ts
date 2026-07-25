@@ -18,7 +18,7 @@
 export type ProtocolErrorCode =
 	/** The selected model cannot do what the request asks (for example tool calling). */
 	| "unsupported_capability"
-	/** No BYOK credential is configured for the selected provider. */
+	/** No usable BYOK credential: none is configured, or the stored one cannot be read. */
 	| "no_api_key"
 	/** The provider answered with a non-2xx status that is not rate limiting. */
 	| "http_status"

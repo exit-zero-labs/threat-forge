@@ -262,8 +262,9 @@ availability reason, and one coalesced status-bar indicator — one report per f
 per write. The in-memory document is always left editable and exportable.
 
 **No credential ever reaches either store.** The layer writes only `.thf` text and the id/order/
-title/preferences manifest, imports no keychain adapter, and uses a namespace disjoint from
-`tf-api-key-`. `src/lib/persistence/no-key-leakage.test.ts` proves this by enumerating every stored
+title/preferences manifest, imports no keychain adapter, and uses a namespace disjoint from the
+`threatforge-keychain` vault (and from the legacy `tf-api-key-` slot it migrates from).
+`src/lib/persistence/no-key-leakage.test.ts` proves this by enumerating every stored
 record after a real autosave cycle.
 
 ### Handoff seams
