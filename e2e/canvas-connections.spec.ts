@@ -118,9 +118,7 @@ test.describe("Canvas pointer connections", () => {
 
 		// First node is on the left, second is on the right — first's right-source handle
 		// faces second's left-target handle, matching the issue's reproduction steps exactly.
-		const fromHandle = page.locator(
-			`[data-nodeid="${firstId}"][data-handleid="right-source"]`,
-		);
+		const fromHandle = page.locator(`[data-nodeid="${firstId}"][data-handleid="right-source"]`);
 		const toHandle = page.locator(`[data-nodeid="${secondId}"][data-handleid="left-target"]`);
 
 		await dragHandleToHandle(page, fromHandle, toHandle);
@@ -137,9 +135,7 @@ test.describe("Canvas pointer connections", () => {
 		// Reverse direction, using the same two overlapping connection points: starting the
 		// drag from the second node's (left) source handle and releasing over the first
 		// node's (right) target handle. Both directions must remain available at every point.
-		const fromHandle = page.locator(
-			`[data-nodeid="${secondId}"][data-handleid="left-source"]`,
-		);
+		const fromHandle = page.locator(`[data-nodeid="${secondId}"][data-handleid="left-source"]`);
 		const toHandle = page.locator(`[data-nodeid="${firstId}"][data-handleid="right-target"]`);
 
 		await dragHandleToHandle(page, fromHandle, toHandle);
@@ -174,12 +170,8 @@ test.describe("Canvas pointer connections", () => {
 	}) => {
 		const { firstId, secondId } = await createSeparatedNodes(page);
 
-		const fromHandle = page.locator(
-			`[data-nodeid="${firstId}"][data-handleid="right-source"]`,
-		);
-		const initialTarget = page.locator(
-			`[data-nodeid="${secondId}"][data-handleid="left-target"]`,
-		);
+		const fromHandle = page.locator(`[data-nodeid="${firstId}"][data-handleid="right-source"]`);
+		const initialTarget = page.locator(`[data-nodeid="${secondId}"][data-handleid="left-target"]`);
 		await dragHandleToHandle(page, fromHandle, initialTarget);
 		await expect(page.locator(".react-flow__edge")).toHaveCount(1);
 
@@ -193,9 +185,7 @@ test.describe("Canvas pointer connections", () => {
 		// "source"` (the type of the anchor's fixed opposite end) — see the sibling test below
 		// for the complementary "target" branch, exercised by the source-side anchor.
 		const reconnectAnchor = page.locator(".react-flow__edgeupdater-target");
-		const newTarget = page.locator(
-			`[data-nodeid="${secondId}"][data-handleid="top-left-target"]`,
-		);
+		const newTarget = page.locator(`[data-nodeid="${secondId}"][data-handleid="top-left-target"]`);
 		await dragHandleToHandle(page, reconnectAnchor, newTarget);
 
 		// Reconnecting must retarget the existing edge, never add a second one.
@@ -223,12 +213,8 @@ test.describe("Canvas pointer connections", () => {
 	}) => {
 		const { firstId, secondId } = await createSeparatedNodes(page);
 
-		const fromHandle = page.locator(
-			`[data-nodeid="${firstId}"][data-handleid="right-source"]`,
-		);
-		const initialTarget = page.locator(
-			`[data-nodeid="${secondId}"][data-handleid="left-target"]`,
-		);
+		const fromHandle = page.locator(`[data-nodeid="${firstId}"][data-handleid="right-source"]`);
+		const initialTarget = page.locator(`[data-nodeid="${secondId}"][data-handleid="left-target"]`);
 		await dragHandleToHandle(page, fromHandle, initialTarget);
 		await expect(page.locator(".react-flow__edge")).toHaveCount(1);
 
@@ -244,9 +230,7 @@ test.describe("Canvas pointer connections", () => {
 		// different overlapping target/source pair than the edge's current source, staying
 		// clear of the minimap and right panel.
 		const reconnectAnchor = page.locator(".react-flow__edgeupdater-source");
-		const newSource = page.locator(
-			`[data-nodeid="${firstId}"][data-handleid="top-left-source"]`,
-		);
+		const newSource = page.locator(`[data-nodeid="${firstId}"][data-handleid="top-left-source"]`);
 		const anchorBox = await reconnectAnchor.boundingBox();
 		const newSourceBox = await newSource.boundingBox();
 		if (!anchorBox || !newSourceBox) throw new Error("handle has no bounding box");

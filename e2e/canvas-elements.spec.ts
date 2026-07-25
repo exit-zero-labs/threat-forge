@@ -1,4 +1,4 @@
-import { addPaletteItem, createModel, expect, modKey, test } from "./fixtures";
+import { addPaletteItem, createModel, expect, test } from "./fixtures";
 
 test.describe("Canvas Elements", () => {
 	test.beforeEach(async ({ page }) => {

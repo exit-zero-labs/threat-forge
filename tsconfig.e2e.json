@@ -1,0 +1,17 @@
+{
+	/* Type-check path for browser E2E specs, fixtures, support modules, and the Playwright
+	   config itself (issue #215). Separate from the root project (`tsconfig.json`) because these
+	   files run under Node (Playwright's test runner), not the bundled browser app, and a few
+	   support modules import shared production types, runtime constants, and helper functions by
+	   their `@/*` alias. Extending the root keeps strictness and path aliases
+	   synchronized; this project overrides only runtime-specific language and ambient types. */
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"target": "ES2022",
+		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"allowJs": true,
+		"checkJs": true,
+		"types": ["node", "@playwright/test"]
+	},
+	"include": ["e2e/**/*.ts", "e2e/**/*.tsx", "e2e/**/*.js", "e2e/**/*.mjs", "playwright.config.ts"]
+}

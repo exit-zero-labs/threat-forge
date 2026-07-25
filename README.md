@@ -167,7 +167,8 @@ cargo test --manifest-path src-tauri/Cargo.toml        # Rust test suite
 ### Lint
 
 ```bash
-npx biome check .                                      # TypeScript
+npx biome check .                                      # TypeScript (incl. e2e/)
+npx tsc --noEmit -p tsconfig.e2e.json                  # E2E TypeScript types
 cargo clippy --manifest-path src-tauri/Cargo.toml      # Rust
 ```
 

@@ -26,23 +26,46 @@ const MODEL = "claude-sonnet-5";
 /** One assistant turn that calls add_element for a "Cache" process. */
 function addElementResponse(): string {
 	return sse([
-		{ event: "message_start", data: { message: { id: "msg_1", model: MODEL, usage: { input_tokens: 20, output_tokens: 1 } } } },
+		{
+			event: "message_start",
+			data: {
+				message: { id: "msg_1", model: MODEL, usage: { input_tokens: 20, output_tokens: 1 } },
+			},
+		},
 		{ event: "content_block_start", data: { index: 0, content_block: { type: "text", text: "" } } },
-		{ event: "content_block_delta", data: { index: 0, delta: { type: "text_delta", text: "Adding a cache." } } },
+		{
+			event: "content_block_delta",
+			data: { index: 0, delta: { type: "text_delta", text: "Adding a cache." } },
+		},
 		{ event: "content_block_stop", data: { index: 0 } },
-		{ event: "content_block_start", data: { index: 1, content_block: { type: "tool_use", id: "call_1", name: "add_element", input: {} } } },
+		{
+			event: "content_block_start",
+			data: {
+				index: 1,
+				content_block: { type: "tool_use", id: "call_1", name: "add_element", input: {} },
+			},
+		},
 		{
 			event: "content_block_delta",
 			data: {
 				index: 1,
 				delta: {
 					type: "input_json_delta",
-					partial_json: JSON.stringify({ action: "add_element", element: { type: "process", name: "Cache" } }),
+					partial_json: JSON.stringify({
+						action: "add_element",
+						element: { type: "process", name: "Cache" },
+					}),
 				},
 			},
 		},
 		{ event: "content_block_stop", data: { index: 1 } },
-		{ event: "message_delta", data: { delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 15 } } },
+		{
+			event: "message_delta",
+			data: {
+				delta: { stop_reason: "tool_use", stop_sequence: null },
+				usage: { output_tokens: 15 },
+			},
+		},
 		{ event: "message_stop", data: { type: "message_stop" } },
 	]);
 }
@@ -50,11 +73,19 @@ function addElementResponse(): string {
 /** A plain text turn that ends the conversation. */
 function textResponse(text: string): string {
 	return sse([
-		{ event: "message_start", data: { message: { id: "msg_2", model: MODEL, usage: { input_tokens: 25, output_tokens: 1 } } } },
+		{
+			event: "message_start",
+			data: {
+				message: { id: "msg_2", model: MODEL, usage: { input_tokens: 25, output_tokens: 1 } },
+			},
+		},
 		{ event: "content_block_start", data: { index: 0, content_block: { type: "text", text: "" } } },
 		{ event: "content_block_delta", data: { index: 0, delta: { type: "text_delta", text } } },
 		{ event: "content_block_stop", data: { index: 0 } },
-		{ event: "message_delta", data: { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } } },
+		{
+			event: "message_delta",
+			data: { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } },
+		},
 		{ event: "message_stop", data: { type: "message_stop" } },
 	]);
 }

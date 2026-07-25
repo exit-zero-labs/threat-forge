@@ -59,6 +59,9 @@ jobs:
       - name: TypeScript type check
         run: npx tsc --noEmit
 
+      - name: E2E TypeScript type check
+        run: npm run check:e2e-types
+
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update

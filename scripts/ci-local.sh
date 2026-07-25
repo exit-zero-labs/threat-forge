@@ -66,6 +66,10 @@ step "TypeScript type check"
 npx tsc --noEmit || fail "TypeScript type check failed"
 pass "tsc"
 
+step "E2E TypeScript type check"
+npm run check:e2e-types || fail "E2E TypeScript type check failed"
+pass "E2E tsc"
+
 step "Cloudflare Worker type check"
 npm run check:worker-types || fail "Cloudflare Worker type check failed"
 pass "Worker tsc"
