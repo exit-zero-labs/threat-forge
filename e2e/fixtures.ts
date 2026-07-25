@@ -1,4 +1,5 @@
-import { type Page, expect, test as base } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { failureAwareTest as base, expect } from "./support/base";
 
 /** Platform-aware modifier key: Meta on macOS, Control elsewhere */
 export const modKey = process.platform === "darwin" ? "Meta" : "Control";
@@ -84,8 +85,8 @@ const AUTO_START_GUIDE_IDS = ["welcome", "dfd-basics"];
  * This intentionally removes guide auto-start from every spec built on this fixture. Hook-level
  * tests cover the timers, StrictMode replay, live eligibility checks, and What's New suppression;
  * dedicated real-browser auto-start coverage lives in `e2e/onboarding-auto-start.spec.ts` (#141),
- * which imports the plain `@playwright/test` `test` instead of this fixture so it is not
- * suppressed away.
+ * which imports `failureAwareTest` directly from `support/base.ts` instead of this fixture so it
+ * is not suppressed away.
  */
 export async function suppressFirstRunOverlays(page: Page) {
 	await page.addInitScript((guideIds: string[]) => {
@@ -109,7 +110,11 @@ export async function seedAnthropicApiKey(page: Page) {
 	});
 }
 
-/** Test fixture that applies {@link suppressFirstRunOverlays} to every page before it loads. */
+/**
+ * Test fixture that applies {@link suppressFirstRunOverlays} to every page before it loads, on
+ * top of the failure-aware base's console/pageerror/requestfailed policy (`support/base.ts`,
+ * issue #65 D4). `base.ts` never imports this module, so no import cycle exists.
+ */
 export const test = base.extend({
 	page: async ({ page }, use) => {
 		await suppressFirstRunOverlays(page);
@@ -117,4 +122,4 @@ export const test = base.extend({
 	},
 });
 
-export { expect } from "@playwright/test";
+export { expect };

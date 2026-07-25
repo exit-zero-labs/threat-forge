@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { createModel, dismissWhatsNew } from "./fixtures";
+import { expect, failureAwareTest as test } from "./support/base";
 
 // The shared fixture suppresses both guides for deterministic workflow specs. These tests use
 // plain Playwright contexts and seed only what each first-run contract requires.
