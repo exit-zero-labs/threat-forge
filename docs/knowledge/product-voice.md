@@ -7,6 +7,10 @@ It does not govern documentation. `.e0l/first-principles/documentation.md` owns 
 two are deliberately different — docs are for someone who has already decided, product copy is
 for someone who has not.
 
+It sits on top of `.e0l/first-principles/anti-slop/copy.md`, which is the company catalogue of
+copy tells and already owns the general cases. What is here is the ThreatForge-specific part:
+the register, and the tells evidenced in our own shipped text.
+
 ## The voice
 
 Wry. The joke is always at the situation or the incumbent tools, never at the reader, and there
@@ -27,9 +31,9 @@ Rules that make it work:
 - **Never punch at the user.** They are not the problem. The tools are.
 - **Substance under every joke.** If you delete the wit and nothing informative remains, the
   line is decoration. Cut it.
-- **Errors, FAQ answers, and instructions stay plain.** Someone reading an error wants an
-  answer, not a bit. Wit at that moment reads as the product enjoying itself while they are
-  stuck.
+- **On functional surfaces, the fact comes first.** Errors, instructions, onboarding steps and
+  FAQ answers may carry the voice, but never at the cost of the answer, and never at the expense
+  of someone who is stuck. If removing the wit would make the sentence clearer, remove it.
 - **Concede real limits.** "It won't find the clever bug in your auth logic. It will find the
   twelve boring ones you were going to skip." A concession is the cheapest credibility
   available and almost no marketing copy will spend it.
@@ -43,16 +47,16 @@ before issue #254, so they are not hypothetical.
    grid, not from having four things worth saying. Real writing is lopsided — one thing matters
    most and gets the most words. Keep the uneven lengths; do not tidy them.
 2. **Coverage sentences.** "Build X, run Y, and produce Z — all in a free, cross-platform
-   desktop app." A comma series closed by an em-dash summary is the single most recognisable
+   desktop app." A comma series closed by an em-dash summary is the single most recognizable
    generated sentence shape. Break it into sentences of violently different lengths.
-3. **No antagonist.** "Everything you need" — compared to what? Naming Microsoft TMT and the
+3. **No antagonist.** "Everything you need for threat modeling" — compared to what? Naming Microsoft TMT and the
    ~$20K platforms gives the reader somewhere to stand. Vagueness is what you write when you
    are avoiding being wrong.
-4. **Nothing conceded.** Text optimised for approval never admits a limit. If every line is a
+4. **Nothing conceded.** Text optimized for approval never admits a limit. If every line is a
    strength, the reader discounts all of them.
-5. **Stated virtue instead of shown.** "direct, crafted, and grounded", "fills that gap",
-   "built with security in mind". Saying you are direct is the least direct available move.
-   Replace the claim with the evidence for it.
+5. **Stated virtue instead of shown.** "direct, crafted, and grounded", "fills that gap".
+   Saying you are direct is the least direct available move. Replace the claim with the
+   evidence for it.
 6. **No one speaking.** Hero → feature grid → code sample → CTA is a template, not an argument.
    A page should build: here is the situation, here is why it persists, here is the third
    option. If the sections can be reordered without loss, there was no argument.

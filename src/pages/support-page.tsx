@@ -10,7 +10,7 @@ const FAQ_ITEMS = [
 	{
 		question: "Is Threat Forge free?",
 		answer:
-			"Yes. Apache 2.0, no account, no usage limits. The licence grant is irrevocable, so that is not something that can quietly change on you later.",
+			"Yes. Apache 2.0, no account, no usage limits. Every version already released stays Apache 2.0, so that is not something that can quietly change on you later.",
 	},
 	{
 		question: "Do I need an API key for AI features?",
@@ -20,7 +20,7 @@ const FAQ_ITEMS = [
 	{
 		question: "What file format does Threat Forge use?",
 		answer:
-			"A .thf file, which is YAML. Readable in any editor, sensible in a git diff, and validated against a published schema so other tools can use it.",
+			"A .thf file, which is YAML. Readable in any editor, sensible in a git diff, and validated on load, with the format documented in the repo so other tools can read it too.",
 	},
 	{
 		question: "What platforms are supported?",

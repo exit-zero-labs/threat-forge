@@ -2,7 +2,7 @@
 
 ## What It Is
 
-ThreatForge is an open-source, AI-enhanced threat modeling application for the browser and Tauri desktop platforms. It fills the gap between Microsoft's free but Windows-only Threat Modeling Tool (opaque `.tm7` binaries and a legacy UI) and procurement-oriented enterprise platforms.
+ThreatForge is an open-source, AI-enhanced threat modeling application for the browser and Tauri desktop platforms. It fills the gap between Microsoft's free but Windows-only Threat Modeling Tool (a `.tm7` file no one can usefully read or diff, and a legacy UI) and procurement-oriented enterprise platforms.
 
 ## Core Value Proposition
 
@@ -14,7 +14,7 @@ ThreatForge differentiates itself by combining three things:
 
 1. **UX gap filled** — A modern, keyboard-shortcut-driven interface with drag-and-drop canvas, typed components and text annotations, custom themes, and resizable panes. The kind of experience developers expect from tools like Linear, Figma, or VS Code.
 
-2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is binary, while Threat Dragon's JSON is comparatively verbose. ThreatForge can import `.tm7` files directly, converting them to `.thf` with elements, flows, boundaries, and threats preserved.
+2. **File format gap filled** — The `.thf` YAML format is human-readable, git-diffable, and reviewable in pull requests. Microsoft's `.tm7` is a .NET DataContract object graph in XML, unreadable in review, while Threat Dragon's JSON is comparatively verbose. ThreatForge can import `.tm7` files directly, converting them to `.thf` with elements, flows, boundaries, and threats preserved.
 
 3. **AI integration gap filled** — An integrated AI chat pane (BYOK) supports conversational threat analysis and iterative model refinement.
 

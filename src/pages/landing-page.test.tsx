@@ -25,12 +25,12 @@ describe("LandingPage", () => {
 			.getAllByRole("link")
 			.filter(
 				(a) =>
-					a.textContent?.includes("Try it in the browser") || a.textContent?.includes("Download"),
+					a.textContent?.trim() === "Try it in the browser" || a.textContent?.trim() === "Download",
 			);
 
 		// The browser CTA should come before the download CTA in DOM order
-		const tryIndex = heroLinks.findIndex((a) => a.textContent?.includes("Try it in the browser"));
-		const downloadIndex = heroLinks.findIndex((a) => a.textContent?.includes("Download"));
+		const tryIndex = heroLinks.findIndex((a) => a.textContent?.trim() === "Try it in the browser");
+		const downloadIndex = heroLinks.findIndex((a) => a.textContent?.trim() === "Download");
 		expect(tryIndex).toBeLessThan(downloadIndex);
 	});
 

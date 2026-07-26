@@ -26,7 +26,7 @@ export function NavBar() {
 						to="/app"
 						className="rounded-md bg-tf-signal px-4 py-2 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90"
 					>
-						Try Online
+						Try it in the browser
 					</Link>
 				</div>
 			</div>

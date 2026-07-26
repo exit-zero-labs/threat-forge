@@ -31,9 +31,9 @@ describe("NavBar", () => {
 		expect(about.closest("a")).toHaveAttribute("href", "/about");
 	});
 
-	it("renders Try Online CTA linking to /app", () => {
+	it("renders the browser CTA linking to /app", () => {
 		renderNavBar();
-		const cta = screen.getByText("Try Online");
+		const cta = screen.getByText("Try it in the browser");
 		expect(cta.closest("a")).toHaveAttribute("href", "/app");
 	});
 

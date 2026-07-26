@@ -80,14 +80,14 @@ export const STRIDE_ANALYSIS_GUIDE: OnboardingGuide = {
 			targetSelector: "[data-testid='btn-stride-analyze']",
 			title: "Run it",
 			content:
-				"Walks your elements and flows through all six STRIDE categories: spoofing, tampering, repudiation, information disclosure, denial of service, elevation of privilege. It is thorough rather than clever, which is the point.",
+				"Walks your elements and flows through the six STRIDE categories that apply to each: spoofing, tampering, repudiation, information disclosure, denial of service, elevation of privilege. It is thorough rather than clever, which is the point.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='right-panel']",
 			title: "Now do the real work",
 			content:
-				"Open a threat to set severity, write the mitigation, or mark it as not applicable. The generated list is a starting point, not a verdict.",
+				"Open a threat to set severity, write the mitigation, or accept the risk. The generated list is a starting point, not a verdict.",
 			placement: "left",
 		},
 	],
@@ -102,7 +102,7 @@ export const AI_ASSISTANT_GUIDE: OnboardingGuide = {
 			targetSelector: "[data-testid='tab-ai']",
 			title: "The AI tab",
 			content:
-				"Chat about the model you have open. It can read the document, propose threats, and edit elements and flows directly rather than telling you to.",
+				"Chat about the model you have open. It can read the document, propose threats, and edit elements and flows itself — though every edit stops for your approval first.",
 			placement: "left",
 		},
 		{

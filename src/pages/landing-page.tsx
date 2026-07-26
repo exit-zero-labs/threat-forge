@@ -7,24 +7,24 @@ const FEATURES = [
 		icon: Shield,
 		title: "STRIDE, minus the workshop",
 		description:
-			"Six categories, applied to every element and flow you've drawn. It won't find the clever bug in your auth logic. It will find the twelve boring ones you were going to skip.",
+			"All six categories, run against every element and flow where they apply. It won't find the clever bug in your auth logic. It will find the twelve boring ones you were going to skip.",
 	},
 	{
 		icon: FileCode,
 		title: "It's a file. That's the whole trick.",
 		description:
-			"A .thf is YAML. Open it in vim, diff it on GitHub, grep it. There's no export step because there's nothing to export from.",
+			"A .thf is YAML. Open it in vim, diff it on GitHub, grep it. There's no export step to get something reviewable — the file already is one.",
 	},
 	{
 		icon: Sparkles,
 		title: "AI that edits, not advises",
 		description:
-			"Bring your own key. The model changes elements, flows, and threats directly, and every change is checked against the schema before it lands. Nonsense gets refused rather than saved.",
+			"Bring your own key. The model edits elements, flows, and threats directly instead of describing what you should type. Every edit is schema-checked and waits for your approval before it lands.",
 	},
 	{
 		icon: Monitor,
 		title: "Runs anywhere, weighs nothing",
-		description: "A few megabytes, in Rust. macOS, Windows, Linux, or no install at all.",
+		description: "About ten megabytes, in Rust. macOS, Windows, Linux, or no install at all.",
 	},
 ] as const;
 
@@ -191,8 +191,8 @@ function CtaSection() {
 					That&apos;s the pitch
 				</h2>
 				<p className="mt-4 text-muted-foreground">
-					Free, open source, no account. Nothing leaves your machine unless you point it at an AI
-					provider yourself. If you hate it, you&apos;re out ten minutes.
+					Free, open source, no account. Your models stay on your machine unless you point it at an
+					AI provider yourself. If you hate it, you&apos;re out ten minutes.
 				</p>
 				<div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
 					<Link
