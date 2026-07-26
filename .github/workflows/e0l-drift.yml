@@ -1,0 +1,93 @@
+name: E0L doctrine drift
+
+# Two separate concerns, deliberately on different triggers.
+#
+# Integrity runs on every pull request: it recomputes the vendored payload's hashes against its own
+# manifest and asserts the repository holds no symlinks. It needs no network and catches a hand-edit
+# of governance content.
+#
+# Freshness runs weekly, never on a pull request. A doctrine version bump upstream must not block an
+# unrelated PR — that is how a governance check trains people to ignore it.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".e0l/**"
+      - ".github/workflows/e0l-drift.yml"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrity:
+    name: Payload integrity
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: No symlinks anywhere (public profile invariant)
+        run: |
+          links="$(find . -type l -not -path './.git/*' -not -path '*/node_modules/*')"
+          if [ -n "$links" ]; then
+            echo "::error::This repository is public and must contain zero symlinks."
+            echo "$links"
+            exit 1
+          fi
+          echo "No symlinks found."
+
+      - name: Vendored payload matches its manifest
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+
+          root = Path(".e0l")
+          manifest = json.loads((root / "manifest.json").read_text())["files"]
+          problems = []
+          for rel, expected in manifest.items():
+              path = root / rel
+              if not path.is_file():
+                  problems.append(f"missing   {rel}")
+                  continue
+              actual = hashlib.sha256(path.read_bytes()).hexdigest()
+              if actual != expected:
+                  problems.append(f"modified  {rel}")
+
+          if problems:
+              print("::error::The vendored doctrine payload has been edited in place.")
+              print("It is generated. Change it upstream in the workspace and let it propagate.")
+              for line in problems:
+                  print(f"  {line}")
+              sys.exit(1)
+          print(f"Payload intact: {len(manifest)} files match the manifest.")
+          PY
+
+  freshness:
+    name: Doctrine freshness
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare against the published doctrine
+        run: |
+          local_version="$(head -1 .e0l/VERSION | sed 's/^e0l-doctrine //')"
+          latest="$(curl -fsSL https://raw.githubusercontent.com/exit-zero-labs/.github/main/e0l-doctrine/latest.json || echo '')"
+          if [ -z "$latest" ]; then
+            echo "::warning::No published doctrine found; skipping the freshness check."
+            exit 0
+          fi
+          published="$(echo "$latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+          echo "local: $local_version   published: $published"
+          if [ "$local_version" != "$published" ]; then
+            echo "::warning::Doctrine is behind ($local_version < $published). Run e0l-propagate.sh from the workspace."
+          else
+            echo "Up to date."
+          fi

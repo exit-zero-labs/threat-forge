@@ -6,3 +6,7 @@
 # these owners can approve and merge them.
 
 * @Shreyasdbz @exitzerolabs-admin
+
+# Inherited governance. Vendored from the Exit Zero Labs workspace and generated, never edited
+# here — an outside contributor must not be able to alter it in a fork PR without an owner seeing.
+/.e0l/ @Shreyasdbz

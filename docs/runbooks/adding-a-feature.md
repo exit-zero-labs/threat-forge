@@ -11,7 +11,7 @@ Use this workflow for non-trivial ThreatForge features.
 4. Link the parent initiative and any blocking issues.
 5. Write measurable acceptance criteria in the issue.
 6. Apply exactly one autonomy label:
-   - `Automatable` when no earlier human action is needed
+   - `AUTO` when no earlier human action is needed
    - `HITL` for secrets, provisioning, external accounts, or unresolved decisions
 
 GitHub is the only execution tracker. Do not create a second backlog in Markdown.
@@ -93,7 +93,7 @@ Fix must-fix and should-fix findings and rerun the same lanes until they converg
 - Link the M/L plan or state `N/A — XS/S`.
 - Separate verification evidence from owner validation steps.
 - Include before/after screenshots for UI changes.
-- Move the project item to `In review`.
+- Move the project item to `In progress`.
 
 Only `Shreyasdbz` and `exitzerolabs-admin` may merge or update `main`.
 Commit, push, PR creation, approval, and merge each require explicit authorization. Owners
