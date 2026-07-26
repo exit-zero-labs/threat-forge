@@ -28,10 +28,18 @@ describe("selectUnseenEntries", () => {
 	});
 
 	it("compares versions numerically rather than lexicographically", () => {
-		// "0.9.0" sorts after "0.10.0" as text, which would hide the newer entry.
-		expect(versionsOf(selectUnseenEntries("0.9.0", "0.10.0", entries("0.10.0", "0.9.0")))).toEqual([
-			"0.10.0",
-		]);
+		// As text "0.9.0" sorts above both "0.10.0" and "0.11.0", so a string comparison
+		// reads a 0.9.0 user as being ahead of the newest entry and re-announces only the
+		// latest instead of both versions they missed.
+		expect(
+			versionsOf(selectUnseenEntries("0.9.0", "0.11.0", entries("0.11.0", "0.10.0", "0.9.0"))),
+		).toEqual(["0.11.0", "0.10.0"]);
+
+		// And in the filter itself: "0.9.0" > "0.10.0" as text would re-announce an entry
+		// the user has already acknowledged.
+		expect(
+			versionsOf(selectUnseenEntries("0.10.0", "0.11.0", entries("0.11.0", "0.10.0", "0.9.0"))),
+		).toEqual(["0.11.0"]);
 	});
 
 	it("re-announces when a prior build stored a version that was never released", () => {
@@ -78,8 +86,10 @@ describe("CHANGELOG", () => {
 	});
 
 	it("announces the running build", () => {
-		// Bumping the version without adding an entry tells upgrading users nothing;
-		// the release runbook carries the step, and this is what catches skipping it.
+		// Bumping the version without adding an entry tells upgrading users nothing, and
+		// it would leave a dismissing user holding a version above every known entry —
+		// which selectUnseenEntries reads as impossible and re-announces forever. The
+		// release runbook carries the step; this is what catches skipping it.
 		expect(CHANGELOG[0]?.version).toBe(__APP_VERSION__);
 	});
 

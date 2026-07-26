@@ -7,7 +7,14 @@
  * import a component module to answer it, and neither side re-derives the answer.
  */
 
-/** Where the last acknowledged version is recorded. Also read by the E2E fixtures. */
+/**
+ * Where the last acknowledged version is recorded.
+ *
+ * `e2e/fixtures.ts` and `e2e/onboarding-auto-start.spec.ts` repeat this literal rather than
+ * importing it: they run inside `addInitScript` in page context, where this module's
+ * build-time `__APP_VERSION__` define does not exist. Renaming this constant means editing
+ * those two call sites too, or every browser spec silently starts fighting the overlay.
+ */
 export const WHATS_NEW_STORAGE_KEY = "threatforge-last-seen-version";
 
 /**
@@ -50,7 +57,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 		date: "2026-07-26",
 		changes: [
 			"AI edits the model through native tool calls, so a suggestion arrives as a real change to elements, flows, and threats rather than an action block the app has to re-parse",
-			"You approve each proposed change on its own, and anything applied is a single undo away",
+			"A proposed change is re-checked against the file format before it lands, and refused if the result would not reopen or if the document moved underneath it",
 			"AI can read your current document and the component catalog before it suggests anything",
 			"Refreshed OpenAI and Anthropic model catalog",
 			"Import existing models from Microsoft Threat Modeling Tool .tm7 files",
@@ -103,7 +110,7 @@ export const CHANGELOG: ChangelogEntry[] = [
  *
  * Split out from the storage read so the version-comparison rules can be tested against
  * versions this build does not have — `__APP_VERSION__` is substituted at build time, so
- * a test cannot vary it.
+ * neither a test nor `vi.stubGlobal` can vary it.
  *
  * @param lastSeen the raw stored value, exactly as it came out of localStorage
  * @param currentVersion the running build's version
@@ -118,18 +125,15 @@ export function selectUnseenEntries(
 		return [];
 	}
 
-	// The highest version this build could legitimately have written: normally the newest
-	// changelog entry, but the build's own version when a release ships without an entry —
-	// as v0.1.1 originally did.
-	const newestEntry = changelog[0]?.version ?? currentVersion;
-	const highestExpected = semverGt(currentVersion, newestEntry) ? currentVersion : newestEntry;
-
-	// A stored version ahead of that cannot have come from the app's own history. Builds
-	// up to 0.2.0 wrote a hard-coded "1.0.0" here (#246), so treating that value as
-	// "already seen" would suppress the overlay until the app genuinely reached 1.0.0.
-	// Fall back to first-launch behavior, which self-heals as soon as the user dismisses.
+	// A stored version above the newest entry cannot have come from the app's own history,
+	// because a build never announces a version it has no entry for — `whats-new.test.ts`
+	// fails the build when the newest entry and the running version disagree. Builds up to
+	// 0.2.0 wrote a hard-coded "1.0.0" here (#246), so treating that value as "already
+	// seen" would suppress the overlay until the app genuinely reached 1.0.0. Fall back to
+	// first-launch behavior, which self-heals as soon as the user dismisses.
+	const newestKnown = changelog[0]?.version ?? currentVersion;
 	const usable =
-		lastSeen !== null && SEMVER_PATTERN.test(lastSeen) && !semverGt(lastSeen, highestExpected)
+		lastSeen !== null && SEMVER_PATTERN.test(lastSeen) && !semverGt(lastSeen, newestKnown)
 			? lastSeen
 			: null;
 

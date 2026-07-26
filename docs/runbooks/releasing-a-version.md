@@ -30,18 +30,22 @@ OIDC before enabling signed releases.
 
 ### Recorded waivers
 
-**v0.3.0 — unsigned macOS builds and no updater.** The owner accepted shipping v0.3.0 with rows
-#51 and #49 open, to get 98 commits of work into users' hands rather than hold it behind signing
-provisioning. What this costs users:
+**v0.3.0 — unsigned macOS builds, unverified Windows signing, and no updater.** The owner
+accepted shipping v0.3.0 with rows #51, #50, and #49 open, to get 98 commits of work into users'
+hands rather than hold it behind signing provisioning. What this costs users:
 
-- macOS reports the app as damaged on first launch and they must clear the quarantine flag by
-  hand. The `/support` page carries the instructions and `/downloads` links to them ([#245]).
-- There is no in-app update. Users return to the downloads page for the next version.
-- Windows installers are signed through Azure Trusted Signing, but SmartScreen reputation is
-  still accumulating, so a warning is expected there too.
+- **#51, macOS.** No Developer ID signature or notarization, so macOS reports the app as damaged
+  on first launch and users must clear the quarantine flag by hand. The `/support` page carries
+  the instructions and `/downloads` links to them ([#245]).
+- **#50, Windows.** Azure Trusted Signing is wired into the build, but it has never been verified
+  on a published artifact — that is the open half of the row. Treat "the installer is signed" as
+  unconfirmed until step 8 checks the signature on the real v0.3.0 artifact. SmartScreen
+  reputation is still accumulating either way, so a warning is expected.
+- **#49, updater.** There is no in-app update. Users return to the downloads page for the next
+  version.
 
-Revisit at the next release: if #51 and #49 are still open then, that is a signal to stop
-shipping past them rather than to re-waive.
+Revisit at the next release: if these rows are still open then, that is a signal to stop shipping
+past them rather than to re-waive.
 
 [#245]: https://github.com/exit-zero-labs/threat-forge/issues/245
 
@@ -140,9 +144,10 @@ Monitor the workflow at: `Actions > Release > vX.Y.Z`.
 ### 8. Verify the Release
 
 1. Check GitHub Releases page for the draft release
-2. Confirm the draft carries an artifact for every matrix target. A missing Windows artifact
-   means Azure signing failed — `scripts/sign-windows.ps1` exits non-zero rather than shipping an
-   unsigned installer, and `fail-fast: false` lets the other platforms finish around it.
+2. Confirm the draft carries an artifact for every matrix target. A missing artifact means that
+   platform's build or signing step failed; `fail-fast: false` lets the others finish around it.
+   For Windows specifically, `scripts/sign-windows.ps1` exits non-zero rather than shipping an
+   unsigned installer, so a missing installer may mean signing rather than the build.
 3. Download binaries for each platform and smoke test:
    - Verify the Windows installer signature and publisher identity
    - On macOS, confirm the documented first-run recovery actually works on a machine that has
@@ -179,8 +184,8 @@ git commit -m "fix: critical bug description"
 # Merge to main, then tag a patch release
 git checkout main
 git merge fix/critical-bug
-git tag vX.Y.Z+1
-git push origin main vX.Y.Z+1
+git tag vX.Y.Z            # the next patch version
+git push origin main vX.Y.Z
 ```
 
 ## Troubleshooting

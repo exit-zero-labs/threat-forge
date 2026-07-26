@@ -133,10 +133,13 @@ function Command({ children }: { children: string }) {
 }
 
 /**
- * First-run guidance for the desktop builds. Remove this section, its anchor module, and
- * the downloads-page line that points here once macOS notarization (#51) and Windows
- * signing verification (#50) are complete — at that point the operating systems stop
- * objecting and this advice becomes wrong rather than merely unnecessary.
+ * First-run guidance for the desktop builds.
+ *
+ * The macOS and Windows subsections describe what an unsigned or low-reputation build does;
+ * once notarization (#51) and Windows signing verification (#50) are complete they become
+ * wrong rather than merely unnecessary, and they go — along with the downloads-page line that
+ * points here, if nothing else is left worth pointing at. The Linux subsection is about an
+ * execute bit rather than signing and stays correct regardless.
  */
 function FirstRunSection() {
 	return (
