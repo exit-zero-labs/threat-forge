@@ -22,12 +22,12 @@ is always something true underneath it.
 
 Threat modeling has a real emotional truth attached: most engineers avoid it, and they avoid it
 because the tooling is miserable rather than because the practice is. Copy that acknowledges
-that earns the next sentence. Copy that opens with "Everything you need for modern threat
-modeling" has to be endured instead.
+that earns the next sentence. Copy that opens with "Everything you need for threat modeling"
+has to be endured instead.
 
 Rules that make it work:
 
-- **Humour comes from precision and recognition, not from jokes.** "Install something
+- **Humor comes from precision and recognition, not from jokes.** "Install something
   Windows-only, drag boxes around for an afternoon, export a report, never open it again" is
   funny because it is specific and the reader has lived it. Puns are not the register.
 - **Never punch at the user.** They are not the problem. The tools are.
@@ -36,6 +36,11 @@ Rules that make it work:
 - **On functional surfaces, the fact comes first.** Errors, instructions, onboarding steps and
   FAQ answers may carry the voice, but never at the cost of the answer, and never at the expense
   of someone who is stuck. If removing the wit would make the sentence clearer, remove it.
+
+  Issue #254 originally stated this more strictly — that errors, FAQ answers and instructions
+  stay plain. The looser rule is what shipped, because three FAQ answers do carry the voice and
+  are better for it. Errors are the part that stayed absolute: nothing in an error message is
+  allowed to be funny.
 - **Concede real limits.** "It won't find the clever bug in your auth logic. It will find the
   twelve boring ones you were going to skip." A concession is the cheapest credibility
   available and almost no marketing copy will spend it.
@@ -51,9 +56,9 @@ before issue #254, so they are not hypothetical.
 2. **Coverage sentences.** "Build X, run Y, and produce Z — all in a free, cross-platform
    desktop app." A comma series closed by an em-dash summary is the single most recognizable
    generated sentence shape. Break it into sentences of violently different lengths.
-3. **No antagonist.** "Everything you need for threat modeling" — compared to what? Naming Microsoft TMT and the
-   ~$20K platforms gives the reader somewhere to stand. Vagueness is what you write when you
-   are avoiding being wrong.
+3. **No antagonist.** "Everything you need for threat modeling" — compared to what? Naming
+   Microsoft TMT and the ~$20K platforms gives the reader somewhere to stand. Vagueness is what
+   you write when you are avoiding being wrong.
 4. **Nothing conceded.** Text optimized for approval never admits a limit. If every line is a
    strength, the reader discounts all of them.
 5. **Stated virtue instead of shown.** "direct, crafted, and grounded", "fills that gap".

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { LandingPage } from "./landing-page";
@@ -21,17 +21,12 @@ describe("LandingPage", () => {
 	it("renders hero CTA buttons in correct order (browser first)", () => {
 		renderLandingPage();
 
-		const heroLinks = screen
-			.getAllByRole("link")
-			.filter(
-				(a) =>
-					a.textContent?.trim() === "Try it in the browser" || a.textContent?.trim() === "Download",
-			);
+		// Scoped to the hero: the CTA section repeats both labels in the same order,
+		// so a page-wide query stays green even with the hero buttons deleted.
+		const heroLinks = within(screen.getByTestId("hero")).getAllByRole("link");
+		const labels = heroLinks.map((a) => a.textContent?.trim());
 
-		// The browser CTA should come before the download CTA in DOM order
-		const tryIndex = heroLinks.findIndex((a) => a.textContent?.trim() === "Try it in the browser");
-		const downloadIndex = heroLinks.findIndex((a) => a.textContent?.trim() === "Download");
-		expect(tryIndex).toBeLessThan(downloadIndex);
+		expect(labels).toEqual(["Try it in the browser", "Download"]);
 	});
 
 	it("the browser CTA links to /app", () => {
