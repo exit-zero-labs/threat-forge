@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { ConversationRequest } from "@/lib/ai/protocol/client";
 import type { StreamEvent } from "@/lib/ai/protocol/events";
+import { assertToolPairing } from "@/lib/ai/protocol/messages";
 import { GRAPH_ACTION_TOOLS } from "@/lib/ai/tools/graph-action-tools";
+import { createAiToolRegistry } from "@/lib/ai/tools/tool-registry";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import type { ThreatModel } from "@/types/threat-model";
@@ -122,6 +124,56 @@ describe("the corrective feedback channel", () => {
 		);
 		expect(toolResults).toHaveLength(1);
 		expect(toolResults[0].type === "tool_result" && toolResults[0].content).toContain("name");
+	});
+});
+
+describe("a read-only turn", () => {
+	it("auto-grants a read call, never pauses for approval, and pushes no undo entry", async () => {
+		const registry = createAiToolRegistry();
+		const { stream, requests } = scriptedStream([
+			[
+				{ type: "message_start", model: "m" },
+				{
+					type: "tool_call_complete",
+					id: "c1",
+					name: "search_entities",
+					input: { kind: "elements" },
+				},
+				{ type: "message_stop", stopReason: "tool_use" },
+			],
+			[
+				{ type: "message_start", model: "m" },
+				{ type: "text_delta", text: "here you go" },
+				{ type: "message_stop", stopReason: "end_turn" },
+			],
+		]);
+		const runner = createTurnRunner({ stream, getDocument });
+		const documentBefore = useModelStore.getState().model;
+
+		await runner.submit(config(registry));
+		const state = runner.getState();
+
+		// The turn completed in one submit — it never paused for approval.
+		expect(state.outcome).toBe("completed");
+		expect(state.phase).not.toBe("awaiting_approval");
+		// The read call was auto-granted, not left pending.
+		const call = state.calls.find((c) => c.id === "c1");
+		expect(call?.status).toBe("succeeded");
+		expect(state.grants.some((g) => g.callId === "c1" && g.scope === "auto")).toBe(true);
+
+		// The second request carries a tool_result paired to the call, with no pairing violation.
+		const secondRequest = requests[1];
+		const toolResults = secondRequest.messages.flatMap((m) =>
+			m.content.filter((b) => b.type === "tool_result"),
+		);
+		expect(toolResults).toHaveLength(1);
+		expect(toolResults[0].type === "tool_result" && toolResults[0].toolCallId).toBe("c1");
+		expect(assertToolPairing(secondRequest.messages)).toEqual([]);
+
+		// A read tool commits nothing: the document reference is unchanged and no undo entry exists.
+		expect(useModelStore.getState().model).toBe(documentBefore);
+		expect(useHistoryStore.getState().past).toHaveLength(0);
+		expect(runner.undoAvailability()).toBe("already_undone");
 	});
 });
 

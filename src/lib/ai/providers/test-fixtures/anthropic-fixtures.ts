@@ -100,6 +100,45 @@ export const EXPECTED_TOOL_EVENTS: StreamEvent[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Complete tool-call response with empty (`{}`) arguments
+// ---------------------------------------------------------------------------
+
+/**
+ * A tool call whose input schema is the empty object (`get_document_summary`),
+ * so the model sends no argument bytes at all. The mapper must still surface a
+ * `tool_call_complete` with `input: {}` — the shape most likely to arrive as an
+ * omitted field, `""`, or `{}` from either provider.
+ */
+export const ANTHROPIC_EMPTY_ARGS_TOOL_STREAM: SseFrame[] = [
+	frame("message_start", {
+		message: { id: "msg_3", model: FIXTURE_MODEL, usage: { input_tokens: 20, output_tokens: 1 } },
+	}),
+	frame("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+	frame("content_block_delta", { index: 0, delta: { type: "text_delta", text: "Summarizing." } }),
+	frame("content_block_stop", { index: 0 }),
+	frame("content_block_start", {
+		index: 1,
+		content_block: { type: "tool_use", id: "call_2", name: "get_document_summary", input: {} },
+	}),
+	// No `input_json_delta`: the argument-free call streams no argument bytes.
+	frame("content_block_stop", { index: 1 }),
+	frame("message_delta", {
+		delta: { stop_reason: "tool_use", stop_sequence: null },
+		usage: { output_tokens: 8 },
+	}),
+	frame("message_stop", { type: "message_stop" }),
+];
+
+export const EXPECTED_EMPTY_ARGS_TOOL_EVENTS: StreamEvent[] = [
+	{ type: "message_start", model: FIXTURE_MODEL },
+	{ type: "text_delta", text: "Summarizing." },
+	{ type: "tool_call_start", id: "call_2", name: "get_document_summary" },
+	{ type: "tool_call_complete", id: "call_2", name: "get_document_summary", input: {} },
+	{ type: "usage", usage: { inputTokens: 20, outputTokens: 8 } },
+	{ type: "message_stop", stopReason: "tool_use" },
+];
+
+// ---------------------------------------------------------------------------
 // Truncated stream — ends without message_stop
 // ---------------------------------------------------------------------------
 

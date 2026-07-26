@@ -28,6 +28,7 @@ import type { SseFrame } from "@/lib/ai/providers/sse";
 import {
 	ANTHROPIC_429_BODY,
 	ANTHROPIC_BAD_TOOL_ARGS_STREAM,
+	ANTHROPIC_EMPTY_ARGS_TOOL_STREAM,
 	ANTHROPIC_INSTREAM_RATE_LIMIT_STREAM,
 	ANTHROPIC_INVALID_JSON_STREAM,
 	ANTHROPIC_NOTICE_THEN_TRUNCATED_STREAM,
@@ -37,6 +38,7 @@ import {
 	ANTHROPIC_TRUNCATED_STREAM,
 	ANTHROPIC_UNKNOWN_EVENT_STREAM,
 	EXPECTED_BAD_TOOL_ARGS_EVENTS,
+	EXPECTED_EMPTY_ARGS_TOOL_EVENTS,
 	EXPECTED_INSTREAM_RATE_LIMIT_EVENTS,
 	EXPECTED_INVALID_JSON_EVENTS,
 	EXPECTED_NOTICE_THEN_TRUNCATED_EVENTS,
@@ -60,6 +62,7 @@ import {
 	EXPECTED_OPENAI_ORPHAN_FRAGMENT_EVENTS,
 	OPENAI_429_BODY,
 	OPENAI_BAD_TOOL_ARGS_STREAM,
+	OPENAI_EMPTY_ARGS_TOOL_STREAM,
 	OPENAI_INSTREAM_RATE_LIMIT_STREAM,
 	OPENAI_INVALID_JSON_STREAM,
 	OPENAI_ORPHAN_FRAGMENT_STREAM,
@@ -253,6 +256,24 @@ describe("provider and transport neutrality", () => {
 	it.each(TRANSPORTS)("decodes a complete OpenAI tool-call response on %s", async (_t, run) => {
 		expect(await run("openai", OPENAI_TOOL_STREAM)).toEqual(EXPECTED_TOOL_EVENTS);
 	});
+
+	it.each(TRANSPORTS)(
+		"decodes an empty-argument Anthropic tool call to input {} on %s",
+		async (_t, run) => {
+			expect(await run("anthropic", ANTHROPIC_EMPTY_ARGS_TOOL_STREAM)).toEqual(
+				EXPECTED_EMPTY_ARGS_TOOL_EVENTS,
+			);
+		},
+	);
+
+	it.each(TRANSPORTS)(
+		"decodes an empty-argument OpenAI tool call to input {} on %s",
+		async (_t, run) => {
+			expect(await run("openai", OPENAI_EMPTY_ARGS_TOOL_STREAM)).toEqual(
+				EXPECTED_EMPTY_ARGS_TOOL_EVENTS,
+			);
+		},
+	);
 
 	it("tolerates unknown Anthropic event types on both transports", async () => {
 		expect(await runBrowser("anthropic", ANTHROPIC_UNKNOWN_EVENT_STREAM)).toEqual(

@@ -162,7 +162,81 @@ entry). See ADR-011.
 
 `createToolRegistry` freezes the tool list and resolves names by exact string
 match — no trimming, case folding, or normalization. `#64` extends this registry;
-it does not rewire the loop. The twelve shipped tools
-(`src/lib/ai/tools/graph-action-tools.ts`) adapt the existing fenced actions: each
-delegates `run` to the pure `applyAction`, all are `mutate`, and the four
-`delete_*` tools are `destructive`.
+it does not rewire the loop. The shipped tools split into two capabilities that
+`createAiToolRegistry` (`src/lib/ai/tools/tool-registry.ts`) composes, read tools
+first:
+
+- **Twelve graph action tools** (`src/lib/ai/tools/graph-action-tools.ts`) adapt
+  the existing fenced actions: each delegates `run` to the pure `applyAction`, all
+  are `mutate`, and the four `delete_*` tools are `destructive`.
+- **Four read tools** (`#203`, below) are all `effect: "read"` and
+  `destructive: false`, so they are auto-approved and never pause the turn.
+
+## Read tools (`#203`)
+
+The read tools let a model query the current document and the typed component
+catalog (`#59`) without proposing an edit. All four are pure functions of
+`ctx.document` (the catalog tool ignores it): none reaches a store, a setting, an
+adapter, or the environment, and `ToolExecutionContext` carries only a
+`ThreatModel` and an `AbortSignal`, so key/header/path exposure is structural, not
+defended. `read-tool-invariants.test.ts` enforces the import allowlist, the
+output-key allowlist, and zero mutation.
+
+| Tool | Input | Returns |
+|------|-------|---------|
+| `get_document_summary` | `{}` | version, metadata, per-kind counts, and threat breakdowns by severity, STRIDE category, and mitigation status |
+| `get_entity` | `{ kind, id }` | the full bounded projection of one entity, by stable id |
+| `search_entities` | `{ kind, …filters, offset?, limit? }` | a filtered, document-ordered, paginated page of one section |
+| `search_component_catalog` | `{ query?, category?, provider?, include_deprecated?, offset?, limit? }` | a paginated page of catalog entries in registry declaration order |
+
+`kind` is exactly the eight array-valued `.thf` sections (`elements`,
+`data_flows`, `trust_boundaries`, `threats`, `layers`, `groups`,
+`relationships`, `diagrams`), compiler-enforced by a mapped type over
+`ThreatModel`. Results are in **document order** (catalog: declaration order) —
+never name-sorted, because a collator's order is not reproducible across engines.
+
+**Bounds** (`src/lib/ai/tools/read-result.ts`, all frozen constants):
+
+| Constant | Value | Guards |
+|----------|-------|--------|
+| `READ_RESULT_MAX_BYTES` | `8192` | UTF-8 bytes of the serialized payload (markers excluded) |
+| `DEFAULT_PAGE_LIMIT` | `20` | page size when `limit` is omitted |
+| `MAX_PAGE_LIMIT` | `50` | a larger `limit` is a schema rejection, not a silent clamp |
+| `SCALAR_MAX_CODE_POINTS` | `200` | ids, names, titles, and every short scalar |
+| `TEXT_MAX_CODE_POINTS` | `400` | `description` / `mitigation.description`, only in `get_entity` |
+| `LIST_MAX_ITEMS` | `10` | `technologies`, `tags`, derived id-lists, catalog aliases/keywords/variants |
+| `ECHO_MAX_CODE_POINTS` | `80` | the longest untrusted value echoed in a failure message |
+
+Truncation is never silent: a cut scalar/text field ends in `…` and its entity
+carries `"truncated": true`; a capped list reports `"<field>_total"`.
+
+**Failures** are a closed `ReadToolFailure` union rendered by
+`describeReadFailure`, returned as `{ status: "error", result }` so the model can
+correct itself — never an empty success that reads as "there are none":
+
+- `unknown_id` — `get_entity` found no entity with that id in that section
+  (names the section's entry count and points at `search_entities`);
+- `invalid_filter` — a filter was set that does not apply to `kind` (names the
+  applicable filters);
+- `offset_out_of_range` — `offset >= total` while `total > 0`.
+
+A genuine zero-match query (`total: 0`, `offset: 0`) stays a success with
+`stopped_by: "end"`; more matches than one page holds is reported by `total`,
+`next_offset`, and `stopped_by`, not as a failure.
+
+**Envelope.** Every successful result is `canonicalJson` (key-sorted, no
+whitespace, so byte-identical inputs give byte-identical results) wrapped in the
+`#177` untrusted-data markers:
+
+```
+<<<UNTRUSTED_DOCUMENT_DATA>>>
+{"page":{…},"results":[…],"tool":"search_entities"}
+<<<END_UNTRUSTED_DOCUMENT_DATA>>>
+```
+
+Every document- and catalog-derived string is sanitized (control/bidi code points
+stripped, capped in code points) and escaped (`src/lib/ai/untrusted-text.ts`), so
+no field can reproduce, close, or forge a marker. Only authored markers, keys, and
+enum values are emitted literally, so counting raw markers in a result is exact.
+Failure messages are authored text and are **not** fenced; only the echoed value
+inside them is sanitized and escaped.
