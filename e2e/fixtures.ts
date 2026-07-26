@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { APP_VERSION } from "./support/app-version";
 import { failureAwareTest as base, expect } from "./support/base";
 
 /** Platform-aware modifier key: Meta on macOS, Control elsewhere */
@@ -89,13 +90,16 @@ const AUTO_START_GUIDE_IDS = ["welcome", "dfd-basics"];
  * is not suppressed away.
  */
 export async function suppressFirstRunOverlays(page: Page) {
-	await page.addInitScript((guideIds: string[]) => {
-		localStorage.setItem("threatforge-last-seen-version", "1.0.0");
-		localStorage.setItem(
-			"threatforge-onboarding",
-			JSON.stringify({ completedGuideIds: [], dismissedGuideIds: guideIds }),
-		);
-	}, AUTO_START_GUIDE_IDS);
+	await page.addInitScript(
+		({ guideIds, version }: { guideIds: string[]; version: string }) => {
+			localStorage.setItem("threatforge-last-seen-version", version);
+			localStorage.setItem(
+				"threatforge-onboarding",
+				JSON.stringify({ completedGuideIds: [], dismissedGuideIds: guideIds }),
+			);
+		},
+		{ guideIds: AUTO_START_GUIDE_IDS, version: APP_VERSION },
+	);
 }
 
 /**

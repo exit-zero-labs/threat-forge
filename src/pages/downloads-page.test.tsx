@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import type { LatestRelease, OsType } from "@/lib/github-releases";
+import { FIRST_RUN_HELP_ANCHOR, FIRST_RUN_HELP_PATH } from "./shared/first-run-help";
 
 const mockRelease: LatestRelease = {
 	version: "v0.2.0",
@@ -134,5 +135,25 @@ describe("DownloadsPage", () => {
 
 		// Reset
 		mockReleaseData = mockRelease;
+	});
+
+	describe("unsigned-build guidance", () => {
+		it("links to the first-run help section on the support page", () => {
+			renderDownloadsPage();
+			expect(screen.getByRole("link", { name: "How to open it" })).toHaveAttribute(
+				"href",
+				`${FIRST_RUN_HELP_PATH}#${FIRST_RUN_HELP_ANCHOR}`,
+			);
+		});
+
+		it("warns about the first-launch block regardless of which platform is detected", () => {
+			for (const os of ["macos", "windows", "linux", "unknown"] as const) {
+				mockDetectedOs = os;
+				const { unmount } = renderDownloadsPage();
+				expect(screen.getByText(/not signed yet/)).toBeInTheDocument();
+				unmount();
+			}
+			mockDetectedOs = "macos";
+		});
 	});
 });

@@ -26,7 +26,7 @@ const mockModel: ThreatModel = {
 
 /** Marks the What's New overlay as already seen, so it does not block the welcome guide. */
 function markWhatsNewSeen(): void {
-	localStorage.setItem(WHATS_NEW_STORAGE_KEY, "1.0.0");
+	localStorage.setItem(WHATS_NEW_STORAGE_KEY, __APP_VERSION__);
 }
 
 // Zustand shallow-merges action spies into later snapshots, so restoreAllMocks cannot restore
@@ -131,6 +131,21 @@ describe("useOnboardingTriggers", () => {
 		it("does not fire while the What's New overlay is visible", () => {
 			// beforeEach clears localStorage, so threatforge-last-seen-version is absent and
 			// isWhatsNewVisible() is true — the exact interaction that caused #111.
+			const startGuideSpy = spyOnStartGuide();
+
+			renderHook(() => useOnboardingTriggers());
+			act(() => {
+				vi.advanceTimersByTime(500);
+			});
+
+			expect(startGuideSpy).not.toHaveBeenCalled();
+			expect(useOnboardingStore.getState().activeGuide).toBeNull();
+		});
+
+		it("does not fire while the What's New overlay is visible after an upgrade", () => {
+			// The prior "storage key is absent" approximation returned false here, so an
+			// upgrading user could get the welcome tooltip stacked on the What's New modal.
+			localStorage.setItem(WHATS_NEW_STORAGE_KEY, "0.1.0");
 			const startGuideSpy = spyOnStartGuide();
 
 			renderHook(() => useOnboardingTriggers());

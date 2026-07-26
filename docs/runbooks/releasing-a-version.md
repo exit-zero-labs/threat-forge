@@ -51,20 +51,29 @@ cargo test --manifest-path src-tauri/Cargo.toml --frozen
 
 ### 2. Bump Version Numbers
 
-Update version in three places:
+The version appears in four files that must agree. `scripts/check-lockfile-registry.mjs`
+rejects a `package-lock.json` whose root version has drifted from `package.json`, so the
+lockfile is not optional.
 
 ```bash
 # 1. Cargo.toml
-# version = "0.2.0"
+# version = "0.3.0"
 vim src-tauri/Cargo.toml
 
 # 2. tauri.conf.json
-# "version": "0.2.0"
+# "version": "0.3.0"
 vim src-tauri/tauri.conf.json
 
-# 3. package.json (if applicable)
+# 3. package.json
+# "version": "0.3.0"
 vim package.json
+
+# 4. package-lock.json — regenerate rather than hand-edit
+npm install --package-lock-only --ignore-scripts
 ```
+
+`__APP_VERSION__` is compiled from `package.json`, so the in-app version badge, settings
+dialog, site footer, and What's New overlay follow this bump with no further edits.
 
 ### 3. Update Cargo.lock
 
@@ -75,8 +84,8 @@ cargo check --manifest-path src-tauri/Cargo.toml
 ### 4. Commit the Version Bump
 
 ```bash
-git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json package.json
-git commit -m "chore: bump version to 0.2.0"
+git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json package.json package-lock.json
+git commit -m "chore: bump version to 0.3.0"
 ```
 
 ### 5. Create and Push the Tag
