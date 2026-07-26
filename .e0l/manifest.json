@@ -1,8 +1,8 @@
 {
-  "version": "v2.0.0",
+  "version": "v2.1.0",
   "files": {
     "AI.md": "d64e7d040417605b73b895737967a0ba99b71180300dcab594fc9ae9f6fe75ef",
-    "VERSION": "8202daac27b42362debfeeeb4047766395c5325cc0973a7d30ed425718be19e3",
+    "VERSION": "059e6fc83ccc87eb0bd2d6ac27320b6a0cc3967358e346e8226b9fba11165fcc",
     "agents/doctrine-auditor.md": "e138f73847f99a6590b133e1db4d3e56be2ffe1e0cd2b78f932cc83d77668580",
     "agents/issue-planner.md": "f44610763d3d21199c4d85936da8b10ba028c043165f2ea2c2610e5d0ca62a37",
     "agents/pr-reviewer.md": "80371a38c2f7b3998a63ace4a8f3b60f33ae10b28b6cf6217acee6b01adece23",
@@ -22,22 +22,12 @@
     "first-principles/design.md": "78636275cd2d26badac0de53465565c34c2403b443c9622be9073de8bb149589",
     "first-principles/documentation.md": "9dab6ac971af223431f6720a6a237a1758ee6a0867a5ca92989b1aac68c1eafd",
     "first-principles/index.md": "1d17fbdf9a22d74083535e0ad7443202f8b0de20b7cd59de9e018b86f343c1c3",
-    "first-principles/operations.md": "3667b23969ea4bcac8a5c570eade5fec6bd8b3e80e98d071a7d6628ea8527502",
+    "first-principles/operations.md": "a9ca233062e327d159d07c62ed729008c37db93d226cb5d703918b819d281e4d",
     "first-principles/planning.md": "1e0669bd18b4c8d89c5424355ecb401f6ed0382d36fac7352cbc4e34b13c5ea0",
-    "first-principles/product.md": "9f22945283b780d9e9a43179c5d9294c59ed53f584359da767a1f87f02e0cced",
+    "first-principles/product.md": "49d0c8731f4e42c09dd95ac54b56c32def3275110c0034d94d8645160380d7c8",
     "skills/anti-slop-review/SKILL.md": "6df2a98c0920db6de9eaff0451f8b3cdf9602533492842d1e5f3c03e6c81fa0b",
-    "skills/board-migrate/SKILL.md": "799c466d0e65acc0b0575281c440c9c8b8859b23087b33f37aaa170e7f895dd0",
-    "skills/board-migrate/reference-rollback.md": "eded9116d470f829ad165b9fd92110cd4fbbf902a2fbf6c9e6d422d18a8df15d",
-    "skills/create-workspace/SKILL.md": "ae75ab7c4908c761ad7c01ad0b627920d569ad253dd29e2522adc7253a91ac62",
-    "skills/create-workspace/reference-github-setup.md": "92d780ea2d17f0c19f0fa53ef0234d7ec659a15040dcda711539fd931189e2d7",
-    "skills/create-workspace/reference-monorepo-scaffold.md": "ee2d5800ee241af63f9d1e24b8cfe0326cfd38728782894dddc8d21b47c3629b",
-    "skills/doctrine-amend/SKILL.md": "1e5dadf57d4abc41159ea29604428f161a91dccd3213c15bd7737cf5a5c39ce9",
-    "skills/doctrine-amend/reference-versioning.md": "b0f442cbc1ceade0a91252cdae96d04ad78c8e7beeb3ca9c92b8e91230a50e08",
     "skills/issue-triage/SKILL.md": "a6ead1828ecc9620a7337b97976e85d8cfe6f96c7ff79b4978900d0084019802",
     "skills/issue-triage/reference-triage-bar.md": "c5599057e743d930e4273a996d9beaae8b6785f615d50aeb4f5102652ad275b6",
-    "skills/issues-refresh/SKILL.md": "a9f352408e156b74215931d56f081b63d783d29345dc129180876ac00fdaf2de",
-    "skills/propagate-doctrine/SKILL.md": "c1a7d1d17223135514765dc0a7cbab48303825fee50d0d95bc45a9cd144ba2e6",
-    "skills/research-idea/SKILL.md": "52c308f34c7309c5dc3bc4d1d08ae3e4cadd2002e46a94fa6f47c8154e68ea8a",
-    "skills/research-idea/reference-research-areas.md": "a27dc1c5bd461cebb1b7fb64fdff2d3ad1f5ff482cf87c9e15805e2e0a843928"
+    "skills/issues-refresh/SKILL.md": "a9f352408e156b74215931d56f081b63d783d29345dc129180876ac00fdaf2de"
   }
 }

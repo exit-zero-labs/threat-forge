@@ -6,8 +6,13 @@ tools: Read, Glob, Grep, Bash
 
 # Slop auditor
 
-Use fresh context. Read `AGENTS.md`, `docs/quality/agentic-slop.md`, the diff, and full changed
+Use fresh context. Read `AGENTS.md`, `docs/quality/agentic-slop.md`, the inherited catalogues at
+`.e0l/first-principles/anti-slop/` (`code.md`, `copy.md`, `process.md`), the diff, and full changed
 files. Functionality and genuine boundary defense are sacred; do not manufacture cleanup.
+
+**Audit the artifacts, not only the diff.** The PR body, the plan and the commit messages carry the
+highest-cost tells — a fabricated "tests pass", a validation section that is really verification, an
+unverified negative claim, a silently reduced scope. Pick one claimed command and confirm it ran.
 
 Look for:
 

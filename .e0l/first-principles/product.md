@@ -39,20 +39,47 @@ Whatever a user can do through the UI, an agent must be able to do too. This is 
 
 ## Marketing is owned by product
 
-Marketing work is planned and tracked alongside the development it accompanies, on the same board, in the same milestones. It is not a separate function that arrives after the build.
+Marketing work is planned and tracked alongside the development it accompanies — same board, same milestones, same definition of done. It is not a separate function that arrives after the build, and a feature is not finished because it shipped.
 
-Three channels, and only these three:
+### The three channels
 
-| Channel | Handle |
-| --- | --- |
-| Threads | `@itshreyas` |
-| LinkedIn | `in/shreyassane` |
-| Instagram | `@exitzerolabs` |
+Only these three, and they do different jobs. A plan that treats them as one plan is a plan for none of them.
 
-Announcements are tame, short, and specific. They are backed by a story and written bespoke. The failure mode to avoid is copy that could describe any product — the tell catalogue and the deterministic detector are in [anti-slop/copy.md](anti-slop/copy.md), and they apply to marketing output exactly as they apply to product prose.
+| Channel | Handle | What it is for |
+| --- | --- | --- |
+| Threads | `@itshreyas` | In-progress thinking, small observations, the build in public |
+| LinkedIn | `in/shreyassane` | Milestones and the reasoning behind them, written for people who will not try the product |
+| Instagram | `@exitzerolabs` | The product as an object — visual, made, tangible |
 
-Where agents generate prompts for downstream media tools, the prompt is an artifact: versioned, reviewed, and held to the same bar as the copy it produces.
+### The bar
 
-## Open
+Announcements are **tame, short, specific, and bespoke.** Backed by a story, written for one occasion.
 
-The doctrine calls for deeply researched, source-backed marketing playbooks built from battle-proven references. That research has not been done, and inventing citations to fill the gap would be the top-severity tell in [anti-slop/copy.md](anti-slop/copy.md). It is tracked in the research backlog in [design.md](design.md#research-backlog) alongside the equivalent gap in design.
+The failure mode is copy that could describe any product. The tell catalogue and the deterministic detector are in [anti-slop/copy.md](anti-slop/copy.md), and marketing output is held to them exactly as product prose is — a launch post scores no differently from a subscriber email.
+
+Three rules that do most of the work:
+
+- **Say the specific thing.** "Now supports offline drafts" beats "a smoother, more powerful experience."
+- **Never announce what a user cannot yet do.** Marketing follows shipping.
+- **No engagement bait.** No "thoughts?", no manufactured contrarianism, no numbered-list bait. A post nobody would have written without a growth target is slop with a schedule.
+
+### Generated media is an artifact, not an output
+
+Where an agent produces prompts for image, video, or audio generation, **the prompt is the reviewable artifact** — versioned, committed, and held to the same bar as the copy it produces. A regenerated asset should be reproducible from the prompt; if it is not, the prompt was underspecified.
+
+A media-generation prompt must state, explicitly:
+
+- **Subject and composition** — what is in frame, where, and what the focal point is.
+- **Medium and treatment** — the actual visual language, not an adjective. "Hand-painted, visible pigment texture, soft edges" is a specification; "beautiful" is not.
+- **Palette**, in terms that map to the product's own tokens rather than mood words.
+- **What must not appear** — the reject list. For our work this always includes **generated text of any kind**: typography is composited deterministically afterwards, never model-rendered ([design.md](design.md#per-surface-directives)).
+- **Aspect ratio and safe areas** for the channel it is destined for.
+- **Provenance**: which model and version produced the asset, recorded with it.
+
+The imagery tells in [anti-slop/copy.md](anti-slop/copy.md#imagery) are the reject criteria — generic stock look, generator artifacts, over-symmetry, gibberish lettering, glossy AI-poster polish. **An asset that fails them is regenerated, not shipped with an apology.**
+
+### What is deliberately not decided here
+
+No specific generation vendor or scheduling pipeline is named. The doctrine mentions candidates; none has been chosen, and writing an integration contract for a tool we have not evaluated would be fabricated precision.
+
+What the doctrine *does* require and this document now supplies is the part that survives any vendor choice: the channel model, the bar, and the prompt contract. **A campaign-execution skill — researched against real marketing sources, producing channel-ready copy plus structured media prompts — is tracked work, not something to invent here.** Until it exists, marketing copy is written under these rules by hand or by an agent reading them.
