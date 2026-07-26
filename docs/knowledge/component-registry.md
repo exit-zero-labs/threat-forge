@@ -141,7 +141,10 @@ without a table row is not caught. Single-sourcing the table is tracked in #207.
 
 The registry is the source of truth for the component taxonomy and icon catalogue. Every
 runtime consumer — the palette, the canvas node, the properties and threats inspectors, the
-command palette, the browser STRIDE engine, and the canvas store — reads it through the typed
+command palette, the browser STRIDE engine, the canvas store, and the AI `search_component_catalog`
+read tool (`#203`, `src/lib/ai/tools/catalog-read-tool.ts`, which projects only
+`id`/`label`/`category`/`provider`/`icon_id`/`shape`/`stride_role`/`status`/`aliases`/`keywords`/`variants`
+and never exposes provenance, license, or artwork) — reads it through the typed
 query API; the legacy `component-library.ts` and `service-icons.ts` modules are deleted and one
 `IconRenderer` owns all icon rendering.
 

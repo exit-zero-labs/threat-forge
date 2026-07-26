@@ -197,6 +197,15 @@ describe("buildSystemPrompt untrusted-document boundary (#177)", () => {
 		expect(preambleIdx).toBeLessThan(startIdx);
 	});
 
+	it("extends the preamble to cover read-tool results, outside the delimiter (#203)", () => {
+		const prompt = buildSystemPrompt(hostileModel(), { tools: [] });
+		const sentenceIdx = prompt.indexOf("The same markers also fence the results returned");
+		const startIdx = prompt.indexOf(UNTRUSTED_DOCUMENT_START);
+		expect(sentenceIdx).toBeGreaterThanOrEqual(0);
+		// The added sentence is authored instruction text, before the untrusted block.
+		expect(sentenceIdx).toBeLessThan(startIdx);
+	});
+
 	it("places every hostile phrase strictly inside the untrusted delimiter", () => {
 		const prompt = buildSystemPrompt(hostileModel(), { tools: [] });
 		const startIdx = prompt.indexOf(UNTRUSTED_DOCUMENT_START);

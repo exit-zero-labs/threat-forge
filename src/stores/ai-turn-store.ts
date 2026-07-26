@@ -22,7 +22,7 @@ import type { TurnState } from "@/lib/ai/loop/turn-machine";
 import { createTurnRunner, type TurnRunner } from "@/lib/ai/loop/turn-runner";
 import { streamConversation } from "@/lib/ai/protocol/client";
 import type { ProtocolMessage } from "@/lib/ai/protocol/messages";
-import { createGraphToolRegistry } from "@/lib/ai/tools/graph-action-tools";
+import { createAiToolRegistry } from "@/lib/ai/tools/tool-registry";
 import { getDefaultModelId, resolveCapabilities } from "@/lib/ai-models";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { useChatStore } from "@/stores/chat-store";
@@ -94,7 +94,7 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 		// model runs a text-only turn with an empty tool set, keeping the fenced path.
 		const resolution = resolveCapabilities(provider, modelId);
 		const toolCapable = resolution.known && resolution.capabilities.toolCalling;
-		const toolSet = toolCapable ? createGraphToolRegistry() : createToolRegistry([]);
+		const toolSet = toolCapable ? createAiToolRegistry() : createToolRegistry([]);
 		const system = buildSystemPrompt(model, { tools: toolSet.list() });
 
 		const runner = createTurnRunner({

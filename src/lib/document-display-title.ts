@@ -1,3 +1,4 @@
+import { sanitizeUntrustedScalar } from "@/lib/ai/untrusted-text";
 import type { ThreatModel } from "@/types/threat-model";
 
 const APP_NAME = "Threat Forge";
@@ -13,41 +14,19 @@ const APP_NAME = "Threat Forge";
  */
 export const MAX_DISPLAY_LENGTH = 200;
 
-const ELLIPSIS = "\u2026";
-
-/**
- * C0 controls (`U+0000–001F`), C1 controls (`U+007F–009F`), and the bidirectional-formatting
- * characters (`U+061C`, `U+202A–202E`, `U+2066–2069`, `U+200E`, `U+200F`) that can visually
- * spoof a label — for example a right-to-left override making `cod.exe.gpj` render as
- * `jpg.exe.doc` (`#175`, surfaced by the `#54` security preflight in PR #174).
- */
-function isUnsafeDisplayCodePoint(value: string): boolean {
-	const codePoint = value.codePointAt(0);
-	if (codePoint === undefined) return false;
-	return (
-		codePoint <= 0x001f ||
-		(codePoint >= 0x007f && codePoint <= 0x009f) ||
-		codePoint === 0x061c ||
-		codePoint === 0x200e ||
-		codePoint === 0x200f ||
-		(codePoint >= 0x202a && codePoint <= 0x202e) ||
-		(codePoint >= 0x2066 && codePoint <= 0x2069)
-	);
-}
-
 /**
  * Make arbitrary untrusted text safe to render as a document label or tooltip line: strip control
  * and bidi-override characters, then cap the length at {@link MAX_DISPLAY_LENGTH} code points,
  * appending a visible ellipsis when truncated so the cut is never mistaken for the whole value.
  *
- * This is the single place {@link resolveDisplayTitle} sanitizes a title/basename candidate, and
- * the one a caller must reach for too if it appends more untrusted text (such as a raw file path)
- * after an already-sanitized title — see `document-tab.tsx`'s tooltip, which does exactly that.
+ * This delegates to the shared {@link sanitizeUntrustedScalar} primitive (`#203`) so the display
+ * path, the prompt path, and the AI read tools share one sanitizer. It is the single place
+ * {@link resolveDisplayTitle} sanitizes a title/basename candidate, and the one a caller must
+ * reach for too if it appends more untrusted text (such as a raw file path) after an
+ * already-sanitized title — see `document-tab.tsx`'s tooltip, which does exactly that.
  */
 export function sanitizeDisplayText(text: string): string {
-	const codePoints = Array.from(text).filter((value) => !isUnsafeDisplayCodePoint(value));
-	if (codePoints.length <= MAX_DISPLAY_LENGTH) return codePoints.join("");
-	return `${codePoints.slice(0, MAX_DISPLAY_LENGTH - 1).join("")}${ELLIPSIS}`;
+	return sanitizeUntrustedScalar(text, MAX_DISPLAY_LENGTH).text;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
+import type { ConversationRequest, StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import type { StreamEvent } from "@/lib/ai/protocol/events";
 import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
 import { useHistoryStore } from "@/stores/history-store";
@@ -119,6 +119,29 @@ describe("submitTurn against a tool-capable model", () => {
 		// One undo reverts the whole turn.
 		useAiTurnStore.getState().undoTurn();
 		expect(useModelStore.getState().model?.elements.some((e) => e.name === "Cache")).toBe(false);
+	});
+
+	it("advertises all sixteen tools, read tools included, to the provider", async () => {
+		script([
+			{ type: "message_start", model: "m" },
+			{ type: "text_delta", text: "hi" },
+			{ type: "message_stop", stopReason: "end_turn" },
+		]);
+
+		await useAiTurnStore.getState().submitTurn("just chatting", model);
+		await flush();
+
+		const request: ConversationRequest = streamConversationMock.mock.calls[0][0];
+		const advertised = request.tools.map((tool) => tool.name);
+		expect(advertised).toHaveLength(16);
+		for (const readTool of [
+			"get_document_summary",
+			"get_entity",
+			"search_entities",
+			"search_component_catalog",
+		]) {
+			expect(advertised).toContain(readTool);
+		}
 	});
 });
 

@@ -106,6 +106,44 @@ export const OPENAI_TOOL_STREAM: SseFrame[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Complete tool-call response with empty (`{}`) arguments — mirrors
+// ANTHROPIC_EMPTY_ARGS_TOOL_STREAM
+// ---------------------------------------------------------------------------
+
+export const OPENAI_EMPTY_ARGS_TOOL_STREAM: SseFrame[] = [
+	chunk({
+		model: FIXTURE_MODEL,
+		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+	}),
+	chunk({
+		model: FIXTURE_MODEL,
+		choices: [{ index: 0, delta: { content: "Summarizing." }, finish_reason: null }],
+	}),
+	chunk({
+		model: FIXTURE_MODEL,
+		choices: [
+			{
+				index: 0,
+				delta: {
+					tool_calls: [
+						{
+							index: 0,
+							id: "call_2",
+							type: "function",
+							function: { name: "get_document_summary", arguments: "" },
+						},
+					],
+				},
+				finish_reason: null,
+			},
+		],
+	}),
+	chunk({ model: FIXTURE_MODEL, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
+	chunk({ model: FIXTURE_MODEL, choices: [], usage: { prompt_tokens: 20, completion_tokens: 8 } }),
+	DONE,
+];
+
+// ---------------------------------------------------------------------------
 // Truncated stream — no [DONE] — mirrors ANTHROPIC_TRUNCATED_STREAM
 // ---------------------------------------------------------------------------
 

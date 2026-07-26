@@ -14,8 +14,8 @@
  * loop.
  */
 
-import type { PreparedCallResult, RegisteredTool, ToolRegistry } from "@/lib/ai/loop/tool-runtime";
-import { canonicalJson, createToolRegistry } from "@/lib/ai/loop/tool-runtime";
+import type { PreparedCallResult, RegisteredTool } from "@/lib/ai/loop/tool-runtime";
+import { canonicalJson } from "@/lib/ai/loop/tool-runtime";
 import { LEGACY_ACTION_TOOLS } from "@/lib/ai/schemas/actions";
 import { applyAction } from "@/lib/ai-action-executor";
 import { type AiAction, describeAction } from "@/lib/ai-actions";
@@ -80,8 +80,3 @@ export const GRAPH_ACTION_TOOLS: readonly RegisteredTool[] = LEGACY_ACTION_TOOLS
 		},
 	}),
 );
-
-/** A frozen registry of the twelve graph action tools, ready to drive a turn. */
-export function createGraphToolRegistry(): ToolRegistry {
-	return createToolRegistry(GRAPH_ACTION_TOOLS);
-}

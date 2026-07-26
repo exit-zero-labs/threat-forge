@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createToolRegistry } from "@/lib/ai/loop/tool-runtime";
 import { LEGACY_ACTION_TOOLS } from "@/lib/ai/schemas/actions";
 import { useModelStore } from "@/stores/model-store";
 import type { ThreatModel } from "@/types/threat-model";
-import { createGraphToolRegistry, GRAPH_ACTION_TOOLS } from "./graph-action-tools";
+import { GRAPH_ACTION_TOOLS } from "./graph-action-tools";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+/** The twelve graph action tools as a registry, mirroring the production composition. */
+const createGraphToolRegistry = () => createToolRegistry(GRAPH_ACTION_TOOLS);
 
 const model: ThreatModel = {
 	version: "1.0",
