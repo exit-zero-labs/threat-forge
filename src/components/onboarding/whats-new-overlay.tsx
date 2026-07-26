@@ -1,43 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-
-const STORAGE_KEY = "threatforge-last-seen-version";
-const CURRENT_VERSION = "1.0.0";
-
-/** Proper semver greater-than comparison (avoids lexicographic "1.9.0" > "1.10.0" bug) */
-function semverGt(a: string, b: string): boolean {
-	const pa = a.split(".").map(Number);
-	const pb = b.split(".").map(Number);
-	for (let i = 0; i < 3; i++) {
-		if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true;
-		if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false;
-	}
-	return false;
-}
-
-interface ChangelogEntry {
-	version: string;
-	date: string;
-	changes: string[];
-}
-
-const CHANGELOG: ChangelogEntry[] = [
-	{
-		version: "1.0.0",
-		date: "2026-03-02",
-		changes: [
-			"Component library with 44 pre-built technology components + text annotations",
-			"STRIDE threat analysis engine with auto-generated threats",
-			"AI chat pane with BYOK support (OpenAI, Anthropic)",
-			"Human-readable YAML file format — git-diffable",
-			"Undo/redo with 20-action history",
-			"Copy, cut, paste, and multi-select on canvas",
-			"Command palette (Cmd+K) with 16 commands",
-			"Onboarding guides for new users",
-			"Dark mode with 6 theme presets",
-			"Native menus on macOS/Windows/Linux",
-		],
-	},
-];
+import { type ChangelogEntry, markChangelogSeen, unseenChangelogEntries } from "@/lib/whats-new";
 
 /**
  * Shows a "What's New" overlay when the app version changes.
@@ -48,14 +10,7 @@ export function WhatsNewOverlay() {
 	const [unseenEntries, setUnseenEntries] = useState<ChangelogEntry[]>([]);
 
 	useEffect(() => {
-		const lastSeen = localStorage.getItem(STORAGE_KEY);
-		if (lastSeen === CURRENT_VERSION) return;
-
-		// Find entries newer than what the user last saw
-		const unseen = lastSeen
-			? CHANGELOG.filter((entry) => semverGt(entry.version, lastSeen))
-			: CHANGELOG.slice(0, 1); // First launch: show latest only
-
+		const unseen = unseenChangelogEntries();
 		if (unseen.length > 0) {
 			setUnseenEntries(unseen);
 			setVisible(true);
@@ -64,7 +19,7 @@ export function WhatsNewOverlay() {
 
 	const dismiss = useCallback(() => {
 		setVisible(false);
-		localStorage.setItem(STORAGE_KEY, CURRENT_VERSION);
+		markChangelogSeen();
 	}, []);
 
 	if (!visible || unseenEntries.length === 0) return null;

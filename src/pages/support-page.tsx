@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import { useSettingsStore } from "@/stores/settings-store";
+import { FIRST_RUN_HELP_ANCHOR } from "./shared/first-run-help";
 import { PageShell } from "./shared/page-shell";
 
 const GITHUB_URL = "https://github.com/exit-zero-labs/threat-forge";
@@ -35,6 +38,8 @@ const FAQ_ITEMS = [
 ] as const;
 
 export function SupportPage() {
+	useHashScroll();
+
 	return (
 		<PageShell title="Support — Threat Forge">
 			<div className="mx-auto max-w-3xl px-6 py-20">
@@ -44,6 +49,8 @@ export function SupportPage() {
 				</p>
 
 				<div className="mt-10 space-y-10">
+					<FirstRunSection />
+
 					{/* Contact channels */}
 					<section>
 						<h2 className="text-xl font-semibold text-foreground">Contact</h2>
@@ -94,6 +101,117 @@ export function SupportPage() {
 				</div>
 			</div>
 		</PageShell>
+	);
+}
+
+/**
+ * React Router does not scroll to the fragment of a URL it navigates to, so an
+ * incoming `/support#opening-for-the-first-time` link would otherwise land silently
+ * at the top of the page and leave the reader to hunt for the section.
+ */
+function useHashScroll(): void {
+	const { hash } = useLocation();
+
+	useEffect(() => {
+		if (!hash) {
+			return;
+		}
+		// A hash is arbitrary user-controlled input; querying by id avoids handing it
+		// to a selector parser and simply finds nothing when it names no section.
+		const target = document.getElementById(hash.slice(1));
+		const behavior = useSettingsStore.getState().settings.reduceMotion ? "auto" : "smooth";
+		target?.scrollIntoView?.({ behavior, block: "start" });
+	}, [hash]);
+}
+
+function Command({ children }: { children: string }) {
+	return (
+		<code className="mt-2 block overflow-x-auto rounded-md border border-border/50 bg-secondary px-3 py-2 font-mono text-xs text-foreground">
+			{children}
+		</code>
+	);
+}
+
+/**
+ * First-run guidance for the desktop builds.
+ *
+ * The macOS and Windows subsections describe what an unsigned or low-reputation build does;
+ * once notarization (#51) and Windows signing verification (#50) are complete they become
+ * wrong rather than merely unnecessary, and they go — along with the downloads-page line that
+ * points here, if nothing else is left worth pointing at. The Linux subsection is about an
+ * execute bit rather than signing and stays correct regardless.
+ */
+function FirstRunSection() {
+	return (
+		<section id={FIRST_RUN_HELP_ANCHOR} className="scroll-mt-24">
+			<h2 className="text-xl font-semibold text-foreground">
+				Opening Threat Forge for the first time
+			</h2>
+			<p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+				A freshly published desktop build can be blocked or flagged the first time you open it.
+				Nothing is wrong with your download. Here is what each platform does and how to get past it.
+			</p>
+
+			<div className="mt-6 space-y-6">
+				<div>
+					<h3 className="font-medium text-foreground">macOS</h3>
+					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+						The macOS builds are not signed with an Apple Developer ID or notarized yet, so macOS
+						may report that Threat Forge <em>&ldquo;is damaged and can&apos;t be opened&rdquo;</em>.
+						It is not damaged — macOS quarantines apps arriving from a browser or Mail, and with no
+						signature to evaluate, Gatekeeper refuses the app outright. Move Threat Forge to your
+						Applications folder, then run this once in Terminal to clear the quarantine flag:
+					</p>
+					<Command>
+						xattr -dr com.apple.quarantine &quot;/Applications/Threat Forge.app&quot;
+					</Command>
+					<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+						If macOS instead shows the milder &ldquo;unidentified developer&rdquo; prompt, open
+						System Settings &rarr; Privacy &amp; Security, scroll to the Security section, and
+						choose <strong className="font-medium text-foreground">Open Anyway</strong>. That option
+						is not offered for the &ldquo;damaged&rdquo; message above, which is why the command
+						exists.
+					</p>
+				</div>
+
+				<div>
+					<h3 className="font-medium text-foreground">Windows</h3>
+					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+						SmartScreen may show <em>&ldquo;Windows protected your PC&rdquo;</em> because the
+						installer&apos;s publisher reputation is still being established. Choose{" "}
+						<strong className="font-medium text-foreground">More info</strong>, then{" "}
+						<strong className="font-medium text-foreground">Run anyway</strong>.
+					</p>
+				</div>
+
+				<div>
+					<h3 className="font-medium text-foreground">Linux</h3>
+					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+						Linux does not block unsigned applications, but the AppImage needs the execute bit set
+						before it will run:
+					</p>
+					<Command>chmod +x ./Threat.Forge_*.AppImage</Command>
+					<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+						The Debian and RPM packages install normally:
+					</p>
+					<Command>sudo apt install ./Threat.Forge_*.deb</Command>
+					<Command>sudo dnf install ./Threat.Forge-*.rpm</Command>
+				</div>
+			</div>
+
+			<p className="mt-6 text-sm leading-relaxed text-muted-foreground">
+				Every release is built by GitHub Actions from a public tagged commit, so you can read the
+				source and the build workflow before you run anything.{" "}
+				<a
+					href={`${GITHUB_URL}/releases`}
+					target="_blank"
+					rel="noopener noreferrer"
+					className="text-tf-signal hover:underline"
+				>
+					View releases on GitHub
+				</a>
+			</p>
+		</section>
 	);
 }
 

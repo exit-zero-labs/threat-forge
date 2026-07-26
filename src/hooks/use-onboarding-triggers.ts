@@ -1,20 +1,23 @@
 import { useEffect, useRef } from "react";
+import { unseenChangelogEntries } from "@/lib/whats-new";
 import { useModelStore } from "@/stores/model-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 
-const WHATS_NEW_STORAGE_KEY = "threatforge-last-seen-version";
 const WELCOME_GUIDE_ID = "welcome";
 const WELCOME_DELAY_MS = 500;
 const DFD_BASICS_GUIDE_ID = "dfd-basics";
 const DFD_BASICS_DELAY_MS = 800;
 
-/** Returns true if the What's New overlay is currently showing (blocks guide display) */
+/**
+ * Returns true if the What's New overlay is currently showing (blocks guide display).
+ *
+ * Asks the same shared predicate the overlay uses. The previous local approximation —
+ * "the storage key is absent" — missed the upgrade case entirely, so a user carrying a
+ * stored version from an older build could get the guide tooltip and the What's New modal
+ * at the same time.
+ */
 function isWhatsNewVisible(): boolean {
-	const lastSeen = localStorage.getItem(WHATS_NEW_STORAGE_KEY);
-	// WhatsNewOverlay shows when lastSeen differs from CURRENT_VERSION
-	// We can't import CURRENT_VERSION without creating a circular dependency,
-	// so we check if the key is absent (first launch) which is the main conflict case
-	return lastSeen === null;
+	return unseenChangelogEntries().length > 0;
 }
 
 function isGuideEligible(guideId: string): boolean {

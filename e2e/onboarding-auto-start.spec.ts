@@ -1,10 +1,7 @@
 import type { Page } from "@playwright/test";
 import { createModel, dismissWhatsNew } from "./fixtures";
+import { APP_VERSION } from "./support/app-version";
 import { expect, failureAwareTest as test } from "./support/base";
-
-// The shared fixture suppresses both guides for deterministic workflow specs. These tests use
-// plain Playwright contexts and seed only what each first-run contract requires.
-const CURRENT_VERSION = "1.0.0";
 
 async function readOnboardingState(page: Page): Promise<unknown> {
 	return page.evaluate<unknown>(() => {
@@ -14,13 +11,15 @@ async function readOnboardingState(page: Page): Promise<unknown> {
 }
 
 test.describe("Onboarding guide auto-start (real browser, #141)", () => {
+	// The shared fixture suppresses both guides for deterministic workflow specs. These tests
+	// use plain Playwright contexts and seed only what each first-run contract requires.
 	test("welcome guide auto-starts when eligible under StrictMode and can be dismissed", async ({
 		page,
 	}) => {
 		// Suppressing What's New makes welcome eligible; onboarding itself stays unseeded.
 		await page.addInitScript((version: string) => {
 			localStorage.setItem("threatforge-last-seen-version", version);
-		}, CURRENT_VERSION);
+		}, APP_VERSION);
 
 		await page.goto("/app");
 
