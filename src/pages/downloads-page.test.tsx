@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LatestRelease, OsType } from "@/lib/github-releases";
-import { FIRST_RUN_HELP_ANCHOR, FIRST_RUN_HELP_PATH } from "./shared/first-run-help";
+import { FIRST_RUN_HELP_ANCHOR } from "./shared/first-run-help";
 
 const mockRelease: LatestRelease = {
 	version: "v0.2.0",
@@ -51,6 +51,15 @@ function renderDownloadsPage() {
 }
 
 describe("DownloadsPage", () => {
+	// Every case below drives these module-level mocks; restoring them here stops one
+	// case's OS or error state from silently deciding the next case's outcome.
+	afterEach(() => {
+		mockDetectedOs = "macos";
+		mockIsLoading = false;
+		mockError = null;
+		mockReleaseData = mockRelease;
+	});
+
 	it("renders page heading", () => {
 		renderDownloadsPage();
 		expect(screen.getByText("Download Threat Forge")).toBeInTheDocument();
@@ -132,28 +141,43 @@ describe("DownloadsPage", () => {
 		};
 		renderDownloadsPage();
 		expect(screen.getByText("No builds available yet.")).toBeInTheDocument();
-
-		// Reset
-		mockReleaseData = mockRelease;
 	});
 
-	describe("unsigned-build guidance", () => {
+	describe("first-run guidance", () => {
 		it("links to the first-run help section on the support page", () => {
 			renderDownloadsPage();
 			expect(screen.getByRole("link", { name: "How to open it" })).toHaveAttribute(
 				"href",
-				`${FIRST_RUN_HELP_PATH}#${FIRST_RUN_HELP_ANCHOR}`,
+				`/support#${FIRST_RUN_HELP_ANCHOR}`,
 			);
 		});
 
-		it("warns about the first-launch block regardless of which platform is detected", () => {
+		it("shows the guidance regardless of which platform is detected", () => {
 			for (const os of ["macos", "windows", "linux", "unknown"] as const) {
 				mockDetectedOs = os;
 				const { unmount } = renderDownloadsPage();
-				expect(screen.getByText(/not signed yet/)).toBeInTheDocument();
+				expect(screen.getByRole("link", { name: "How to open it" })).toBeInTheDocument();
 				unmount();
 			}
-			mockDetectedOs = "macos";
+		});
+
+		it("still shows the guidance when the release lookup fails", () => {
+			// The failure branch sends people to GitHub for the same builds, so the advice
+			// about opening them has to survive it.
+			mockReleaseData = null;
+			mockError = "network";
+			renderDownloadsPage();
+
+			expect(screen.getByRole("link", { name: "Download from GitHub" })).toBeInTheDocument();
+			expect(screen.getByRole("link", { name: "How to open it" })).toBeInTheDocument();
+		});
+
+		it("withholds the guidance while the release is still loading", () => {
+			mockReleaseData = null;
+			mockIsLoading = true;
+			renderDownloadsPage();
+
+			expect(screen.queryByRole("link", { name: "How to open it" })).not.toBeInTheDocument();
 		});
 	});
 });

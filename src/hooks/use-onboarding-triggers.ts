@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { unseenChangelogEntries } from "@/components/onboarding/whats-new-overlay";
+import { unseenChangelogEntries } from "@/lib/whats-new";
 import { useModelStore } from "@/stores/model-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 
@@ -11,10 +11,10 @@ const DFD_BASICS_DELAY_MS = 800;
 /**
  * Returns true if the What's New overlay is currently showing (blocks guide display).
  *
- * Asks the overlay itself rather than re-deriving the answer. The previous local
- * approximation — "the storage key is absent" — missed the upgrade case entirely, so a
- * user carrying a stored version from an older build could get the guide tooltip and the
- * What's New modal at the same time.
+ * Asks the same shared predicate the overlay uses. The previous local approximation —
+ * "the storage key is absent" — missed the upgrade case entirely, so a user carrying a
+ * stored version from an older build could get the guide tooltip and the What's New modal
+ * at the same time.
  */
 function isWhatsNewVisible(): boolean {
 	return unseenChangelogEntries().length > 0;

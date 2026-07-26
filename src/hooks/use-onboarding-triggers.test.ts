@@ -1,12 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { WHATS_NEW_STORAGE_KEY } from "@/lib/whats-new";
 import { useModelStore } from "@/stores/model-store";
 import { useOnboardingStore } from "@/stores/onboarding-store";
 import type { ThreatModel } from "@/types/threat-model";
 import { useOnboardingTriggers } from "./use-onboarding-triggers";
-
-const WHATS_NEW_STORAGE_KEY = "threatforge-last-seen-version";
 
 const mockModel: ThreatModel = {
 	version: "1.0",

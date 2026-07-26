@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { useSettingsStore } from "@/stores/settings-store";
 import { FIRST_RUN_HELP_ANCHOR } from "./shared/first-run-help";
 import { PageShell } from "./shared/page-shell";
 
@@ -118,7 +119,8 @@ function useHashScroll(): void {
 		// A hash is arbitrary user-controlled input; querying by id avoids handing it
 		// to a selector parser and simply finds nothing when it names no section.
 		const target = document.getElementById(hash.slice(1));
-		target?.scrollIntoView({ behavior: "smooth", block: "start" });
+		const behavior = useSettingsStore.getState().settings.reduceMotion ? "auto" : "smooth";
+		target?.scrollIntoView?.({ behavior, block: "start" });
 	}, [hash]);
 }
 
@@ -131,10 +133,10 @@ function Command({ children }: { children: string }) {
 }
 
 /**
- * First-run guidance for the unsigned desktop builds. Remove this section, its anchor
- * module, and the downloads-page line that points here once macOS notarization (#51)
- * and Windows signing (#50) ship — at that point the operating systems stop objecting
- * and this advice becomes wrong rather than merely unnecessary.
+ * First-run guidance for the desktop builds. Remove this section, its anchor module, and
+ * the downloads-page line that points here once macOS notarization (#51) and Windows
+ * signing verification (#50) are complete — at that point the operating systems stop
+ * objecting and this advice becomes wrong rather than merely unnecessary.
  */
 function FirstRunSection() {
 	return (
@@ -143,37 +145,37 @@ function FirstRunSection() {
 				Opening Threat Forge for the first time
 			</h2>
 			<p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-				Threat Forge desktop builds are not yet code-signed. Your operating system cannot confirm
-				who produced them, so it blocks the first launch. Nothing is wrong with your download —
-				these steps are how you open an unsigned application on each platform.
+				A freshly published desktop build can be blocked or flagged the first time you open it.
+				Nothing is wrong with your download. Here is what each platform does and how to get past it.
 			</p>
 
 			<div className="mt-6 space-y-6">
 				<div>
 					<h3 className="font-medium text-foreground">macOS</h3>
 					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-						macOS may say Threat Forge <em>&ldquo;is damaged and can&apos;t be opened&rdquo;</em>.
-						It is not damaged. macOS quarantines everything downloaded from the internet, and with
-						no Apple Developer ID signature to check, Gatekeeper refuses the app instead of offering
-						the usual override. Move Threat Forge to your Applications folder, then run this once in
-						Terminal to clear the quarantine flag:
+						The macOS builds are not signed with an Apple Developer ID or notarized yet, so macOS
+						may report that Threat Forge <em>&ldquo;is damaged and can&apos;t be opened&rdquo;</em>.
+						It is not damaged — macOS quarantines everything downloaded from the internet, and with
+						no signature to evaluate, Gatekeeper refuses the app outright. Move Threat Forge to your
+						Applications folder, then run this once in Terminal to clear the quarantine flag:
 					</p>
 					<Command>
 						xattr -dr com.apple.quarantine &quot;/Applications/Threat Forge.app&quot;
 					</Command>
 					<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-						To avoid Terminal, try to open the app first, then go to System Settings &rarr; Privacy
-						&amp; Security, scroll to the Security section, and choose{" "}
-						<strong className="font-medium text-foreground">Open Anyway</strong> next to Threat
-						Forge.
+						If macOS instead shows the milder &ldquo;unidentified developer&rdquo; prompt, open
+						System Settings &rarr; Privacy &amp; Security, scroll to the Security section, and
+						choose <strong className="font-medium text-foreground">Open Anyway</strong>. That option
+						is not offered for the &ldquo;damaged&rdquo; message above, which is why the command
+						exists.
 					</p>
 				</div>
 
 				<div>
 					<h3 className="font-medium text-foreground">Windows</h3>
 					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-						SmartScreen shows <em>&ldquo;Windows protected your PC&rdquo;</em> because the
-						installer&apos;s publisher reputation is not yet established. Choose{" "}
+						SmartScreen may show <em>&ldquo;Windows protected your PC&rdquo;</em> because the
+						installer&apos;s publisher reputation is still being established. Choose{" "}
 						<strong className="font-medium text-foreground">More info</strong>, then{" "}
 						<strong className="font-medium text-foreground">Run anyway</strong>.
 					</p>
@@ -195,10 +197,8 @@ function FirstRunSection() {
 			</div>
 
 			<p className="mt-6 text-sm leading-relaxed text-muted-foreground">
-				Every release is built in the open by GitHub Actions from a public tagged commit, so you can
-				read the source and the build workflow before you run anything. Signed and notarized builds
-				are planned; until then this page stays honest about what your operating system is telling
-				you.{" "}
+				Every release is built by GitHub Actions from a public tagged commit, so you can read the
+				source and the build workflow before you run anything.{" "}
 				<a
 					href={`${GITHUB_URL}/releases`}
 					target="_blank"

@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useSettingsStore } from "@/stores/settings-store";
 import { FIRST_RUN_HELP_ANCHOR } from "./shared/first-run-help";
 import { SupportPage } from "./support-page";
 
@@ -19,6 +20,7 @@ function renderSupportPage(initialEntry = "/support") {
 describe("SupportPage", () => {
 	beforeEach(() => {
 		vi.mocked(Element.prototype.scrollIntoView).mockClear();
+		useSettingsStore.getState().updateSetting("reduceMotion", false);
 	});
 
 	it("renders the page heading", () => {
@@ -27,15 +29,39 @@ describe("SupportPage", () => {
 	});
 
 	describe("first-run guidance", () => {
-		it("explains that an unsigned build is not a broken download", () => {
+		it("explains that a blocked first launch is not a broken download", () => {
 			renderSupportPage();
-			const section = screen.getByRole("heading", {
-				level: 2,
-				name: "Opening Threat Forge for the first time",
-			});
-			expect(section).toBeInTheDocument();
-			expect(screen.getByText(/not yet code-signed/)).toBeInTheDocument();
+			expect(
+				screen.getByRole("heading", {
+					level: 2,
+					name: "Opening Threat Forge for the first time",
+				}),
+			).toBeInTheDocument();
 			expect(screen.getByText(/Nothing is wrong with your download/)).toBeInTheDocument();
+		});
+
+		it("scopes the missing-signature explanation to macOS", () => {
+			// Windows installers are signed via Azure Trusted Signing, so a blanket
+			// "not code-signed" claim would be false for the platform most likely to
+			// show a scary dialog.
+			renderSupportPage();
+			expect(
+				screen.getByText(/macOS builds are not signed with an Apple Developer ID/),
+			).toBeInTheDocument();
+			expect(
+				screen.getByText(/publisher reputation is still being established/),
+			).toBeInTheDocument();
+		});
+
+		it("says the Open Anyway override does not apply to the damaged-file message", () => {
+			renderSupportPage();
+			expect(screen.getByText(/not offered for the .damaged. message above/)).toBeInTheDocument();
+		});
+
+		it("describes Linux as needing an execute bit rather than being blocked", () => {
+			renderSupportPage();
+			expect(screen.getByText(/Linux does not block unsigned applications/)).toBeInTheDocument();
+			expect(screen.getByText("chmod +x ./Threat.Forge_*.AppImage")).toBeInTheDocument();
 		});
 
 		it("gives the macOS quarantine command verbatim", () => {
@@ -60,8 +86,24 @@ describe("SupportPage", () => {
 
 	describe("hash scrolling", () => {
 		it("scrolls the targeted section into view", () => {
+			const { container } = renderSupportPage(`/support#${FIRST_RUN_HELP_ANCHOR}`);
+
+			const scroll = vi.mocked(Element.prototype.scrollIntoView);
+			expect(scroll).toHaveBeenCalledTimes(1);
+			// Asserting the receiver, not just the call: scrolling some other element
+			// into view would satisfy a bare call-count assertion.
+			expect(scroll.mock.instances[0]).toBe(container.querySelector(`#${FIRST_RUN_HELP_ANCHOR}`));
+			expect(scroll).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+		});
+
+		it("jumps without animating when the user has asked for reduced motion", () => {
+			useSettingsStore.getState().updateSetting("reduceMotion", true);
 			renderSupportPage(`/support#${FIRST_RUN_HELP_ANCHOR}`);
-			expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+
+			expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+				behavior: "auto",
+				block: "start",
+			});
 		});
 
 		it("does not scroll when the URL carries no hash", () => {

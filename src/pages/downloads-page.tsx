@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useLatestRelease } from "@/hooks/use-latest-release";
 import type { OsType, PlatformAssets, ReleaseAsset } from "@/lib/github-releases";
 import { formatBytes } from "@/lib/github-releases";
-import { FIRST_RUN_HELP_ANCHOR, FIRST_RUN_HELP_PATH } from "./shared/first-run-help";
+import { FIRST_RUN_HELP_ANCHOR } from "./shared/first-run-help";
 import { PageShell } from "./shared/page-shell";
 
 const GITHUB_RELEASES_URL = "https://github.com/exit-zero-labs/threat-forge/releases";
@@ -62,6 +62,17 @@ export function DownloadsPage() {
 
 					{release && <AllPlatforms assets={release.assets} detectedOs={detectedOs} />}
 
+					{/* Rendered for the resolved and the failed branch alike: the failed branch still
+					    sends people to GitHub to download the very same builds. */}
+					{!isLoading && (
+						<p className="mt-6 text-center text-sm text-muted-foreground">
+							Your operating system may block or flag the app the first time you open it.{" "}
+							<Link to={`/support#${FIRST_RUN_HELP_ANCHOR}`} className="underline">
+								How to open it
+							</Link>
+						</p>
+					)}
+
 					<div className="mt-16 text-center">
 						<p className="text-sm text-muted-foreground">
 							Or{" "}
@@ -113,16 +124,6 @@ function AllPlatforms({ assets, detectedOs }: { assets: PlatformAssets; detected
 					highlighted={detectedOs === "linux"}
 				/>
 			</div>
-			{/* Sits under the grid rather than under the one highlighted download button, because
-			    every platform blocks these unsigned builds and the button only renders for the
-			    detected OS. */}
-			<p className="mt-6 text-center text-sm text-muted-foreground">
-				These builds are not signed yet, so your operating system will warn you the first time you
-				open the app.{" "}
-				<Link to={`${FIRST_RUN_HELP_PATH}#${FIRST_RUN_HELP_ANCHOR}`} className="underline">
-					How to open it
-				</Link>
-			</p>
 		</div>
 	);
 }

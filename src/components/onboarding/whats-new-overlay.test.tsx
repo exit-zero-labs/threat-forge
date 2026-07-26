@@ -1,9 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { WHATS_NEW_STORAGE_KEY as STORAGE_KEY } from "@/lib/whats-new";
 import { WhatsNewOverlay } from "./whats-new-overlay";
-
-const STORAGE_KEY = "threatforge-last-seen-version";
 
 function seenVersions(): string[] {
 	return screen

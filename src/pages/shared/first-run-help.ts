@@ -1,10 +1,7 @@
 /**
- * The one place the downloads page and the support page agree on where first-run
- * help lives, so the link and the section it targets cannot drift apart.
+ * The anchor of the first-run help section on the support page.
  *
- * This exists only while the desktop builds are unsigned (#50, #51). When Developer ID
- * notarization and Windows signing land, delete this module along with the section it
- * anchors and the line on the downloads page that points at it.
+ * Shared so the downloads page cannot link to a fragment the support page has renamed —
+ * a broken fragment scrolls nowhere and says nothing, so nobody notices it rot.
  */
-export const FIRST_RUN_HELP_PATH = "/support";
 export const FIRST_RUN_HELP_ANCHOR = "opening-for-the-first-time";
