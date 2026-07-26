@@ -158,7 +158,7 @@ function FirstRunSection() {
 					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
 						The macOS builds are not signed with an Apple Developer ID or notarized yet, so macOS
 						may report that Threat Forge <em>&ldquo;is damaged and can&apos;t be opened&rdquo;</em>.
-						It is not damaged — macOS quarantines apps downloaded through a browser, and with no
+						It is not damaged — macOS quarantines apps arriving from a browser or Mail, and with no
 						signature to evaluate, Gatekeeper refuses the app outright. Move Threat Forge to your
 						Applications folder, then run this once in Terminal to clear the quarantine flag:
 					</p>

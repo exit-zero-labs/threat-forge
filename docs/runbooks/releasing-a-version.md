@@ -77,9 +77,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --frozen
 
 The version appears in five files that must agree — the four below plus `src-tauri/Cargo.lock`,
 regenerated in step 4 — and step 3 adds a sixth place it must match. Neither lockfile is
-optional: `scripts/check-lockfile-registry.mjs`
-rejects a `package-lock.json` whose root version has drifted from `package.json`, and the
-release workflow runs `cargo fetch --locked`, which fails on a stale `Cargo.lock`.
+optional: `scripts/check-lockfile-registry.mjs` rejects a `package-lock.json` whose root version
+has drifted from `package.json`, and the release workflow runs `cargo fetch --locked`, which
+fails on a stale `Cargo.lock`.
 
 ```bash
 # 1. Cargo.toml
@@ -195,15 +195,11 @@ git checkout main
 git merge fix/critical-bug
 ```
 
-Then run steps 2 through 5 for `vX.Y.(Z+1)` before tagging — a hotfix is a release, and
-skipping the bump ships a build whose `__APP_VERSION__` still names the previous version,
-which is the defect [#246](https://github.com/exit-zero-labs/threat-forge/issues/246) exists to
-close.
-
-```bash
-git tag vX.Y.(Z+1)
-git push origin main vX.Y.(Z+1)
-```
+Then run [Release Steps](#release-steps) 1 through 9 as for any release, using the next patch
+version. A hotfix is a release: it tags a commit, it fires `release.yml`, and it still needs the
+`Production` approval from the owner who did not push the tag. Skipping the version bump ships a
+build that reports the previous version everywhere and announces no What's New entry for the fix
+users are being asked to install.
 
 ## Troubleshooting
 

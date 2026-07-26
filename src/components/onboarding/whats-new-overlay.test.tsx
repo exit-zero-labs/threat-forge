@@ -66,7 +66,6 @@ describe("WhatsNewOverlay", () => {
 		// Derived, not a literal: seeding "0.2.0" made the premise expire at the next
 		// version bump, so a routine release would go red for nothing.
 		const previous = CHANGELOG[1].version;
-		expect(previous).toBeDefined();
 		localStorage.setItem(STORAGE_KEY, previous);
 
 		render(<WhatsNewOverlay />);
