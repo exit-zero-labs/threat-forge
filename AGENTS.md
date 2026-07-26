@@ -154,6 +154,29 @@ Under it the following still hold without exception:
 - owner validation is deferred, not waived — the merged PR remains the record the owner
   reviews, and anything a reviewer could not verify is called out in the PR body
 
+## Local machine resources
+
+Agent work runs on the owner's workstation, shared with their editor, their browser, and other
+concurrent agent sessions across other repositories. CPU, memory, and process count are a shared
+budget, not a free resource. A saturated machine is an outage for the owner.
+
+- **Never spawn synthetic load.** No CPU burners, busy-loops, `stress`/`yes` processes, or
+  parallel job fans to simulate a loaded CI runner. If a timing assertion only fails under
+  manufactured contention, that is evidence the assertion measures machine speed rather than a
+  property of the code — fix the assertion instead of reproducing the noise. This rule is
+  written from an incident: a review agent spawned 34 detached `node -e` busy-loops to model CI
+  contention and drove the workstation to load 118 with 0% idle.
+- **Never detach a process you will not reap.** Anything backgrounded during a task is stopped
+  before that task reports. A process reparented to `launchd` (PPID 1) outlives the agent that
+  started it and nobody sweeps it. Long-lived servers — `wrangler dev`, `vite preview`,
+  Playwright servers — are stopped when the work that needed them ends.
+- **Do not run the full suite in parallel lanes.** `npm run ci:local` and a bare `vitest run`
+  are whole-machine operations. Concurrent review lanes must use the smallest targeted selector;
+  only one lane runs the full gate, and preferably the orchestrator runs it once on their behalf.
+- **Prefer a cheaper measurement.** Reach for a ratio, a complexity property, or a counted
+  operation before reaching for wall-clock timing under load. See
+  `src/lib/registry/registry-scale.test.ts` for the shape this should take.
+
 ## Engineering workflow
 
 1. **Triage:** shape the issue and populate Project 2 metadata. Do not code.
