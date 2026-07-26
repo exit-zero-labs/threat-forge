@@ -425,7 +425,7 @@ describe("worst-case projection and the byte cap", () => {
 			threats: Array.from({ length: 10 }, (_, i) => ({
 				id: wide(`t${i}`),
 				title: "threat",
-				category: "spoofing",
+				category: "Spoofing",
 				severity: "high",
 				element: "web",
 				description: "d",
