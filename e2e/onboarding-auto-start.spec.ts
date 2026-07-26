@@ -49,7 +49,7 @@ test.describe("Onboarding guide auto-start (real browser, #141)", () => {
 
 		const tooltip = page.getByTestId("guide-tooltip");
 		await expect(tooltip).toBeVisible();
-		await expect(tooltip).toHaveAttribute("aria-label", "Add something");
+		await expect(tooltip).toHaveAttribute("aria-label", "Add a component");
 		await expect(page.getByTestId("guide-overlay")).toBeVisible();
 
 		await tooltip.getByRole("button", { name: "Skip" }).click();

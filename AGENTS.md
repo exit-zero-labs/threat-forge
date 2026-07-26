@@ -229,7 +229,9 @@ Watch for:
 - cross-file behavior or documentation drift after a partial fix
 
 The full evidence-driven doctrine is `docs/quality/agentic-slop.md`. Product AI output evaluation
-methodology lives in `docs/quality/ai-output-quality.md`.
+methodology lives in `docs/quality/ai-output-quality.md`. Copy a user reads — landing, About,
+empty states, onboarding, release notes, page metadata — is governed by
+`docs/knowledge/product-voice.md`.
 
 ## Code conventions
 

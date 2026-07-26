@@ -18,7 +18,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/binary%20size-~10MB-informational" alt="Binary size" />
+  <img src="https://img.shields.io/badge/install%20size-under%2010MB-informational" alt="Binary size" />
 </p>
 
 <br />
@@ -33,7 +33,7 @@ ThreatForge is a cross-platform desktop app for threat modeling. It produces hum
 
 ## The Problem
 
-Threat modeling tools fall into two camps. On one side: Microsoft's Threat Modeling Tool — free, but Windows-only, with a legacy UI and opaque `.tm7` binary files that can't be diffed, reviewed, or versioned. On the other: procurement-oriented enterprise platforms like IriusRisk and ThreatModeler.
+Threat modeling tools fall into two camps. On one side: Microsoft's Threat Modeling Tool — free, but Windows-only, with a legacy UI and a `.tm7` file that is an XML object graph — technically text, unreadable in review. On the other: procurement-oriented enterprise platforms like ThreatModeler, which acquired IriusRisk in 2026.
 
 There's nothing in between for developers who want a modern interface, a clean file format, and AI assistance — without a procurement cycle.
 
@@ -155,7 +155,7 @@ The dev server starts with hot reload on port 1420.
 npm run tauri build
 ```
 
-Produces a native desktop binary for your platform (~10MB).
+Produces a native desktop binary for your platform (a few megabytes on most platforms; the Linux AppImage bundles its runtime and is much larger).
 
 ### Test
 

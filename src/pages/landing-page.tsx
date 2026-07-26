@@ -24,7 +24,7 @@ const FEATURES = [
 	{
 		icon: Monitor,
 		title: "Runs anywhere, weighs nothing",
-		description: "About ten megabytes, in Rust. macOS, Windows, Linux, or no install at all.",
+		description: "A few megabytes on most platforms. macOS, Windows, Linux, or no install at all.",
 	},
 ] as const;
 
@@ -120,8 +120,8 @@ function FeaturesSection() {
 				</h2>
 				<p className="mx-auto mt-3 max-w-2xl text-center text-muted-foreground">
 					Microsoft&apos;s Threat Modeling Tool is free, Windows-only, and saves a .NET object graph
-					with some XML wrapped around it. IriusRisk and ThreatModeler are the grown-up alternative,
-					at around $20,000 a year. This is the third option.
+					with some XML wrapped around it. ThreatModeler bought IriusRisk last year, so the grown-up
+					alternative is now one vendor charging five figures a year. This is the third option.
 				</p>
 				<div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
 					{FEATURES.map((feature) => (

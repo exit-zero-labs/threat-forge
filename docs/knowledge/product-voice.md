@@ -41,6 +41,10 @@ Rules that make it work:
   stay plain. The looser rule is what shipped, because three FAQ answers do carry the voice and
   are better for it. Errors are the part that stayed absolute: nothing in an error message is
   allowed to be funny.
+- **First person singular, except in legal text.** Exit Zero Labs is one person, and the About
+  page says so, so "I" and "me" are correct in product copy. The privacy policy and terms speak
+  as the company because the obligations are the company's, and that difference is deliberate
+  rather than drift.
 - **Concede real limits.** "It won't find the clever bug in your auth logic. It will find the
   twelve boring ones you were going to skip." A concession is the cheapest credibility
   available and almost no marketing copy will spend it.

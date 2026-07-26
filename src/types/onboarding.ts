@@ -2,8 +2,13 @@
 export interface OnboardingStep {
 	/** Target element to highlight, via data-testid or CSS selector */
 	targetSelector: string;
-	/** Step title */
+	/** Step title, shown in the tooltip */
 	title: string;
+	/**
+	 * Accessible name for the tooltip dialog, when the title is written for
+	 * recognition rather than identification ("Run it"). Defaults to `title`.
+	 */
+	ariaLabel?: string;
 	/** Step description */
 	content: string;
 	/** Tooltip placement relative to the target */

@@ -44,6 +44,7 @@ export const DFD_BASICS_GUIDE: OnboardingGuide = {
 		{
 			targetSelector: "[data-testid='palette-item-generic']",
 			title: "Add something",
+			ariaLabel: "Add a component",
 			content:
 				"Drag this out for a plain process or service. You can rename it and set its type afterwards.",
 			placement: "right",
@@ -58,6 +59,7 @@ export const DFD_BASICS_GUIDE: OnboardingGuide = {
 		{
 			targetSelector: "[data-testid='tab-threats']",
 			title: "Then find the threats",
+			ariaLabel: "Analyze threats",
 			content:
 				"Open the Threats tab and run STRIDE. It reads the diagram you just drew and proposes what could go wrong.",
 			placement: "left",
@@ -73,19 +75,22 @@ export const STRIDE_ANALYSIS_GUIDE: OnboardingGuide = {
 		{
 			targetSelector: "[data-testid='tab-threats']",
 			title: "The threats tab",
-			content: "Every threat on the model, in one list. This is the view you will be arguing with.",
+			content:
+				"Switch here for every threat on the model, in one list. This is the view you will be arguing with.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='btn-stride-analyze']",
 			title: "Run it",
+			ariaLabel: "Run STRIDE analysis",
 			content:
-				"Walks your elements and flows through the six STRIDE categories that apply to each: spoofing, tampering, repudiation, information disclosure, denial of service, elevation of privilege. It is thorough rather than clever, which is the point.",
+				"Walks your elements and flows through the STRIDE categories that apply to each: spoofing, tampering, repudiation, information disclosure, denial of service, elevation of privilege. It is thorough rather than clever, which is the point.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='right-panel']",
 			title: "Now do the real work",
+			ariaLabel: "Review and manage threats",
 			content:
 				"Open a threat to set severity, write the mitigation, or accept the risk. The generated list is a starting point, not a verdict.",
 			placement: "left",
@@ -108,13 +113,15 @@ export const AI_ASSISTANT_GUIDE: OnboardingGuide = {
 		{
 			targetSelector: "[data-testid='btn-settings-dialog']",
 			title: "Bring your own key",
+			ariaLabel: "Configure your API key",
 			content:
-				"Add an OpenAI or Anthropic key in Settings. Calls go straight to the provider, never through a server of ours. Desktop keys are encrypted at rest; browser keys are encrypted using a key your browser will not export, though anything running on this page can still use them.",
+				"Add an OpenAI or Anthropic key in Settings. Calls go straight to the provider, never through a server of mine. Desktop keys are encrypted at rest; browser keys are encrypted using a key your browser will not export, though anything running on this page can still use them.",
 			placement: "bottom",
 		},
 		{
 			targetSelector: "[data-testid='tab-ai']",
 			title: "What to ask it",
+			ariaLabel: "Example questions to ask the AI",
 			content:
 				"Try 'what am I missing on the payment flow?' or 'review the mitigations on my API gateway.' Vague questions get vague answers here, same as anywhere else.",
 			placement: "left",
