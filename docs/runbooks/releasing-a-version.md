@@ -40,7 +40,9 @@ hands rather than hold it behind signing provisioning. What this costs users:
 - **#50, Windows.** Azure Trusted Signing is wired into the build, but it has never been verified
   on a published artifact — that is the open half of the row. Treat "the installer is signed" as
   unconfirmed until step 8 checks the signature on the real v0.3.0 artifact. SmartScreen
-  reputation is still accumulating either way, so a warning is expected.
+  reputation is still accumulating either way, so a warning is expected. Owner-facing: the
+  Azure credentials stay repository-scoped rather than `Production`-scoped for this release, so
+  other workflows can reference them until the OIDC migration in #50 lands.
 - **#49, updater.** There is no in-app update. Users return to the downloads page for the next
   version.
 
@@ -73,9 +75,10 @@ cargo test --manifest-path src-tauri/Cargo.toml --frozen
 
 ### 2. Bump Version Numbers
 
-The version appears in four files that must agree. `scripts/check-lockfile-registry.mjs`
-rejects a `package-lock.json` whose root version has drifted from `package.json`, so the
-lockfile is not optional.
+The version appears in five files that must agree — the four below plus `src-tauri/Cargo.lock`,
+regenerated in step 4. Neither lockfile is optional: `scripts/check-lockfile-registry.mjs`
+rejects a `package-lock.json` whose root version has drifted from `package.json`, and the
+release workflow runs `cargo fetch --locked`, which fails on a stale `Cargo.lock`.
 
 ```bash
 # 1. Cargo.toml
@@ -95,15 +98,20 @@ npm install --package-lock-only --ignore-scripts
 ```
 
 `__APP_VERSION__` is compiled from `package.json`, so the in-app version badge, settings
-dialog, site footer, and the version the What's New overlay announces all follow this bump with
-no further edits.
+dialog, and site footer follow this bump with no further edits. The What's New overlay does not
+— see the next step.
 
 ### 3. Add the What's New Entry
 
-The overlay's `CHANGELOG` in `src/lib/whats-new.ts` is hand-maintained and does **not** follow
-the version bump. Add an entry at the top of the list — newest first — describing what changed in
-terms of what a user can now do. `src/lib/whats-new.test.ts` fails if the newest entry does not
-match the running version, so a skipped entry stops CI rather than shipping a silent upgrade.
+The overlay renders `entry.version` from the hand-maintained `CHANGELOG` in
+`src/lib/whats-new.ts`, so it does **not** follow the version bump. Add an entry at the top of
+the list — newest first — describing what changed in terms of what a user can now do, and scope
+any bullet that only applies to one surface (`(desktop app)`, `Browser …`).
+`src/lib/whats-new.test.ts` fails if the newest entry does not match the running version, so a
+skipped entry stops CI rather than shipping a silent upgrade.
+
+Use the intended publish date in UTC, not today's — the tag waits on a second owner's
+`Production` approval, so authoring and publishing can fall on different days.
 
 ### 4. Update Cargo.lock
 

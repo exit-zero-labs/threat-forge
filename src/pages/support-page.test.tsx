@@ -64,6 +64,16 @@ describe("SupportPage", () => {
 			expect(screen.getByText("chmod +x ./Threat.Forge_*.AppImage")).toBeInTheDocument();
 		});
 
+		it("makes each command block keyboard-reachable", () => {
+			// The blocks scroll horizontally, so a keyboard user must be able to focus one
+			// to read a command they are about to paste into a terminal.
+			renderSupportPage();
+			const region = screen.getByRole("region", {
+				name: 'Command: xattr -dr com.apple.quarantine "/Applications/Threat Forge.app"',
+			});
+			expect(region).toHaveAttribute("tabindex", "0");
+		});
+
 		it("gives the macOS quarantine command verbatim", () => {
 			renderSupportPage();
 			expect(

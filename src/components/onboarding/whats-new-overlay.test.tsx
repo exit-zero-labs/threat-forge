@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { WHATS_NEW_STORAGE_KEY as STORAGE_KEY } from "@/lib/whats-new";
+import { CHANGELOG, WHATS_NEW_STORAGE_KEY as STORAGE_KEY } from "@/lib/whats-new";
 import { WhatsNewOverlay } from "./whats-new-overlay";
 
 function seenVersions(): string[] {
@@ -54,18 +54,20 @@ describe("WhatsNewOverlay", () => {
 	});
 
 	it("shows every entry newer than the version the user last saw", () => {
-		localStorage.setItem(STORAGE_KEY, "0.1.0");
+		const oldest = CHANGELOG[CHANGELOG.length - 1].version;
+		localStorage.setItem(STORAGE_KEY, oldest);
 
 		render(<WhatsNewOverlay />);
 
-		const shown = seenVersions();
-		expect(shown).toContain("0.2.0");
-		expect(shown).toContain(__APP_VERSION__);
-		expect(shown).not.toContain("0.1.0");
+		expect(seenVersions()).toEqual(CHANGELOG.slice(0, -1).map((entry) => entry.version));
 	});
 
 	it("shows one entry when the user is a single version behind", () => {
-		localStorage.setItem(STORAGE_KEY, "0.2.0");
+		// Derived, not a literal: seeding "0.2.0" made the premise expire at the next
+		// version bump, so a routine release would go red for nothing.
+		const previous = CHANGELOG[1]?.version;
+		expect(previous).toBeDefined();
+		localStorage.setItem(STORAGE_KEY, previous as string);
 
 		render(<WhatsNewOverlay />);
 

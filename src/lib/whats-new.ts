@@ -60,7 +60,7 @@ export const CHANGELOG: ChangelogEntry[] = [
 			"A proposed change is re-checked against the file format before it lands, and refused if the result would not reopen or if the document moved underneath it",
 			"AI can read your current document and the component catalog before it suggests anything",
 			"Refreshed OpenAI and Anthropic model catalog",
-			"Import existing models from Microsoft Threat Modeling Tool .tm7 files",
+			"Import existing models from Microsoft Threat Modeling Tool .tm7 files (desktop app)",
 			"Open several models at once in a tabbed workspace",
 			"Browser documents survive a refresh — work is saved locally as you go",
 			"Browser API keys are stored as ciphertext instead of clear text, and the web app now ships a strict Content-Security-Policy",
