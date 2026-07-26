@@ -281,6 +281,43 @@ describe("search_entities", () => {
 		expect(outcome.result).toContain("Offset 2 is past the end");
 	});
 
+	it("keeps a byte-bounded page under the cap at every width, wrapper fields included", async () => {
+		// `paginate` can only guarantee what it measures. `search_entities` serializes
+		// `kind` alongside `page` and `results`, so a page it fills to within 18 bytes
+		// of the cap — the width of `"kind":"elements",` — goes over once `kind` is
+		// added, and the overflow surfaces as a generic tool failure rather than a
+		// bounded page. Sweeping the scalar width walks the page across the boundary
+		// in small steps instead of guessing where it falls; several widths in this
+		// range land inside that margin.
+		const over: string[] = [];
+		for (let width = 20; width <= 120; width += 1) {
+			const many = Array.from({ length: 60 }, (_value, index) => ({
+				id: `${"e".repeat(width)}-${index}`,
+				name: "n".repeat(width),
+				type: "process" as const,
+				trust_zone: "t".repeat(width),
+				layer: "l".repeat(width),
+				group: "g".repeat(width),
+				// Not in the compact projection, so neither affects the measured page.
+				description: "d",
+				technologies: [],
+			}));
+			const outcome = await run(
+				"search_entities",
+				{ kind: "elements", limit: 50 },
+				baseModel({ elements: many }),
+			);
+			if (outcome.status !== "ok") {
+				over.push(`width ${width}: ${outcome.status}`);
+				continue;
+			}
+			const lines = outcome.result.split("\n");
+			const bytes = new TextEncoder().encode(lines.slice(1, -1).join("\n")).length;
+			if (bytes > READ_RESULT_MAX_BYTES) over.push(`width ${width}: ${bytes} bytes`);
+		}
+		expect(over).toEqual([]);
+	});
+
 	it("bounds a huge section by count and by bytes and resumes from next_offset", async () => {
 		const many = Array.from({ length: 5000 }, (_value, index) => ({
 			id: `t${index}`,

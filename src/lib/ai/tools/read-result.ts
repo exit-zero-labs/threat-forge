@@ -126,6 +126,10 @@ export function tryBuildReadResult(args: {
  * not a runtime condition: {@link paginate} stops adding results at the cap, and
  * the summary payload is a fixed set of counts. A caller whose payload size is
  * driven by document content must use {@link tryBuildReadResult} instead.
+ *
+ * A paginating caller only earns that guarantee by declaring everything it
+ * serializes: fields passed to `paginate` as `envelope` are measured, and fields
+ * added afterwards are not, which is how a page fitted to the cap can exceed it.
  */
 export function buildReadResult(args: { tool: string; payload: Record<string, unknown> }): string {
 	const built = tryBuildReadResult(args);
@@ -151,12 +155,22 @@ function nextOffset(offset: number, returned: number, total: number): number | n
  * page meta's own size is accounted for. `stopped_by` distinguishes a full count
  * page (`"limit"`), a byte-bounded page (`"bytes"`), and the true end of the
  * matches (`"end"`).
+ *
+ * A caller that serializes fields alongside `page` and `results` must pass them
+ * as `envelope`, or the guarantee is measured against a smaller body than the
+ * one actually sent and a page filled to just under the cap goes over it.
  */
 export function paginate<T, P>(
 	items: readonly T[],
-	options: { tool: string; offset: number; limit: number; project: (item: T) => P },
+	options: {
+		tool: string;
+		offset: number;
+		limit: number;
+		project: (item: T) => P;
+		envelope?: Record<string, unknown>;
+	},
 ): { page: PageMeta; results: P[] } {
-	const { tool, offset, limit, project } = options;
+	const { tool, offset, limit, project, envelope = {} } = options;
 	const total = items.length;
 	const window = items.slice(offset);
 
@@ -180,7 +194,9 @@ export function paginate<T, P>(
 			next_offset: nextOffset(offset, trial.length, total),
 			stopped_by: "limit",
 		};
-		const trialBytes = byteLength(serializeBody(tool, { page: trialMeta, results: trial }));
+		const trialBytes = byteLength(
+			serializeBody(tool, { ...envelope, page: trialMeta, results: trial }),
+		);
 		if (trialBytes > READ_RESULT_MAX_BYTES) {
 			stopped = "bytes";
 			break;

@@ -297,6 +297,7 @@ const searchEntitiesTool = defineExecutableTool({
 			offset,
 			limit,
 			project: (entity) => entity,
+			envelope: { kind: input.kind },
 		});
 		return {
 			status: "ok",

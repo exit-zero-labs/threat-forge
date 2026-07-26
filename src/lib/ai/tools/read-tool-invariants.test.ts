@@ -368,14 +368,14 @@ describe("worst-case projection and the byte cap", () => {
 	/**
 	 * A document whose single element projects past the byte cap.
 	 *
-	 * The three free-text lists are filled at the cap, and the four id lists are
-	 * filled by attaching flows, boundaries and threats whose own ids are at the
-	 * scalar cap. Every value here is one a document could legitimately hold, which
-	 * is why the overflow needs an answer rather than an assertion that it cannot
-	 * happen.
+	 * The three free-text lists are filled at the cap, and all four derived id lists
+	 * are filled by attaching outbound flows, inbound flows, boundaries and threats
+	 * whose own ids are at the scalar cap. Every value here is one a document could
+	 * legitimately hold, which is why the overflow needs an answer rather than an
+	 * assertion that it cannot happen.
 	 */
-	function oversizedElementModel(): ThreatModel {
-		const wide = (suffix: string) => `${"i".repeat(196)}${suffix}`;
+	function oversizedElementModel(idWidth = 196): ThreatModel {
+		const wide = (suffix: string) => `${"i".repeat(idWidth)}${suffix}`;
 		return {
 			version: "1.0",
 			metadata: {
@@ -396,12 +396,26 @@ describe("worst-case projection and the byte cap", () => {
 					stores: cappedList,
 				},
 			],
-			data_flows: Array.from({ length: 10 }, (_, i) => ({
-				id: wide(`f${i}`),
-				name: "flow",
-				source: "web",
-				destination: wide(`o${i}`),
-			})),
+			data_flows: [
+				...Array.from({ length: 10 }, (_, i) => ({
+					id: wide(`f${i}`),
+					name: "flow",
+					from: "web",
+					to: wide(`o${i}`),
+					protocol: "https",
+					data: [],
+					authenticated: true,
+				})),
+				...Array.from({ length: 10 }, (_, i) => ({
+					id: wide(`g${i}`),
+					name: "flow",
+					from: wide(`o${i}`),
+					to: "web",
+					protocol: "https",
+					data: [],
+					authenticated: true,
+				})),
+			],
 			trust_boundaries: Array.from({ length: 10 }, (_, i) => ({
 				id: wide(`b${i}`),
 				name: "boundary",
@@ -431,6 +445,36 @@ describe("worst-case projection and the byte cap", () => {
 		expect(outcome.result).toContain("over the 8192-byte result cap");
 		expect(outcome.result).toContain(`search_entities with kind "elements"`);
 		expect(outcome.result).not.toContain(UNTRUSTED_DOCUMENT_START);
+	});
+
+	it("fills all four derived id lists in the oversized fixture", async () => {
+		// The fixture is only honest if the flows, boundaries and threats it attaches
+		// actually reach the element's projection. A field-name drift here would leave
+		// the lists empty and quietly narrow what the overflow test covers.
+		useModelStore.getState().clearModel();
+		// Narrow ids and no free text, so the same wiring projects small enough to
+		// return whole — this test is about which lists are populated, not the cap.
+		const model = oversizedElementModel(4);
+		model.elements[0].technologies = [];
+		model.elements[0].tags = [];
+		model.elements[0].stores = [];
+		model.elements[0].description = "d";
+		useModelStore.getState().setModel(model, null);
+
+		const outcome = await runInput({ tool: "get_entity", raw: { kind: "elements", id: "web" } });
+
+		expect(outcome.status).toBe("ok");
+		const body = JSON.parse(outcome.result.split("\n").slice(1, -1).join("\n")) as {
+			entity: Record<string, unknown>;
+		};
+		for (const field of [
+			"incoming_flow_ids",
+			"outgoing_flow_ids",
+			"trust_boundary_ids",
+			"threat_ids",
+		]) {
+			expect((body.entity[field] as unknown[]).length).toBeGreaterThan(0);
+		}
 	});
 
 	it("still answers the same oversized element through its compact projection", async () => {
