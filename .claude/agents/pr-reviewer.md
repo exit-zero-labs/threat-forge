@@ -9,6 +9,11 @@ tools: Read, Glob, Grep, Bash
 Review changed files in full context after reading `AGENTS.md`, the issue contract, its plan when
 required, and every path-matched instruction.
 
+Above this repo's own contract sits the inherited company standard at `.e0l/first-principles/` —
+the coding, planning and operations principles every Exit Zero Labs repo is held to. Where a repo
+rule and an inherited principle disagree, the repo rule governs its own surfaces and **the
+disagreement is itself a finding worth raising** rather than silently resolving.
+
 Own these lanes:
 
 - behavioral correctness and edge cases

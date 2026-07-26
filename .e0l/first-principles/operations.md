@@ -133,7 +133,25 @@ Work is executed against a live testbed, not a description of one. Agents build 
 
 Components are modular enough to be tested independently, locally and deployed. The loop is expected to change as the product does; a testbed that is expensive to change stops being used, and then the gates it fed become decorative.
 
-Where output quality is a judgement call rather than a boolean — generated prose, design, ranking — the loop needs an evaluation harness with versioned rubrics, fixtures pinning known cases, and calibration against real human decisions. **Fail closed, and never lower the bar to pass.**
+### What a repo must actually provide
+
+Stated as capabilities rather than aspirations, because "we have a closed loop" is not checkable and this is:
+
+| Capability | Means | Without it |
+| --- | --- | --- |
+| **Live harness** | The real system runs locally against real bindings — a real database, a real runtime, a real renderer — not mocks | Tests describe a program you do not ship |
+| **Fixtures** | Known cases pinned in-repo, failing loudly on regression | Every change is evaluated from scratch, by opinion |
+| **Artifact capture** | Runs write inspectable output to `artifacts/`, retries appending rather than overwriting | A failure that is not reproducible is a failure nobody can fix |
+| **Quality gate** | Where output is a judgement call — prose, design, ranking — a versioned rubric that **fails closed** | The bar is whatever the last reviewer felt |
+
+Which repos have which is recorded in `Tooling/conformance.yml` under `closed_loop`. **A repo claiming a capability it does not have is worse than one recording the gap**, because the gap is what schedules the work.
+
+### The rules that keep it honest
+
+- **Fail closed.** An evaluation that cannot run is a failure, not a skip.
+- **Never lower the bar to pass.** Not a threshold, not a rubric weight, not a fixture expectation. Changing a bar is a human decision with its own ticket.
+- **Calibrate against real decisions.** A rubric that has never been checked against a human's actual judgement is a number, not a gate.
+- **Record what the loop failed to catch.** When a defect reaches `main`, the useful question is which capability above would have caught it — and that answer is the next piece of work.
 
 ## Continuous integration
 
