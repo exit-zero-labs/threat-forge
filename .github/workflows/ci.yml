@@ -239,6 +239,12 @@ jobs:
             libssl-dev \
             xdg-utils
 
+      # The Lockfile job runs this on Linux only, so a Windows-specific break in the guard
+      # itself stayed invisible until it failed the v0.3.0 release build. The release matrix
+      # runs it on every platform; this makes pull requests do the same.
+      - name: Verify package registry and integrity
+        run: node scripts/check-lockfile-registry.mjs
+
       - name: Build Tauri app
         run: |
           cargo fetch --manifest-path src-tauri/Cargo.toml --locked
