@@ -41,9 +41,10 @@ describe("SupportPage", () => {
 		});
 
 		it("scopes the missing-signature explanation to macOS", () => {
-			// Windows installers are signed via Azure Trusted Signing, so a blanket
-			// "not code-signed" claim would be false for the platform most likely to
-			// show a scary dialog.
+			// Azure Trusted Signing is wired into the Windows build, so a blanket
+			// "not code-signed" claim would be wrong for the platform most likely to show
+			// a scary dialog. (Whether it succeeds is unverified until a real artifact is
+			// checked — see the #50 waiver in the release runbook.)
 			renderSupportPage();
 			expect(
 				screen.getByText(/macOS builds are not signed with an Apple Developer ID/),
@@ -62,16 +63,6 @@ describe("SupportPage", () => {
 			renderSupportPage();
 			expect(screen.getByText(/Linux does not block unsigned applications/)).toBeInTheDocument();
 			expect(screen.getByText("chmod +x ./Threat.Forge_*.AppImage")).toBeInTheDocument();
-		});
-
-		it("makes each command block keyboard-reachable", () => {
-			// The blocks scroll horizontally, so a keyboard user must be able to focus one
-			// to read a command they are about to paste into a terminal.
-			renderSupportPage();
-			const region = screen.getByRole("region", {
-				name: 'Command: xattr -dr com.apple.quarantine "/Applications/Threat Forge.app"',
-			});
-			expect(region).toHaveAttribute("tabindex", "0");
 		});
 
 		it("gives the macOS quarantine command verbatim", () => {

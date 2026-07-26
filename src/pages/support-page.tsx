@@ -126,19 +126,9 @@ function useHashScroll(): void {
 
 function Command({ children }: { children: string }) {
 	return (
-		// The command is wrapped in a named region so the horizontally scrollable box is
-		// reachable by Tab (WCAG 2.1.1) — these commands overflow at narrow widths, and a
-		// keyboard user has to be able to read the whole of one before running it. Same
-		// shape as the palette fix in 95aa1bb: a named <section>, not a tabbable <code>,
-		// because <code> has no role to hang an accessible name on.
-		<section
-			aria-label={`Command: ${children}`}
-			// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable for keyboard access
-			tabIndex={0}
-			className="mt-2 block overflow-x-auto rounded-md border border-border/50 bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tf-signal"
-		>
-			<code className="block px-3 py-2 font-mono text-xs text-foreground">{children}</code>
-		</section>
+		<code className="mt-2 block overflow-x-auto rounded-md border border-border/50 bg-secondary px-3 py-2 font-mono text-xs text-foreground">
+			{children}
+		</code>
 	);
 }
 
@@ -168,8 +158,8 @@ function FirstRunSection() {
 					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
 						The macOS builds are not signed with an Apple Developer ID or notarized yet, so macOS
 						may report that Threat Forge <em>&ldquo;is damaged and can&apos;t be opened&rdquo;</em>.
-						It is not damaged — macOS quarantines everything downloaded from the internet, and with
-						no signature to evaluate, Gatekeeper refuses the app outright. Move Threat Forge to your
+						It is not damaged — macOS quarantines apps downloaded through a browser, and with no
+						signature to evaluate, Gatekeeper refuses the app outright. Move Threat Forge to your
 						Applications folder, then run this once in Terminal to clear the quarantine flag:
 					</p>
 					<Command>

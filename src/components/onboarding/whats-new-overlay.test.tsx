@@ -65,9 +65,9 @@ describe("WhatsNewOverlay", () => {
 	it("shows one entry when the user is a single version behind", () => {
 		// Derived, not a literal: seeding "0.2.0" made the premise expire at the next
 		// version bump, so a routine release would go red for nothing.
-		const previous = CHANGELOG[1]?.version;
+		const previous = CHANGELOG[1].version;
 		expect(previous).toBeDefined();
-		localStorage.setItem(STORAGE_KEY, previous as string);
+		localStorage.setItem(STORAGE_KEY, previous);
 
 		render(<WhatsNewOverlay />);
 

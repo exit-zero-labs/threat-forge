@@ -86,10 +86,8 @@ describe("CHANGELOG", () => {
 	});
 
 	it("announces the running build", () => {
-		// Bumping the version without adding an entry tells upgrading users nothing, and
-		// it would leave a dismissing user holding a version above every known entry —
-		// which selectUnseenEntries reads as impossible and re-announces forever. The
-		// release runbook carries the step; this is what catches skipping it.
+		// Bumping the version without adding an entry tells upgrading users nothing.
+		// The release runbook carries the step; this is what catches skipping it.
 		expect(CHANGELOG[0]?.version).toBe(__APP_VERSION__);
 	});
 

@@ -76,7 +76,8 @@ cargo test --manifest-path src-tauri/Cargo.toml --frozen
 ### 2. Bump Version Numbers
 
 The version appears in five files that must agree — the four below plus `src-tauri/Cargo.lock`,
-regenerated in step 4. Neither lockfile is optional: `scripts/check-lockfile-registry.mjs`
+regenerated in step 4 — and step 3 adds a sixth place it must match. Neither lockfile is
+optional: `scripts/check-lockfile-registry.mjs`
 rejects a `package-lock.json` whose root version has drifted from `package.json`, and the
 release workflow runs `cargo fetch --locked`, which fails on a stale `Cargo.lock`.
 
@@ -110,8 +111,9 @@ any bullet that only applies to one surface (`(desktop app)`, `Browser …`).
 `src/lib/whats-new.test.ts` fails if the newest entry does not match the running version, so a
 skipped entry stops CI rather than shipping a silent upgrade.
 
-Use the intended publish date in UTC, not today's — the tag waits on a second owner's
-`Production` approval, so authoring and publishing can fall on different days.
+Date the entry for the day you expect it to publish rather than the day you write it — the tag
+waits on a second owner's `Production` approval, so the two can differ. The date is rendered
+verbatim; only its shape is checked.
 
 ### 4. Update Cargo.lock
 
@@ -185,15 +187,22 @@ Monitor the workflow at: `Actions > Release > vX.Y.Z`.
 For critical bugs in a released version:
 
 ```bash
-git checkout vX.Y.Z            # Check out the release tag
+git checkout vX.Y.Z            # the released tag being fixed
 git checkout -b fix/critical-bug
 # ... fix the bug ...
 git commit -m "fix: critical bug description"
-# Merge to main, then tag a patch release
 git checkout main
 git merge fix/critical-bug
-git tag vX.Y.Z            # the next patch version
-git push origin main vX.Y.Z
+```
+
+Then run steps 2 through 5 for `vX.Y.(Z+1)` before tagging — a hotfix is a release, and
+skipping the bump ships a build whose `__APP_VERSION__` still names the previous version,
+which is the defect [#246](https://github.com/exit-zero-labs/threat-forge/issues/246) exists to
+close.
+
+```bash
+git tag vX.Y.(Z+1)
+git push origin main vX.Y.(Z+1)
 ```
 
 ## Troubleshooting
