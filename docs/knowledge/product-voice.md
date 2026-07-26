@@ -1,7 +1,9 @@
 # Product voice
 
 This governs copy a **user** reads: the landing page, About, empty states, onboarding
-guides, marketing sections of the support page, and release notes.
+guides, marketing sections of the support page, release notes, and the page metadata in
+`index.html` — which is the first copy anyone sees from a search result or a shared link, and
+is therefore the easiest to forget.
 
 It does not govern documentation. `.e0l/first-principles/documentation.md` owns that, and the
 two are deliberately different — docs are for someone who has already decided, product copy is
