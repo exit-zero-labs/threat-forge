@@ -33,40 +33,41 @@ execution tracker.
 | `In review` | Verification and agent preflight are complete; owner validation remains |
 | `Done` | Merged or closed after validation |
 
-Every non-trivial issue receives P0/P1/P2 priority, XS–XL size, and exactly one autonomy
-label:
+Every non-trivial issue receives P0/P1/P2 priority, a High/Medium/Low `Effort`, and exactly one
+autonomy label:
 
-- `Automatable` — an agent can reach a verification-complete PR without earlier human action
+- `AUTO` — an agent can reach a verification-complete PR without earlier human action
 - `HITL` — a secret, account, provisioning step, or unresolved decision is needed
 
 Final owner validation is required for both labels.
 
-Issues also carry a `size/XS`–`size/XL` label mirroring the project `Size` field, and one
-`model/haiku`, `model/sonnet`, or `model/opus` label naming the cheapest model that can do
-the work correctly. Anything touching cryptography, IPC, the `.thf` schema, or a trust
-boundary is `model/opus` regardless of size.
+Issues also carry one `model/haiku`, `model/sonnet`, or `model/opus` label naming the cheapest
+model that can do the work correctly. These map one-to-one onto `Effort` — Low, Medium, High —
+and anything touching cryptography, IPC, the `.thf` schema, or a trust boundary is `model/opus`
+and `High` regardless of how small the diff looks.
 
 ### Milestones
 
 Milestones express scope, not schedule:
 
-- **`M1 • Minimum Polish Product (MPP)`** — shipped work; closed issues and merged PRs only.
-- **`M2 • General Release`** — the complete scoped feature set for general availability.
-- **`M3 • V-Next`** — beyond general release; community and nice-to-have work.
+- **`M0 • POC`** — retroactive; the pre-repository prototype phase. Closed, with no tracked issues.
+- **`M1 • Alpha`** — shipped work; closed issues and merged PRs only.
+- **`M2 • Beta`** — the complete scoped feature set for launch.
+- **`M3 • Release 1`** — beyond launch; community and nice-to-have work.
 
-New contributions that have not been scoped against the general-release cutoff go to `M3`.
+New contributions that have not been scoped against the launch cutoff go to `M3 • Release 1`.
 
-### Planning by Size
+### Planning by Effort
 
-- **XS/S:** the issue body is the executable specification.
-- **M/L:** add a committed plan based on `docs/plans/0000-template.md` before code.
-- **XL:** use a parent initiative and decompose it into executable sub-issues.
+- **Low:** the issue body is the executable specification. No research dependency, by definition — if it turns out to need a web search or an unfamiliar library, it is Medium.
+- **Medium:** add a committed plan based on `docs/plans/0000-template.md` before code.
+- **High:** add a committed plan, and decompose into executable sub-issues.
 
 Use native `Task`, `Bug`, and `Feature` issue types. Preserve parent/sub-issue relationships and
 Iteration assignments when shaping or decomposing work.
 
-Planning and implementation should use separate contexts for M/L work. Replans append dated
-history rather than replacing earlier decisions.
+Planning and implementation should use separate contexts for Medium and High work. Replans append
+dated history rather than replacing earlier decisions.
 
 ### Verification and Validation
 

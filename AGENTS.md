@@ -56,10 +56,10 @@ execution tracker. Do not create a parallel Markdown or agent-only backlog.
 
 Every non-trivial change requires an issue with:
 
-- `Status`, `Priority`, and `Size`
+- `Status`, `Priority`, and `Effort`
 - measurable acceptance criteria
 - dependencies and parent initiative when applicable
-- exactly one autonomy label: `Automatable` or `HITL`
+- exactly one autonomy label: `AUTO` or `HITL`
 
 Project status semantics:
 
@@ -72,34 +72,28 @@ Project status semantics:
 | `In review` | Verification and agent preflight are complete; owner validation remains |
 | `Done` | Merged or closed after validation |
 
-Priority remains `P0` → `P1` → `P2`. Size is a capability class:
+Priority remains `P0` → `P1` → `P2`. `Effort` is the reasoning class the work needs — not how
+long it takes:
 
-| Size | Planning contract |
-|------|-------------------|
-| `XS` / `S` | The issue body is the executable specification |
-| `M` / `L` | A committed `docs/plans/<issue>-<slug>.md` is required before code |
-| `XL` | Initiative or parent only; decompose into executable sub-issues |
-
-`Automatable` means an agent can reach a verification-complete PR without earlier human
-action. Final owner validation is still required. `HITL` means a secret,
-provisioning step, unresolved product/design decision, sensitive content decision, or
-external account action is required before that point.
-
-`Size` is mirrored onto the issue as a `size/XS`–`size/XL` label so effort is visible in
-issue lists, search, and the GitHub CLI without opening the project board. The Project 2
-`Size` field remains authoritative; the label must not contradict it.
-
-Each issue also carries one model-tier label naming the cheapest model that can do the work
-correctly:
-
-| Label | Use for |
-|-------|---------|
-| `model/haiku` | Mechanical, fully specified, low blast radius |
-| `model/sonnet` | Standard implementation against settled acceptance criteria |
-| `model/opus` | Architecture, schema, security, or cross-cutting design judgment |
+| Effort | Model tier | Planning contract |
+|--------|-----------|-------------------|
+| `Low` | `model/haiku` | Mechanical, fully specified, low blast radius. The issue body is the executable specification |
+| `Medium` | `model/sonnet` | Standard implementation against settled criteria. A committed `docs/plans/<issue>-<slug>.md` is required before code |
+| `High` | `model/opus` | Architecture, schema, security, or cross-cutting judgment. A committed plan is required, and the work is decomposed into executable sub-issues |
 
 The tier is a floor, not a ceiling. Any work touching cryptography, the IPC boundary, the
-`.thf` schema, or a trust boundary is `model/opus` regardless of size.
+`.thf` schema, or a trust boundary is `High` regardless of how small the diff looks.
+
+`Effort` replaced the former `Size` field in the doctrine v1 migration, and the `size/XS`–`size/XL`
+labels were deleted with it. The `model/*` labels are **kept**: they state the reasoning class
+directly, and during the migration they proved more accurate than `Size` — the two disagreed on 53
+issues, so `Effort` was derived from the model label wherever one exists. The `Effort` field is
+authoritative; the label must not contradict it.
+
+`AUTO` means an agent can reach a verification-complete PR without earlier human action. Final
+owner validation is still required. `HITL` means a secret, provisioning step, unresolved
+product or design decision, sensitive content decision, or external account action is required
+before that point.
 
 ## Milestones
 
@@ -107,11 +101,12 @@ Milestones express scope, not schedule. Every issue and pull request belongs to 
 
 | Milestone | Meaning |
 |-----------|---------|
-| `M1 • Minimum Polish Product (MPP)` | Shipped: reliable, well-crafted threat modeling. Closed work only |
-| `M2 • General Release` | The complete scoped feature set a user needs to adopt ThreatForge as their primary tool |
-| `M3 • V-Next` | Beyond general release; community and nice-to-have work. Unscoped by default |
+| `M0 • POC` | Retroactive: the pre-repository prototype phase. Closed; no tracked issues |
+| `M1 • Alpha` | Shipped: reliable, well-crafted threat modeling. Closed work only |
+| `M2 • Beta` | The complete scoped feature set a user needs to adopt ThreatForge as their primary tool. Launch-ready |
+| `M3 • Release 1` | Beyond launch; community and nice-to-have work. Unscoped by default |
 
-New work that has not been scoped against the general-release cutoff goes to `M3`. The owner
+New work that has not been scoped against the launch cutoff goes to `M3 • Release 1`. The owner
 may pull an `M3` item forward into `M2` at any time; agents may not.
 
 ## Verification is not validation
@@ -235,8 +230,7 @@ must remain thin pointers to those canonical files.
 
 ## Agent and skill index
 
-Canonical agents live in `.github/agents/` and are exposed to Claude through
-`.claude/agents`:
+Canonical agents are real files in `.claude/agents/`:
 
 - `issue-planner`
 - `feature-implementer`
@@ -245,8 +239,7 @@ Canonical agents live in `.github/agents/` and are exposed to Claude through
 - `security-auditor`
 - `threat-model-expert`
 
-Canonical skills live in `.github/skills/` and are exposed to Claude through
-`.claude/skills`:
+Canonical skills are real files in `.claude/skills/`:
 
 - `issue-triage`
 - `issues-clarify`
@@ -258,3 +251,23 @@ Canonical skills live in `.github/skills/` and are exposed to Claude through
 - `pr-preflight`
 - `pr-cycle`
 - `build-test`
+
+## Inherited doctrine
+
+Company-level standards are inherited from the Exit Zero Labs workspace and vendored under
+`.e0l/`. ThreatForge is a public repository, so the payload is committed as real files and this
+repository contains **no symlinks at all** — that invariant is what makes a standalone clone work
+everywhere, and CI enforces it.
+
+- `.e0l/first-principles/` — product, design, coding, operations, planning, documentation
+- `.e0l/first-principles/anti-slop/` — what generated output must never look like
+- `.e0l/VERSION` — the doctrine version this repository is synced to
+
+**Never edit anything under `.e0l/` in place.** It is generated; a hand-edit makes the drift check
+assert something untrue. A change belongs upstream in the workspace, goes through the amendment
+procedure, and propagates back down.
+
+Where a repository rule and an inherited principle disagree, the repository rule governs its own
+surfaces — and the disagreement is worth raising rather than silently resolving.
+
+ThreatForge holds one recorded structural deviation; see [`docs/deviations.md`](docs/deviations.md).

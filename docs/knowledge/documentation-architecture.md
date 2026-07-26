@@ -93,7 +93,7 @@ coverage check, but are recorded here for completeness of ownership.
 | `.github/instructions/**` (e.g. `.github/instructions/docs.instructions.md`) | Agents + contributors | `repository-canonical` (path-specific rules) | — | Maintainers | — |
 | `.github/PULL_REQUEST_TEMPLATE.md` | Contributors | `repository-canonical` (template) | — | Maintainers | — |
 | `.github/ISSUE_TEMPLATE/**` | Contributors | `repository-canonical` (templates) | — | Maintainers | — |
-| `.github/agents/**`, `.github/skills/**` | Agents | `repository-canonical` (agent/skill definitions) | — | Maintainers | — |
+| `.claude/agents/**`, `.claude/skills/**` | Agents | `repository-canonical` (agent/skill definitions) | — | Maintainers | — |
 | `.claude/**` adapters (`.claude/rules/**`, `.claude/agents`, `.claude/skills`) | Claude agent | `generated` (thin pointers; canonical = `AGENTS.md` + `.github/instructions/**`) | — | Maintainers | — |
 
 The canonical engineering source is `AGENTS.md` plus `.github/instructions/**`. `CLAUDE.md`,

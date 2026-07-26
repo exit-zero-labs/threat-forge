@@ -11,7 +11,7 @@ Use this workflow for non-trivial ThreatForge features.
 4. Link the parent initiative and any blocking issues.
 5. Write measurable acceptance criteria in the issue.
 6. Apply exactly one autonomy label:
-   - `Automatable` when no earlier human action is needed
+   - `AUTO` when no earlier human action is needed
    - `HITL` for secrets, provisioning, external accounts, or unresolved decisions
 
 GitHub is the only execution tracker. Do not create a second backlog in Markdown.

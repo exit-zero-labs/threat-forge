@@ -17,12 +17,13 @@ Triage one issue. Do not plan M/L work or edit production code.
    - native issue type: `Task`, `Bug`, or `Feature`
    - relevant domain labels
    - `Priority`: P0/P1/P2
-   - `Size`: XS/S/M/L/XL
-   - exactly one autonomy label: `Automatable` or `HITL`
+   - `Effort`: High/Medium/Low, with the matching `model/opus|sonnet|haiku` label
+   - exactly one autonomy label: `AUTO` or `HITL`
    - parent, dependencies, and acceptance criteria
    - `Ready` only when executable; otherwise `Backlog`
-5. XS/S issues must contain an executable contract. M/L issues must state that a committed plan
-   is required. XL issues must be parents and decompose.
+5. Low issues must contain an executable contract and must not need research — if one would, it
+   is Medium. Medium issues must state that a committed plan is required. High issues must be
+   parents and decompose.
 6. Persist a concise `## Triage` rationale in the issue or a maintainer comment.
 7. Apply one mutation at a time and read the issue/project item back after each mutation.
 

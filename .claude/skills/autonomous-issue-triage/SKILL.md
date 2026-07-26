@@ -1,11 +1,11 @@
 ---
 name: autonomous-issue-triage
-description: Select the next executable Automatable ThreatForge issue
+description: Select the next executable AUTO ThreatForge issue
 ---
 
 # Autonomous issue selection
 
-Selection is not shaping. Consider only issues already marked `Ready` and `Automatable`.
+Selection is not shaping. Consider only issues already marked `Ready` and `AUTO`.
 
 Reject candidates with:
 

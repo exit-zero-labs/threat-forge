@@ -38,7 +38,7 @@ Apply exactly one autonomy label:
 
 | Label | Meaning |
 |-------|---------|
-| `Automatable` | An agent can reach a verification-complete PR without earlier human action |
+| `AUTO` | An agent can reach a verification-complete PR without earlier human action |
 | `HITL` | A secret, account, provisioning step, or unresolved decision is required |
 
 Final owner validation does not make an issue `HITL`.
