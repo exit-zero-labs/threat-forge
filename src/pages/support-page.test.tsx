@@ -40,18 +40,17 @@ describe("SupportPage", () => {
 			expect(screen.getByText(/Nothing is wrong with your download/)).toBeInTheDocument();
 		});
 
-		it("scopes the missing-signature explanation to macOS", () => {
-			// Azure Trusted Signing is wired into the Windows build, so a blanket
-			// "not code-signed" claim would be wrong for the platform most likely to show
-			// a scary dialog. (Whether it succeeds is unverified until a real artifact is
-			// checked — see the #50 waiver in the release runbook.)
+		it("tells each platform the truth about its own signature", () => {
+			// Both desktop platforms ship unsigned for now: macOS has no Developer ID (#51) and
+			// Windows signing is gated off after it broke the v0.3.0 build (#50). The two dialogs
+			// are different, though — macOS refuses outright, Windows warns — so the copy has to
+			// stay platform-specific rather than collapsing into one "unsigned" sentence.
 			renderSupportPage();
 			expect(
 				screen.getByText(/macOS builds are not signed with an Apple Developer ID/),
 			).toBeInTheDocument();
-			expect(
-				screen.getByText(/publisher reputation is still being established/),
-			).toBeInTheDocument();
+			expect(screen.getByText(/Windows installer is not code-signed yet/)).toBeInTheDocument();
+			expect(screen.getByText(/reports the publisher as unknown/)).toBeInTheDocument();
 		});
 
 		it("says the Open Anyway override does not apply to the damaged-file message", () => {

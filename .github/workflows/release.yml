@@ -150,8 +150,14 @@ jobs:
             libdbus-1-dev \
             libssl-dev
 
+      # Windows code signing is off until #50 lands. `WINDOWS_SIGNING` is the switch: set the
+      # repository variable to `true` only once a release run has produced an installer whose
+      # signature actually verifies. Until then this step and the `--config` flag below stay
+      # inert, and Windows ships unsigned rather than failing the release. The v0.3.0 attempt
+      # died here with `failed to bundle project: failed to run powershell` — see #50 for the
+      # three defects that diagnosis turned up.
       - name: Install Azure Trusted Signing dlib
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && vars.WINDOWS_SIGNING == 'true'
         shell: pwsh
         run: |
           $packageUri = "https://api.nuget.org/v3-flatcontainer/microsoft.trusted.signing.client/1.0.60/microsoft.trusted.signing.client.1.0.60.nupkg"
@@ -194,4 +200,4 @@ jobs:
           releaseBody: "See the assets to download this version and install ThreatForge."
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.settings.args }} ${{ runner.os == 'Windows' && '--config src-tauri/tauri.signing.conf.json' || '' }} -- --frozen
+          args: ${{ matrix.settings.args }} ${{ (runner.os == 'Windows' && vars.WINDOWS_SIGNING == 'true') && '--config src-tauri/tauri.signing.conf.json' || '' }} -- --frozen

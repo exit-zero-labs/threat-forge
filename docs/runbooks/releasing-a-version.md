@@ -19,7 +19,7 @@ and the waiver has to say what users experience because of it.
 | Control | Current state | Tracking |
 |---------|---------------|----------|
 | Protected production deployment | Configured; one owner approval required, self-approval disabled, `v*` tags only | [#52](https://github.com/exit-zero-labs/threat-forge/issues/52) |
-| Windows Azure Artifact Signing | Legacy client-secret scaffold exists; OIDC migration, current client tooling, and release-path verification remain | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
+| Windows Azure Artifact Signing | Wired but disabled; the signing path has never produced a signed artifact. Gated behind the `WINDOWS_SIGNING` repository variable | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
 | macOS Developer ID and notarization | Apple credentials and end-to-end verification remain | [#51](https://github.com/exit-zero-labs/threat-forge/issues/51) |
 | Tauri updater signing | Public key, private signing key, manifest, and update verification remain | [#49](https://github.com/exit-zero-labs/threat-forge/issues/49) |
 
@@ -30,19 +30,21 @@ OIDC before enabling signed releases.
 
 ### Recorded waivers
 
-**v0.3.0 — unsigned macOS builds, unverified Windows signing, and no updater.** The owner
-accepted shipping v0.3.0 with rows #51, #50, and #49 open, to get 98 commits of work into users'
-hands rather than hold it behind signing provisioning. What this costs users:
+**v0.3.0 — unsigned builds on every platform, and no updater.** The owner accepted shipping
+v0.3.0 with rows #51, #50, and #49 open, to get 98 commits of work into users' hands rather than
+hold it behind signing provisioning. What this costs users:
 
 - **#51, macOS.** No Developer ID signature or notarization, so macOS reports the app as damaged
   on first launch and users must clear the quarantine flag by hand. The `/support` page carries
   the instructions and `/downloads` links to them ([#245]).
-- **#50, Windows.** Azure Trusted Signing is wired into the build, but it has never been verified
-  on a published artifact — that is the open half of the row. Treat "the installer is signed" as
-  unconfirmed until step 8 checks the signature on the real v0.3.0 artifact. SmartScreen
-  reputation is still accumulating either way, so a warning is expected. Owner-facing: the
-  Azure credentials stay repository-scoped rather than `Production`-scoped for this release, so
-  other workflows can reference them until the OIDC migration in #50 lands.
+- **#50, Windows.** The installer is **unsigned**. Signing was wired in and enabled for the first
+  v0.3.0 release attempt, and it failed the build outright — `failed to bundle project: failed to
+  run powershell`, with three separate defects behind it (see #50). Rather than hold the release,
+  the signing path was gated behind the `WINDOWS_SIGNING` repository variable, which is unset.
+  Users get the SmartScreen "Windows protected your PC" dialog naming an unknown publisher, and
+  `/support` tells them what to check before clicking through. Owner-facing: the Azure credentials
+  remain repository-scoped rather than `Production`-scoped, so other workflows can reference them
+  until the OIDC migration in #50 lands.
 - **#49, updater.** There is no in-app update. Users return to the downloads page for the next
   version.
 
@@ -156,10 +158,13 @@ Monitor the workflow at: `Actions > Release > vX.Y.Z`.
 1. Check GitHub Releases page for the draft release
 2. Confirm the draft carries an artifact for every matrix target. A missing artifact means that
    platform's build or signing step failed; `fail-fast: false` lets the others finish around it.
-   For Windows specifically, `scripts/sign-windows.ps1` exits non-zero rather than shipping an
-   unsigned installer, so a missing installer may mean signing rather than the build.
+   For Windows specifically, signing only runs when the `WINDOWS_SIGNING` repository variable is
+   `true`; while it is unset the installer is unsigned and a missing installer means the build
+   itself failed.
 3. Download binaries for each platform and smoke test:
-   - Verify the Windows installer signature and publisher identity
+   - On Windows, verify the installer signature and publisher identity when `WINDOWS_SIGNING` is
+     enabled. While it is unset, instead confirm the documented SmartScreen path on `/support`
+     matches what the installer actually does.
    - On macOS, confirm the documented first-run recovery actually works on a machine that has
      not run the app before: the quarantine flag is set, and the `xattr -dr` command on
      `/support` clears it. Unsigned builds are covered by a recorded waiver, so this replaces
