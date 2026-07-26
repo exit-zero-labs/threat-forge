@@ -10,6 +10,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetKeyVault } from "@/lib/adapters/test-fixtures/key-vault";
+import "fake-indexeddb/auto";
 import { BrowserChatTransport } from "@/lib/adapters/browser-chat-adapter";
 import { BrowserKeychainAdapter } from "@/lib/adapters/browser-keychain-adapter";
 import type {
@@ -109,12 +111,14 @@ const TEXT_FRAME = `event: content_block_delta\ndata: ${JSON.stringify({
 
 beforeEach(() => {
 	relay.reset();
+	resetKeyVault();
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
 	localStorage.clear();
+	resetKeyVault();
 });
 
 describe("streamConversation orchestration", () => {

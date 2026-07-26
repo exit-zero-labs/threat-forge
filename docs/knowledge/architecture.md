@@ -32,9 +32,10 @@ ThreatForge desktop runtime (Tauri v2)
 - File I/O → Local filesystem (`.thf` files)
 - Auto-Updater → GitHub Releases (desktop; can verify signed update metadata once signing is provisioned)
 
-In the browser, AI requests also go directly to the configured provider. Browser keys use
-local browser storage with an explicit UI warning; desktop keys use the encrypted Rust
-storage path. Browser file operations use import/download adapters instead of Tauri IPC.
+In the browser, AI requests also go directly to the configured provider. Browser keys are
+AES-GCM encrypted in a dedicated IndexedDB database under a non-extractable wrapping key;
+desktop keys use the encrypted Rust storage path. Browser file operations use import/download
+adapters instead of Tauri IPC.
 
 The AI chat path — the provider-neutral message and event model, the browser/desktop
 transport split and why the desktop key stays in Rust, tool-schema generation, context
@@ -261,8 +262,9 @@ availability reason, and one coalesced status-bar indicator — one report per f
 per write. The in-memory document is always left editable and exportable.
 
 **No credential ever reaches either store.** The layer writes only `.thf` text and the id/order/
-title/preferences manifest, imports no keychain adapter, and uses a namespace disjoint from
-`tf-api-key-`. `src/lib/persistence/no-key-leakage.test.ts` proves this by enumerating every stored
+title/preferences manifest, imports no keychain adapter, and uses a namespace disjoint from the
+`threatforge-keychain` vault (and from the legacy `tf-api-key-` slot it migrates from).
+`src/lib/persistence/no-key-leakage.test.ts` proves this by enumerating every stored
 record after a real autosave cycle.
 
 ### Handoff seams
@@ -355,7 +357,7 @@ npm run ci:docker:build  # Docker lint + test + Tauri build
 
 | Layer | Approach |
 |-------|---------|
-| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: local storage with an explicit UI warning. |
+| API Key Storage | Desktop: AES-256-GCM encrypted file in app data directory. Browser: AES-GCM ciphertext in a dedicated IndexedDB database, wrapped by a non-extractable `CryptoKey`. Two residuals are specific to the browser and do not apply to desktop: script on the origin can use the key exactly as the app does (stated in the UI, mitigated by the CSP), and `extractable: false` is an API-level restriction rather than encryption at rest, so read access to the browser profile recovers the wrapping material and the ciphertext together. Only the desktop build keeps the key outside the browser profile. |
 | AI API Calls | Direct from user's machine with user's key; HTTPS only. Provider decoding, request validation, and error redaction are shared and typed — see [`ai-protocol.md`](ai-protocol.md) |
 | File Integrity | Explicit version checks and typed deserialization; unknown fields remain tolerated for forward compatibility |
 | Auto-Update | Tauri updater can verify signed update metadata once signing is provisioned; rollout and end-to-end verification remain roadmap gates |

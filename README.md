@@ -53,7 +53,7 @@ Built-in rule engine that applies Microsoft's STRIDE-per-element methodology to 
 
 Chat with Claude or GPT about your threat model. The AI sees your full architecture — elements, data flows, trust boundaries, and existing threats — and can suggest new threats, propose mitigations, or answer security questions. One-click to accept AI-suggested threats into your model.
 
-Bring your own API key. Supports Anthropic (Claude Opus 4, Sonnet 4, Haiku 3.5) and OpenAI (GPT-4o, GPT-4o Mini). Desktop keys are AES-256-GCM encrypted at rest; browser storage displays an explicit security warning.
+Bring your own API key. Supports Anthropic (Claude Opus 4, Sonnet 4, Haiku 3.5) and OpenAI (GPT-4o, GPT-4o Mini). Desktop keys are AES-256-GCM encrypted at rest; browser keys are AES-GCM encrypted in IndexedDB under a non-extractable key.
 
 ### Import from Microsoft TMT
 
@@ -223,7 +223,7 @@ All AI calls go directly from the user's machine with the user's API key. No pro
 
 ThreatForge is a security tool — the bar for security in our own code is high.
 
-- **API keys** use AES-256-GCM encrypted storage on desktop; browser storage displays an explicit warning
+- **API keys** use AES-256-GCM encrypted storage on desktop; browser keys are AES-GCM encrypted in IndexedDB under a non-extractable key
 - **AI calls** go directly to the provider — no intermediary server
 - **LLM output** is treated as untrusted; raw HTML is escaped by default
 - **Strict CSP** — no inline scripts, no remote code loading

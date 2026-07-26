@@ -9,6 +9,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetKeyVault } from "./test-fixtures/key-vault";
+import "fake-indexeddb/auto";
 import { buildAnthropicRequestBody } from "@/lib/ai/providers/anthropic";
 import { ANTHROPIC_TEXT_STREAM } from "@/lib/ai/providers/test-fixtures/anthropic-fixtures";
 import { fakeErrorResponse, fakeStream } from "@/lib/ai/providers/test-fixtures/fake-stream";
@@ -43,12 +45,14 @@ beforeEach(async () => {
 	// registry so each test starts from a fresh, unwrapped-then-wrapped factory.
 	vi.resetModules();
 	vi.stubGlobal("fetch", vi.fn());
+	resetKeyVault();
 	await new BrowserKeychainAdapter().setKey("anthropic", "sk-ant-wiring-test");
 });
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 	localStorage.clear();
+	resetKeyVault();
 });
 
 describe("getChatTransport", () => {

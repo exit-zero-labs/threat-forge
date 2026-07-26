@@ -2,6 +2,7 @@ import { ProtocolException, redactProviderDetail } from "@/lib/ai/protocol/error
 import { createSseDecoder, type SseFrame } from "@/lib/ai/providers/sse";
 import { userSafeProviderError } from "@/lib/ai-provider-errors";
 import type { AiProvider } from "@/stores/chat-store";
+import { KeyVaultError } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import {
 	type ChatTransport,
@@ -324,7 +325,20 @@ function retryAfterOf(headers: Headers): { retryAfterMs?: number } {
  * so desktop code cannot ask for one (issue #61 step 9).
  */
 async function resolveBrowserApiKey(provider: AiProvider): Promise<string> {
-	const apiKey = await new BrowserKeychainAdapter().getKey(provider);
+	let apiKey: string | null;
+	try {
+		apiKey = await new BrowserKeychainAdapter().getKey(provider);
+	} catch (error) {
+		// The vault authors an actionable sentence for a damaged or unavailable store
+		// ("clear this site's browser data, then add your API key again"). Left as a bare
+		// rejection it would be flattened to the generic transport error, so the user would
+		// be told only that the request failed. Re-raising it as a protocol error keeps the
+		// sentence and routes the caller to the settings prompt, which is the useful response.
+		if (error instanceof KeyVaultError) {
+			throw new ProtocolException({ code: "no_api_key", message: error.message });
+		}
+		throw error;
+	}
 	if (apiKey === null || apiKey === "") {
 		throw missingApiKeyError(provider);
 	}

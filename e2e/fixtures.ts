@@ -100,9 +100,15 @@ export async function suppressFirstRunOverlays(page: Page) {
 
 /**
  * Seed a browser API key so the AI panel reaches the chat view without a real
- * provider account. The key is the value `BrowserKeychainAdapter` reads
- * (`tf-api-key-<provider>`); the AI-loop spec pairs it with a routed, canned SSE
- * response so no request ever leaves the machine.
+ * provider account. The AI-loop spec pairs it with a routed, canned SSE response
+ * so no request ever leaves the machine.
+ *
+ * The value is written to the pre-#133 `tf-api-key-<provider>` slot rather than
+ * straight into the encrypted vault, because seeding the vault from an init
+ * script would mean reimplementing the wrapping-key setup in test code. On first
+ * read `BrowserKeychainAdapter` migrates this slot into the vault and erases it,
+ * so the app under test still resolves the key through the real encrypted path —
+ * and this fixture doubles as live coverage of the upgrade an existing user gets.
  */
 export async function seedAnthropicApiKey(page: Page) {
 	await page.addInitScript(() => {

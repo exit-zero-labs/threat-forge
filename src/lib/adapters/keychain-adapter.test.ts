@@ -10,13 +10,20 @@
  * `null`.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resetKeyVault } from "./test-fixtures/key-vault";
+import "fake-indexeddb/auto";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
-import type { KeychainAdapter } from "./keychain-adapter";
+import { type KeychainAdapter, LEGACY_RETAINED } from "./keychain-adapter";
 import { TauriKeychainAdapter } from "./tauri-keychain-adapter";
+
+beforeEach(() => {
+	resetKeyVault();
+});
 
 afterEach(() => {
 	localStorage.clear();
+	resetKeyVault();
 });
 
 describe("the shared keychain interface", () => {
@@ -33,6 +40,23 @@ describe("the shared keychain interface", () => {
 		// And the method is genuinely absent, so the type is not the only thing
 		// standing between a caller and the desktop key.
 		expect(askForTheKey).toThrowError(TypeError);
+	});
+
+	it("keeps the retained-copy reason a literal type rather than a string", () => {
+		// `LEGACY_RETAINED` is inferred, and the inference is load-bearing: it is what
+		// keeps `KeyVaultErrorReason` a closed union. Annotate the constant `: string`
+		// and the union collapses, `new KeyVaultError("legacy-retaind", …)` compiles,
+		// and the settings panel silently stops recognising a removal that left a live
+		// clear-text key — with no diagnostic anywhere.
+		//
+		// `tsc --noEmit` fails with "unused '@ts-expect-error' directive" the moment
+		// that widening happens, because a `string` would accept this typo.
+		// @ts-expect-error the constant's type is the literal, not `string`.
+		const widened: typeof LEGACY_RETAINED = "legacy-retaind";
+
+		// The runtime half is what keeps `widened` a used binding, so the directive
+		// above stays attached to a real declaration rather than to dead code.
+		expect(widened).not.toBe(LEGACY_RETAINED);
 	});
 
 	it("does not carry a key-reading method anywhere on the desktop adapter", () => {

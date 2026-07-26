@@ -1,16 +1,58 @@
 import { AlertTriangle, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
+import { LEGACY_RETAINED } from "@/lib/adapters/keychain-adapter";
 import { getDefaultModelId, getModelById, getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
 import { useSettingsStore } from "@/stores/settings-store";
 
+/** Authored so a bundler or network detail never reaches the user as an error message. */
+const ADAPTER_LOAD_ERROR = "Key storage could not be loaded. Reload the page and try again.";
+
+/**
+ * Load the keychain adapter, replacing a module-load failure with an authored message.
+ *
+ * Adapters author their own user-safe messages; a failure to load one does not, and would
+ * otherwise render a bundle URL and a hash as the explanation. The cause is logged rather
+ * than dropped, so a real chunk-load regression is still diagnosable from a bug report.
+ */
+async function loadAdapter(): Promise<Awaited<ReturnType<typeof getKeychainAdapter>>> {
+	try {
+		return await getKeychainAdapter();
+	} catch (err) {
+		console.warn("Key storage adapter failed to load:", err);
+		throw new Error(ADAPTER_LOAD_ERROR);
+	}
+}
+
 const PROVIDERS: { value: AiProvider; label: string }[] = [
 	{ value: "anthropic", label: "Anthropic (Claude)" },
 	{ value: "openai", label: "OpenAI (GPT)" },
 ];
+
+/**
+ * Render a keychain failure for display. Adapters throw different shapes — the browser vault
+ * throws an `Error` carrying an authored, user-safe message, while the Tauri adapter rejects
+ * with a string from `invoke` — so the message is preferred when there is one.
+ */
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Whether `error` reports a removal that succeeded but left a clear-text copy behind.
+ *
+ * The browser adapter deletes the stored key and *then* rejects, because it cannot claim the
+ * credential is gone while a pre-encryption copy is still readable. The removal did happen,
+ * so the panel has to record it and still show the warning. Matched structurally rather than
+ * by importing the browser vault, which would pull IndexedDB code into the desktop bundle.
+ */
+function isRetainedLegacyCopy(error: unknown): boolean {
+	if (!(error instanceof Error) || !("reason" in error)) return false;
+	return error.reason === LEGACY_RETAINED;
+}
 
 /** AI settings form content — used inside the settings dialog. */
 export function AiSettingsContent() {
@@ -20,6 +62,10 @@ export function AiSettingsContent() {
 	const settings = useSettingsStore((s) => s.settings);
 	const updateSetting = useSettingsStore((s) => s.updateSetting);
 
+	// Providers the user has saved or deleted since mount. A status check that started before
+	// one of those lands would report the vault as it was, so its answer is not applied over
+	// them — but only over them, so the other provider still gets its status and its faults.
+	const mutated = useRef(new Set<AiProvider>());
 	const [apiKey, setApiKey] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
@@ -43,17 +89,46 @@ export function AiSettingsContent() {
 	const defaultModelLabel = getModelById(defaultModelId)?.label ?? defaultModelId;
 
 	useEffect(() => {
+		let current = true;
 		async function checkStatus() {
 			try {
-				const adapter = await getKeychainAdapter();
-				const anthropicStatus = await adapter.hasKey("anthropic");
-				const openaiStatus = await adapter.hasKey("openai");
-				setKeyStatus({ anthropic: anthropicStatus, openai: openaiStatus });
-			} catch {
-				// Ignore errors — show as unconfigured
+				const adapter = await loadAdapter();
+				if (!current) return;
+				// Settled independently so one provider's failure does not erase the other's
+				// status. Unreadable storage rejects for both, and a vault too damaged to migrate
+				// rejects for a provider whose pre-encryption key is still waiting to be moved;
+				// reporting either as "no API key configured" points the user at entering a key,
+				// which is the one thing that will not help.
+				const [anthropic, openai] = await Promise.allSettled([
+					adapter.hasKey("anthropic"),
+					adapter.hasKey("openai"),
+				]);
+				if (!current) return;
+				const answers: [AiProvider, PromiseSettledResult<boolean>][] = [
+					["anthropic", anthropic],
+					["openai", openai],
+				];
+				const fresh = answers.filter(([name]) => !mutated.current.has(name));
+				setKeyStatus((prev) => {
+					const next = { ...prev };
+					for (const [name, answer] of fresh) {
+						next[name] = answer.status === "fulfilled" && answer.value;
+					}
+					return next;
+				});
+				const failure = fresh.find(([, answer]) => answer.status === "rejected")?.[1];
+				if (failure?.status === "rejected") {
+					setMessage({ type: "error", text: errorText(failure.reason) });
+				}
+			} catch (err) {
+				// Only the adapter load rejects here; `allSettled` never does.
+				if (current) setMessage({ type: "error", text: errorText(err) });
 			}
 		}
 		void checkStatus();
+		return () => {
+			current = false;
+		};
 	}, []);
 
 	async function handleSave() {
@@ -63,18 +138,21 @@ export function AiSettingsContent() {
 		setMessage(null);
 
 		try {
-			const adapter = await getKeychainAdapter();
+			const adapter = await loadAdapter();
 			await adapter.setKey(provider, apiKey.trim());
+			// Recorded once the write has actually landed, so a save that fails does not leave
+			// the mount check discarded and the panel stuck reporting no key at all.
+			mutated.current.add(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: true }));
 			setApiKey("");
 			setShowKey(false);
 			const successText = isTauri()
 				? "API key saved securely."
-				: "API key saved to browser storage.";
+				: "API key encrypted and saved in this browser.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
-			setMessage({ type: "error", text: String(err) });
+			setMessage({ type: "error", text: errorText(err) });
 		} finally {
 			setSaving(false);
 		}
@@ -84,15 +162,28 @@ export function AiSettingsContent() {
 		setDeleting(true);
 		setMessage(null);
 
-		try {
-			const adapter = await getKeychainAdapter();
-			await adapter.deleteKey(provider);
+		function recordRemoval() {
+			mutated.current.add(provider);
 			setKeyStatus((prev) => ({ ...prev, [provider]: false }));
-			const successText = isTauri() ? "API key removed." : "API key removed from browser storage.";
+		}
+
+		try {
+			const adapter = await loadAdapter();
+			await adapter.deleteKey(provider);
+			recordRemoval();
+			const successText = isTauri() ? "API key removed." : "API key removed from this browser.";
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
-			setMessage({ type: "error", text: String(err) });
+			// A retained clear-text copy is a warning about residue, not a failed removal: the
+			// stored key is gone. Leaving the status alone would show the provider as configured
+			// underneath a message saying it was removed, and would let a slow mount check
+			// overwrite it with the answer from before the delete.
+			if (isRetainedLegacyCopy(err)) {
+				recordRemoval();
+				await checkApiKey(provider);
+			}
+			setMessage({ type: "error", text: errorText(err) });
 		} finally {
 			setDeleting(false);
 		}
@@ -256,7 +347,7 @@ export function AiSettingsContent() {
 			<p className="text-[10px] text-muted-foreground/70">
 				{isTauri()
 					? "API keys are encrypted at rest and stored locally. They are never sent anywhere except the selected AI provider."
-					: "API keys are stored in your browser's localStorage. For stronger security, use the desktop app which encrypts keys at rest. Keys are only sent to the selected AI provider."}
+					: "API keys are encrypted before being stored in this browser, using a key the browser will not export. Anything running on this page can still use the key. The desktop app keeps the key outside the browser entirely. Keys are only sent to the selected AI provider."}
 			</p>
 		</div>
 	);

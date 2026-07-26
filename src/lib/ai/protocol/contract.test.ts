@@ -17,6 +17,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetKeyVault } from "@/lib/adapters/test-fixtures/key-vault";
+import "fake-indexeddb/auto";
 import { BrowserChatTransport } from "@/lib/adapters/browser-chat-adapter";
 import { BrowserKeychainAdapter } from "@/lib/adapters/browser-keychain-adapter";
 import { TauriChatTransport } from "@/lib/adapters/tauri-chat-adapter";
@@ -223,6 +225,7 @@ const TRANSPORTS: Array<[string, Runner]> = [
 beforeEach(async () => {
 	relay.reset();
 	vi.stubGlobal("fetch", vi.fn());
+	resetKeyVault();
 	await new BrowserKeychainAdapter().setKey("anthropic", ANTHROPIC_KEY);
 	await new BrowserKeychainAdapter().setKey("openai", OPENAI_KEY);
 });
@@ -231,6 +234,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.useRealTimers();
 	localStorage.clear();
+	resetKeyVault();
 });
 
 describe("provider and transport neutrality", () => {
