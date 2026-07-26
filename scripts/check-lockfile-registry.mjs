@@ -36,8 +36,28 @@ for (const dependencyType of ["dependencies", "devDependencies", "optionalDepend
 	}
 }
 
+/**
+ * Reads an effective npm config value.
+ *
+ * On Windows the launcher is `npm.cmd`, and since Node 20.12 — the fix for CVE-2024-27980,
+ * batch-file argument injection — `spawnSync` refuses to execute a `.cmd` without
+ * `shell: true`. Every Windows runner therefore reported "unable to read effective value"
+ * and this supply-chain guard failed closed for the wrong reason, which is what broke the
+ * v0.3.0 Windows release build while every Linux and macOS job passed.
+ */
 function readNpmConfig(key) {
-	const result = spawnSync("npm", ["config", "get", key], { encoding: "utf8" });
+	// The shell is only reachable with a key matching this pattern, so no caller can smuggle
+	// shell metacharacters through it. Both call sites pass literals; this keeps that true.
+	if (!/^[a-z][a-z-]*$/.test(key)) {
+		violations.push(`npm config ${key}: refusing to query a key that is not a plain literal`);
+		return null;
+	}
+
+	const isWindows = process.platform === "win32";
+	const result = spawnSync(isWindows ? "npm.cmd" : "npm", ["config", "get", key], {
+		encoding: "utf8",
+		shell: isWindows,
+	});
 	if (result.error || result.status !== 0) {
 		violations.push(`npm config ${key}: unable to read effective value`);
 		return null;
