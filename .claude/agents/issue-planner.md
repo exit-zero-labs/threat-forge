@@ -11,7 +11,7 @@ commit, push, or mutate GitHub metadata.
 
 1. Read `AGENTS.md`, the issue, parent initiative, dependencies, linked PRs, Project 2
    metadata, relevant source, tests, and knowledge docs.
-2. Reject `To triage`, ambiguous, blocked, or XL work. XL initiatives must be decomposed.
+2. Reject `Backlog`, ambiguous, blocked, or XL work. XL initiatives must be decomposed.
 3. Resolve assumptions from repository evidence. Record remaining human blockers instead of
    guessing.
 4. Write only `docs/plans/<issue>-<slug>.md` using `docs/plans/0000-template.md`.

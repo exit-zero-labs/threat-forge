@@ -93,7 +93,7 @@ Fix must-fix and should-fix findings and rerun the same lanes until they converg
 - Link the M/L plan or state `N/A — XS/S`.
 - Separate verification evidence from owner validation steps.
 - Include before/after screenshots for UI changes.
-- Move the project item to `In review`.
+- Move the project item to `In progress`.
 
 Only `Shreyasdbz` and `exitzerolabs-admin` may merge or update `main`.
 Commit, push, PR creation, approval, and merge each require explicit authorization. Owners

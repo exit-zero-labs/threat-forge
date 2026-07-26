@@ -65,12 +65,19 @@ Project status semantics:
 
 | Status | Meaning |
 |--------|---------|
-| `To triage` | Newly filed; shape and metadata are not settled |
-| `Backlog` | Triaged but not currently executable or selected |
-| `Ready` | Criteria, dependencies, ownership, and autonomy are settled |
-| `In progress` | A branch and implementation are underway |
-| `In review` | Verification and agent preflight are complete; owner validation remains |
-| `Done` | Merged or closed after validation |
+| `Backlog` | Filed. No agent has triaged it; fields are not enforced. Never picked up directly |
+| `Ready` | An agent triaged it: fields set, description rewritten, relationships linked, justification comment posted. Anyone may pick it up |
+| `In progress` | Claimed. Move here **before** starting work — parallel agents rely on it. Held through the entire PR cycle |
+| `Done` | Merged and verified on a local `main`, or rejected with the `Reject` label |
+
+Four states, no more. There is **no `In review`** — for a solo studio there is nobody to hand to, so
+the issue stays `In progress` until merged. Rejection is the `Reject` label on a `Done` issue rather
+than a state, because terminal non-`Done` states accumulate items nobody sweeps.
+
+`Done` requires more than a merged PR: pull `main` locally and walk through the behaviour the issue
+claimed to deliver. Merging is verification; that walkthrough is validation.
+
+See `.e0l/first-principles/planning.md` for the full model.
 
 Priority remains `P0` → `P1` → `P2`. `Effort` is the reasoning class the work needs — not how
 long it takes:
@@ -117,7 +124,7 @@ may pull an `M3` item forward into `M2` at any time; agents may not.
 - **Validation:** owner judgment that the change solves the right problem and avoids
   plausible-but-wrong behavior.
 
-Green CI never means `Done`. `In review` means verification is complete and only owner
+Green CI never means `Done`. `In progress` means verification is complete and only owner
 validation and merge remain.
 
 ## Authorization boundaries
@@ -158,7 +165,7 @@ Under it the following still hold without exception:
 5. **Preflight:** run the general PR reviewer and independent slop auditor, plus security
    and threat-model specialists when their lanes apply. Repeat the same lanes until
    must-fix and should-fix findings are resolved.
-6. **Handoff:** move the issue to `In review` only after verification and preflight.
+6. **Handoff:** move the issue to `In progress` only after verification and preflight.
 7. **Validate and merge:** an owner performs intent validation and the final merge.
 
 Newly discovered work becomes a linked issue or sub-issue. Do not expand scope silently.

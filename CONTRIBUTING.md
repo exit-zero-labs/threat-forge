@@ -26,11 +26,11 @@ execution tracker.
 
 | Status | Meaning |
 |--------|---------|
-| `To triage` | New and not yet shaped |
+| `Backlog` | New and not yet shaped |
 | `Backlog` | Triaged but not executable or selected |
 | `Ready` | Criteria, dependencies, ownership, and autonomy are settled |
 | `In progress` | Implementation is underway |
-| `In review` | Verification and agent preflight are complete; owner validation remains |
+| `In progress` | Verification and agent preflight are complete; owner validation remains |
 | `Done` | Merged or closed after validation |
 
 Every non-trivial issue receives P0/P1/P2 priority, a High/Medium/Low `Effort`, and exactly one
@@ -75,7 +75,7 @@ Verification is deterministic evidence that the written contract was implemented
 lint, tests, builds, security checks, and artifacts. Validation is an owner decision that the
 change solves the right problem and avoids plausible-but-wrong outcomes.
 
-Green CI does not mean a change is done. Move work to `In review` only after verification and
+Green CI does not mean a change is done. Move work to `In progress` only after verification and
 agent preflight; owners perform final validation and merge.
 
 ### Branch Naming

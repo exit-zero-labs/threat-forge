@@ -12,7 +12,7 @@ Run as an explicit maintainer-requested board maintenance pass.
 3. Review every non-Done issue against current code, merged work, open PRs, parent initiatives,
    dependencies, and roadmap direction.
 4. Identify obsolete, duplicate, compound, blocked, mis-sized, or incorrectly prioritized work.
-5. Preserve `To triage` for genuinely unshaped reports.
+5. Preserve `Backlog` for genuinely unshaped reports.
 6. Split compound executable work into native sub-issues; XL remains a parent.
 7. Ensure exactly one autonomy label and explicit acceptance/dependency state.
 8. Mutate one item at a time, read it back, and leave a concise reason for material changes.

@@ -25,5 +25,5 @@ Rank remaining work by:
 5. oldest settled Ready item
 
 Recommend one issue with evidence. Begin implementation only when the user has requested it.
-One issue maps to one branch and one PR. Stop at verification-complete `In review`; owner
+One issue maps to one branch and one PR. Stop at verification-complete `In progress`; owner
 validation and merge remain human-owned.

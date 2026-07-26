@@ -18,10 +18,16 @@
  * a security tool's "enterprise-grade") belongs in the consuming repo, not here.
  */
 export const CORE_BANNED_PHRASES: readonly string[] = [
+	// Hollow superlatives — praise carrying no evidence.
 	"breathtaking",
 	"stunning",
 	"vibrant",
+	"cutting-edge",
+	"game-changer",
+	"game changer",
+	"revolutionize",
 	"a testament to",
+	// Throat-clearing and filler transitions.
 	"picture this",
 	"in today's world",
 	"in conclusion",
@@ -32,6 +38,22 @@ export const CORE_BANNED_PHRASES: readonly string[] = [
 	"begs the question",
 	"moreover",
 	"furthermore",
+	"first and foremost",
+	"last but not least",
+	// Pseudo-emphasis that adds nothing a reader could not infer.
+	"it's worth noting",
+	"it is worth noting",
+	"it's important to note",
+	"it is important to note",
+	// Corporate-register filler that survives into generated docs.
+	"delve into",
+	"a wide range of",
+	"plays a crucial role",
+	"plays a vital role",
+	"in the realm of",
+	"leverage the power",
+	"unlock the potential",
+	"seamlessly integrate",
 ];
 
 /** A "not just X, it's Y" manufactured-profundity construction. */
@@ -79,6 +101,21 @@ const FORWARD_PROMISE_PATTERNS: readonly RegExp[] = [
 	/\bin this (?:piece|article|issue|story|document),?\s+(?:we|I)(?:['’]ll| will)\b/gi,
 ];
 
+/**
+ * Stacked hedges — two uncertainty markers doing one marker's work. "May potentially" says nothing
+ * "may" does not, and the doubling is a reliable signature of prose padding out a claim it cannot
+ * support. A single hedge is legitimate and is deliberately not matched.
+ */
+const HEDGE_STACK_PATTERN = /\b(?:may|might|could)\s+(?:potentially|possibly|perhaps|conceivably)\b/gi;
+
+/**
+ * Hollow confidence in process artifacts — a reassurance standing in for a checkable claim
+ * (`anti-slop/process.md` § reports). Narrow on purpose: "should work as expected" is caught,
+ * a bare "should work with the new schema" is not, because that one carries information.
+ */
+const HOLLOW_CONFIDENCE_PATTERN =
+	/\bshould\s+(?:just\s+work|work\s+(?:fine|as\s+expected)|be\s+(?:fine|straightforward|trivial|simple))\b/gi;
+
 /** Em dashes above this many per 1,000 characters read as a rhythm crutch. */
 const EM_DASH_PER_1K_LIMIT = 4;
 
@@ -93,6 +130,8 @@ export type SlopPatternKind =
 	| "em_dash_density"
 	| "explainer_voice"
 	| "forward_promise"
+	| "hedge_stack"
+	| "hollow_confidence"
 	| "custom";
 
 /** A single detected tell, with how many times it occurred and a sample. */
@@ -133,6 +172,10 @@ const HARD_KINDS: ReadonlySet<SlopPatternKind> = new Set<SlopPatternKind>([
 const PENALTY_BY_KIND: Readonly<Partial<Record<SlopPatternKind, number>>> = {
 	banned_phrase: 0.06,
 	whether_youre: 0.08,
+	hedge_stack: 0.08,
+	// Weighted heavier than a phrase tell: in a process artifact this is a reassurance standing in
+	// for a checkable claim, which is the failure the review layer is least able to catch.
+	hollow_confidence: 0.12,
 };
 const DEFAULT_PENALTY = 0.18;
 
@@ -173,6 +216,8 @@ export const detectSlop = (text: string, options: SlopOptions = {}): SlopReport 
 		{ kind: "not_just_construction", pattern: NOT_JUST_PATTERN },
 		{ kind: "in_todays_world", pattern: IN_TODAYS_PATTERN },
 		{ kind: "whether_youre", pattern: WHETHER_YOURE_PATTERN },
+		{ kind: "hedge_stack", pattern: HEDGE_STACK_PATTERN },
+		{ kind: "hollow_confidence", pattern: HOLLOW_CONFIDENCE_PATTERN },
 	];
 	for (const { kind, pattern } of single) {
 		const hit = countMatches(text, pattern);

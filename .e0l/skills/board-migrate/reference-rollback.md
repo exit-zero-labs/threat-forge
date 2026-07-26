@@ -16,7 +16,17 @@ Reference for the `board-migrate` skill.
 
 Items with no `Size` get no `Effort`. Pull request items are skipped — effort is a property of the issue.
 
-`Status` normalises to `Triage` / `Backlog` / `Ready` / `In progress` / `In review` / `Done`. A board carrying "To triage" renames it to `Triage`. The retired lifecycle maps as `Request` → `Triage`, `Active` → `In progress`, and `Rejected` → closed as *not planned*, because a terminal status that is not `Done` rots the board.
+`Status` normalises to exactly four states — `Backlog` / `Ready` / `In progress` / `Done` ([ADR-0010](../../../docs/decisions/0010-four-state-status.md)):
+
+| From | To |
+| --- | --- |
+| `To triage`, `Triage` | `Backlog` — the same state; the split was never used |
+| `In review` | `In progress` — still the author's problem until merged |
+| everything else | unchanged |
+
+Rejection is the **`Reject` label on a `Done` issue**, not a state.
+
+**This migration is destructive by construction.** Replacing a single-select's options assigns new option ids and clears the value on every item, so it must snapshot, replace, then re-apply. `board-set-status.py` does exactly that.
 
 `Priority` normalises to `P0` / `P1` / `P2`, deliberately not High/Medium/Low, so that no board carries two fields both offering the value "High".
 

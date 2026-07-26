@@ -45,7 +45,7 @@ Final owner validation does not make an issue `HITL`.
 
 ### 3. Shape the Work
 
-- Keep a new, incomplete report in `To triage`.
+- Keep a new, incomplete report in `Backlog`.
 - Use `Backlog` for triaged work that is not executable or selected.
 - Move to `Ready` only when acceptance criteria, dependencies, ownership, and autonomy are
   settled.
@@ -77,7 +77,7 @@ infrastructure fault from a real break.
 6. **Run anti-slop review and preflight**
 7. **Run full verification**: `npm run ci:local`
 8. **Open a PR** referencing the issue: `Fixes #42`
-9. **Move to In review** for owner validation
+9. **Stay `In progress`** through review — there is no `In review` state
 10. **Close the issue** when PR is merged (GitHub auto-closes with `Fixes #N`)
 
 ## Security Issues

@@ -26,14 +26,18 @@ Two independent outcomes, and a file must clear both.
 
 **Everything else deducts** from a score that starts at 1.0:
 
-| Finding | Penalty |
-| --- | --- |
-| Banned phrase | 0.06 each |
-| "Whether you're" framing | 0.08 each |
-| Em-dash density above 4 per 1,000 characters | 0.10 |
-| Any other tell | 0.18 each |
+| Finding | Penalty | Catches |
+| --- | --- | --- |
+| Banned phrase | 0.06 each | Hollow superlatives, filler transitions, corporate register |
+| "Whether you're" framing | 0.08 each | Listicle scaffolding |
+| Stacked hedge | 0.08 each | "May potentially" — two markers doing one marker's work |
+| Em-dash density above 4 per 1,000 chars | 0.10 | Rhythm crutch |
+| Hollow confidence | 0.12 each | "Should just work" — a reassurance where a checkable claim belongs |
+| Any other tell | 0.18 each | |
 
 The bar is **no hard tell, and score at or above 0.85**.
+
+Hollow confidence is weighted above a phrase tell deliberately. In a process artifact it is not a style problem — it is a reassurance standing in for something the reader could have checked, and it is the failure the human review layer is least equipped to catch ([process.md](process.md#report-and-status-tells)).
 
 ## Extending it for a repo
 

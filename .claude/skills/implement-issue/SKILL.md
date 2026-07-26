@@ -21,6 +21,6 @@ argument-hint: "[issue-number]"
 7. Invoke `anti-slop-review`, then `build-test`.
 8. Invoke `pr-preflight` and resolve its must-fix and should-fix findings to convergence.
 9. Prepare a handoff with changed behavior, evidence, remaining owner validation, and applicable
-   specialist lanes. Stop at verification-complete `In review`.
+   specialist lanes. Stop at verification-complete `In progress`.
 
 Do not commit, push, create a PR, or merge without separate explicit authorization.

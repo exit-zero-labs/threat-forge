@@ -95,8 +95,39 @@ describe("narrowness guards against false positives", () => {
 		["a bare problem statement", "There's a problem with the drainage."],
 		["a bare 'it turns out'", "It turns out the cache was cold."],
 		["'not just' without the construction", "This is not just about speed."],
+		["a single hedge", "This may fail when the queue is saturated."],
+		["'should work' carrying information", "It should work with the new schema."],
+		["a legitimate 'note' sentence", "Note the retry limit before changing it."],
 	])("%s does not fire", (_label, text) => {
 		expect(detectSlop(text).findings).toEqual([]);
+	});
+});
+
+describe("process-artifact tells", () => {
+	test.each([
+		["may potentially", "This may potentially cause a retry storm."],
+		["could possibly", "The migration could possibly need a backfill."],
+	])("stacked hedge fires: %s", (_label, text) => {
+		expect(kinds(text)).toContain("hedge_stack");
+	});
+
+	test.each([
+		["should just work", "Rebase onto main and it should just work."],
+		["should be straightforward", "The rest should be straightforward."],
+		["should work as expected", "After the deploy it should work as expected."],
+	])("hollow confidence fires: %s", (_label, text) => {
+		expect(kinds(text)).toContain("hollow_confidence");
+	});
+
+	test("hollow confidence is weighted above a phrase tell", () => {
+		const hollow = detectSlop("The rest should be straightforward.");
+		const phrase = detectSlop("The rest was stunning.");
+		expect(hollow.score).toBeLessThan(phrase.score);
+	});
+
+	test("neither is a hard tell — they deduct, they do not disqualify", () => {
+		expect(detectSlop("This may potentially fail.").hasHardTell).toBe(false);
+		expect(detectSlop("It should just work.").hasHardTell).toBe(false);
 	});
 });
 

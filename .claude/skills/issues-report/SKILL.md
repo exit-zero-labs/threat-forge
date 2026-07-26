@@ -13,7 +13,7 @@ Produce a read-only, reproducible briefing. Do not mutate GitHub or repository f
    - AUTO executable work
    - partly blocked work with the concrete blocker
    - owner-only/HITL decisions
-   - unresolved `To triage` intake
+   - unresolved `Backlog` intake
 4. Map parent/sub-issue and dependency relationships.
 5. Lead with one recommended maintainer action and why.
 6. Use asymmetric depth: more detail for high-impact or ambiguous items, less for settled work.

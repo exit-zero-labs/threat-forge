@@ -6,7 +6,7 @@ description: Run convergent independent review lanes before ThreatForge owner va
 # PR preflight
 
 Run on a complete local diff or, after explicit PR-creation authorization, a draft PR before
-moving its issue to `In review`.
+moving its issue to `In progress`.
 
 1. Confirm issue linkage, acceptance criteria, required plan, and verification evidence.
 2. Run in independent contexts:
@@ -20,5 +20,5 @@ moving its issue to `In review`.
 6. Re-run affected verification.
 7. Post or preserve a preflight record with each lane, findings, revisions, and final state.
 
-Only then mark the issue `In review`. Preflight is not owner validation and cannot approve or
+Only then mark the issue `In progress`. Preflight is not owner validation and cannot approve or
 merge the PR.
