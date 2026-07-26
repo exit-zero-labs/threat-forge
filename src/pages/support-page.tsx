@@ -135,11 +135,11 @@ function Command({ children }: { children: string }) {
 /**
  * First-run guidance for the desktop builds.
  *
- * The macOS and Windows subsections describe what an unsigned or low-reputation build does;
- * once notarization (#51) and Windows signing verification (#50) are complete they become
- * wrong rather than merely unnecessary, and they go — along with the downloads-page line that
- * points here, if nothing else is left worth pointing at. The Linux subsection is about an
- * execute bit rather than signing and stays correct regardless.
+ * The macOS and Windows subsections describe what an unsigned build does; once notarization
+ * (#51) and Windows signing (#50) are complete they become wrong rather than merely
+ * unnecessary, and they go — along with the downloads-page line that points here, if nothing
+ * else is left worth pointing at. The Linux subsection is about an execute bit rather than
+ * signing and stays correct regardless.
  */
 function FirstRunSection() {
 	return (
@@ -177,9 +177,10 @@ function FirstRunSection() {
 				<div>
 					<h3 className="font-medium text-foreground">Windows</h3>
 					<p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-						SmartScreen may show <em>&ldquo;Windows protected your PC&rdquo;</em> because the
-						installer&apos;s publisher reputation is still being established. Choose{" "}
-						<strong className="font-medium text-foreground">More info</strong>, then{" "}
+						The Windows installer is not code-signed yet, so SmartScreen shows{" "}
+						<em>&ldquo;Windows protected your PC&rdquo;</em> and reports the publisher as unknown.
+						Choose <strong className="font-medium text-foreground">More info</strong>, check that it
+						names <strong className="font-medium text-foreground">Threat Forge</strong>, then choose{" "}
 						<strong className="font-medium text-foreground">Run anyway</strong>.
 					</p>
 				</div>
