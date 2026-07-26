@@ -18,9 +18,9 @@ export function AboutPage() {
 					<p className="mt-3 leading-relaxed text-muted-foreground">
 						Microsoft&apos;s Threat Modeling Tool is free and genuinely useful, provided you are on
 						Windows and never need to read the file it produces. ThreatModeler and IriusRisk solved
-						that properly, then merged into one vendor charging five figures a year — fine for a
-						bank, absurd for four engineers and a side project. So most teams do it once, before an
-						audit, and never again.
+						that properly, then ThreatModeler bought IriusRisk, and one vendor now charges five
+						figures a year — fine for a bank, absurd for four engineers and a side project. So most
+						teams do it once, before an audit, and never again.
 					</p>
 					<p className="mt-3 leading-relaxed text-muted-foreground">
 						Threat Forge is the boring middle. Free, open source, runs on all three desktop

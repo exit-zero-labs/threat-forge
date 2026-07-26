@@ -61,8 +61,8 @@ before issue #254, so they are not hypothetical.
    desktop app." A comma series closed by an em-dash summary is the single most recognizable
    generated sentence shape. Break it into sentences of violently different lengths.
 3. **No antagonist.** "Everything you need for threat modeling" — compared to what? Naming
-   Microsoft TMT and the ~$20K platforms gives the reader somewhere to stand. Vagueness is what
-   you write when you are avoiding being wrong.
+   Microsoft TMT and the five-figure enterprise platforms gives the reader somewhere to
+   stand. Vagueness is what you write when you are avoiding being wrong.
 4. **Nothing conceded.** Text optimized for approval never admits a limit. If every line is a
    strength, the reader discounts all of them.
 5. **Stated virtue instead of shown.** "direct, crafted, and grounded", "fills that gap".

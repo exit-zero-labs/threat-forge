@@ -120,7 +120,7 @@ function FeaturesSection() {
 				</h2>
 				<p className="mx-auto mt-3 max-w-2xl text-center text-muted-foreground">
 					Microsoft&apos;s Threat Modeling Tool is free, Windows-only, and saves a .NET object graph
-					with some XML wrapped around it. ThreatModeler bought IriusRisk last year, so the grown-up
+					with some XML wrapped around it. ThreatModeler bought IriusRisk, so the grown-up
 					alternative is now one vendor charging five figures a year. This is the third option.
 				</p>
 				<div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

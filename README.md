@@ -18,7 +18,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/install%20size-under%2010MB-informational" alt="Binary size" />
+  <img src="https://img.shields.io/badge/download-4--8%20MB-informational" alt="Download size" />
 </p>
 
 <br />
