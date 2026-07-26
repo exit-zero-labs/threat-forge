@@ -10,17 +10,17 @@ const FAQ_ITEMS = [
 	{
 		question: "Is Threat Forge free?",
 		answer:
-			"Yes. Threat Forge is free and open source, licensed under Apache 2.0. No account required, no usage limits.",
+			"Yes. Apache 2.0, no account, no usage limits. The licence grant is irrevocable, so that is not something that can quietly change on you later.",
 	},
 	{
 		question: "Do I need an API key for AI features?",
 		answer:
-			"Yes — AI features use a Bring Your Own Key (BYOK) model. You provide your own OpenAI or Anthropic API key. AI features are entirely optional; the app is fully functional without them.",
+			"For the AI, yes — you bring your own OpenAI or Anthropic key and calls go straight to them. Everything else works without one, and always will.",
 	},
 	{
 		question: "What file format does Threat Forge use?",
 		answer:
-			"Threat models are saved as .thf files — a YAML-based format designed to be human-readable, git-friendly, and schema-validated. You can open them in any text editor.",
+			"A .thf file, which is YAML. Readable in any editor, sensible in a git diff, and validated against a published schema so other tools can use it.",
 	},
 	{
 		question: "What platforms are supported?",

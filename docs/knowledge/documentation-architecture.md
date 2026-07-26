@@ -112,6 +112,7 @@ thin pointers and never redefine policy.
 | `docs/knowledge/go-to-market.md` | Internal | `internal-strategy` | — | Maintainers | — |
 | `docs/knowledge/market-analysis.md` | Internal | `internal-strategy` | `verify` | Maintainers | `#159` verifies market and capability claims |
 | `docs/knowledge/risks.md` | Internal | `internal-strategy` | `verify` | Maintainers | `#159` verifies current technical claims |
+| `docs/knowledge/product-voice.md` | Contributors | `repository-canonical` (voice contract for user-facing copy) | — | Maintainers | `#254` establishes it |
 | `docs/knowledge/mcp-server.md` | Contributors | `repository-canonical` | `verify` | Maintainers | `#159` refresh against `src-tauri/src/mcp/**` |
 | `docs/knowledge/documentation-architecture.md` | Contributors | `repository-canonical` (this IA and source-of-truth policy) | — | Maintainers | referenced by `#159`–`#162` |
 

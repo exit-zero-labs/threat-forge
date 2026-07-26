@@ -38,16 +38,18 @@ describe("AboutPage", () => {
 
 	it("renders GitHub links in Get Involved section", () => {
 		renderAbout();
-		const starLink = screen.getByText("Star the repo on GitHub").closest("a");
+		const starLink = screen.getByText("Star it, if you're into that").closest("a");
 		expect(starLink).toHaveAttribute("href", "https://github.com/exit-zero-labs/threat-forge");
 
-		const issuesLink = screen.getByText("Report bugs or request features").closest("a");
+		const issuesLink = screen.getByText("Tell me what broke, or what's missing").closest("a");
 		expect(issuesLink).toHaveAttribute(
 			"href",
 			"https://github.com/exit-zero-labs/threat-forge/issues",
 		);
 
-		const contributeLink = screen.getByText("Contribute code or documentation").closest("a");
+		const contributeLink = screen
+			.getByText("Send a patch, or fix a sentence in the docs")
+			.closest("a");
 		expect(contributeLink).toHaveAttribute(
 			"href",
 			"https://github.com/exit-zero-labs/threat-forge/blob/main/CONTRIBUTING.md",

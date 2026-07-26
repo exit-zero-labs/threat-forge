@@ -5,27 +5,26 @@ import { PageShell } from "./shared/page-shell";
 const FEATURES = [
 	{
 		icon: Shield,
-		title: "STRIDE Analysis",
+		title: "STRIDE, minus the workshop",
 		description:
-			"Built-in threat engine identifies Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, and Elevation of Privilege risks across your architecture.",
+			"Six categories, applied to every element and flow you've drawn. It won't find the clever bug in your auth logic. It will find the twelve boring ones you were going to skip.",
 	},
 	{
 		icon: FileCode,
-		title: "Git-Friendly YAML",
+		title: "It's a file. That's the whole trick.",
 		description:
-			"Threat models are stored as human-readable .thf YAML files. Track changes, review diffs, and version your security models alongside your code.",
+			"A .thf is YAML. Open it in vim, diff it on GitHub, grep it. There's no export step because there's nothing to export from.",
 	},
 	{
 		icon: Sparkles,
-		title: "AI-Enhanced",
+		title: "AI that edits, not advises",
 		description:
-			"Optional AI assistant helps identify threats, suggest mitigations, and build DFD diagrams. Bring your own API key — your data stays on your machine.",
+			"Bring your own key. The model changes elements, flows, and threats directly, and every change is checked against the schema before it lands. Nonsense gets refused rather than saved.",
 	},
 	{
 		icon: Monitor,
-		title: "Cross-Platform",
-		description:
-			"Native desktop app for macOS, Windows, and Linux. Lightweight ~10MB binary built with Tauri and Rust. Also available as a web app.",
+		title: "Runs anywhere, weighs nothing",
+		description: "A few megabytes, in Rust. macOS, Windows, Linux, or no install at all.",
 	},
 ] as const;
 
@@ -77,34 +76,34 @@ export function LandingPage() {
 function HeroSection() {
 	return (
 		<section className="px-6 py-24 text-center">
-			<div className="mx-auto max-w-3xl">
+			<div className="mx-auto max-w-4xl">
 				<div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border/50 bg-secondary/50 px-4 py-1.5 text-xs text-muted-foreground">
 					<span className="inline-block h-1.5 w-1.5 rounded-full bg-tf-signal" />
 					Open source &middot; Apache 2.0
 				</div>
-				<h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-					Threat modeling
-					<br />
-					<span className="text-tf-signal">for a modern age</span>
+				<h1 className="text-3xl font-bold tracking-tight text-balance text-foreground sm:text-4xl lg:text-5xl">
+					Threat modeling for people who <br className="hidden sm:inline" />
+					<span className="text-tf-signal">hate threat modeling tools</span>
 				</h1>
 				<p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-					Build data flow diagrams, run STRIDE analysis, and produce human-readable, git-friendly
-					threat models — all in a free, cross-platform desktop app.
+					You know the drill. Install something Windows-only, drag boxes around for an afternoon,
+					export a report, never open it again. This is boxes and arrows too — it just saves to
+					YAML, opens in your editor, and turns up in code review like everything else you own.
 				</p>
-				<div className="mt-10 flex items-center justify-center gap-4">
+				<div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
 					<Link
 						to="/app"
-						className="inline-flex items-center gap-2 rounded-md bg-tf-signal px-6 py-3 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-tf-signal px-6 py-3 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90 sm:w-auto"
 					>
 						<Globe className="h-4 w-4" />
-						Try in Browser
+						Try it in the browser
 					</Link>
 					<Link
 						to="/downloads"
-						className="inline-flex items-center gap-2 rounded-md border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary sm:w-auto"
 					>
 						<Download className="h-4 w-4" />
-						Download for Free
+						Download
 					</Link>
 				</div>
 			</div>
@@ -117,10 +116,12 @@ function FeaturesSection() {
 		<section className="border-t border-border/50 px-6 py-20">
 			<div className="mx-auto max-w-6xl">
 				<h2 className="text-center text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-					Everything you need for threat modeling
+					What it actually does
 				</h2>
 				<p className="mx-auto mt-3 max-w-2xl text-center text-muted-foreground">
-					Bridges the gap between Microsoft&apos;s legacy TMT and $20K/year enterprise platforms.
+					Microsoft&apos;s Threat Modeling Tool is free, Windows-only, and saves a .NET object graph
+					with some XML wrapped around it. IriusRisk and ThreatModeler are the grown-up alternative,
+					at around $20,000 a year. This is the third option.
 				</p>
 				<div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
 					{FEATURES.map((feature) => (
@@ -144,22 +145,22 @@ function YamlShowcaseSection() {
 			<div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-2 lg:items-center">
 				<div>
 					<h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-						Your threat models belong in git
+						Yes, it&apos;s just a file
 					</h2>
 					<p className="mt-4 text-muted-foreground leading-relaxed">
-						ThreatForge saves everything as{" "}
+						Everything lives in one{" "}
 						<code className="rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-foreground">
 							.thf
 						</code>{" "}
-						YAML files. Open them in any text editor, track them in version control, and review
-						diffs in pull requests — just like code.
+						file. Someone widens a trust boundary, and the diff is one line — reviewable by a
+						teammate who has never opened Threat Forge and has no intention of starting.
 					</p>
 					<ul className="mt-6 space-y-3">
 						{[
-							"Human-readable in any text editor",
-							"Minimal, clean diffs when tracked in git",
-							"Single file — all data inline, no sidecars",
-							"Schema-validated for tooling interop",
+							"Readable in any editor, including the one you're already in",
+							"One file — no sidecars, no lockfile, no project folder",
+							"Diffs a person can actually review",
+							"Schema-validated, so other tools can read it too",
 						].map((item) => (
 							<li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
 								<span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-tf-signal" />
@@ -187,25 +188,26 @@ function CtaSection() {
 		<section className="border-t border-border/50 px-6 py-24 text-center">
 			<div className="mx-auto max-w-2xl">
 				<h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-					Start threat modeling today
+					That&apos;s the pitch
 				</h2>
 				<p className="mt-4 text-muted-foreground">
-					Free and open source. No account required. No data leaves your machine.
+					Free, open source, no account. Nothing leaves your machine unless you point it at an AI
+					provider yourself. If you hate it, you&apos;re out ten minutes.
 				</p>
-				<div className="mt-8 flex items-center justify-center gap-4">
+				<div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
 					<Link
 						to="/app"
-						className="inline-flex items-center gap-2 rounded-md bg-tf-signal px-6 py-3 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-tf-signal px-6 py-3 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90 sm:w-auto"
 					>
 						<Globe className="h-4 w-4" />
-						Try in Browser
+						Try it in the browser
 					</Link>
 					<Link
 						to="/downloads"
-						className="inline-flex items-center gap-2 rounded-md border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+						className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-border px-6 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary sm:w-auto"
 					>
 						<Download className="h-4 w-4" />
-						Download for Free
+						Download
 					</Link>
 				</div>
 			</div>
