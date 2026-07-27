@@ -39,10 +39,10 @@ export function PrivacyPage() {
 							The web version at threatforge.dev runs on Cloudflare Workers. Standard hosting logs —
 							IP addresses, request timestamps — may be collected as the infrastructure operates,
 							and Cloudflare asks your browser to report network errors it runs into while loading
-							the site. Threat Forge itself adds nothing on top of that: no analytics script, no
-							telemetry, no cookies. The content security policy admits no third-party script at
-							all, so there is nothing we could quietly add later without changing the policy in
-							public.
+							the site. Threat Forge itself adds nothing on top of that: no analytics, no telemetry,
+							no cookies. The content security policy admits no third-party script at all, so
+							nothing executes on this page that we did not ship — not even something inserted at
+							the edge after the fact.
 						</p>
 						<p>
 							The browser does keep a fair amount on your behalf. Your threat models and your

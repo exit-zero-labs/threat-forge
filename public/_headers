@@ -39,8 +39,10 @@
 # No third-party script origin is admitted, and adding one is a key-confidentiality
 # decision rather than a convenience: an analytics beacon origin was allowed here
 # until #232 removed it, and because the beacon is versionless an SRI hash was not
-# available to constrain it. Usage insight, if it is ever wanted, belongs in the
-# Worker, which already sees every request.
+# available to constrain it. Note that Cloudflare's zone-level Web Analytics injects
+# that beacon into the served HTML for browser-like requests regardless of what this
+# repository contains — script-src is what stops it executing, so a widened script-src
+# silently re-enables a third-party script this codebase never asked for. See #261.
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
