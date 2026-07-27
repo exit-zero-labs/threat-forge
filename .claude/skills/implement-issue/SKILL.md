@@ -12,15 +12,16 @@ argument-hint: "[issue-number]"
    - XS/S: execute the issue body
    - M/L: require `docs/plans/<issue>-<slug>.md`
    - XL: stop and decompose
-4. If an M/L plan is absent or stale, invoke `issue-planner` and stop after the plan is written.
+4. Move the issue to `In progress` before doing anything else, including planning. A claim you
+   have not recorded is not a claim, and planning is work another agent can duplicate.
+5. If an M/L plan is absent or stale, invoke `issue-planner` and stop after the plan is written.
    Planning and execution must happen in separate passes, and implementation begins only after the
    plan is committed.
-5. Move active work to `In progress`, then invoke `feature-implementer` with the settled issue or
-   committed plan.
-6. Add out-of-scope discoveries as linked follow-up work rather than expanding silently.
-7. Invoke `anti-slop-review`, then `build-test`.
-8. Invoke `pr-preflight` and resolve its must-fix and should-fix findings to convergence.
-9. Prepare a handoff with changed behavior, evidence, remaining owner validation, and applicable
-   specialist lanes. Stop at verification-complete `In progress`.
+6. Invoke `feature-implementer` with the settled issue or committed plan.
+7. Add out-of-scope discoveries as linked follow-up work rather than expanding silently.
+8. Invoke `anti-slop-review`, then `build-test`.
+9. Invoke `pr-preflight` and resolve its must-fix and should-fix findings to convergence.
+10. Prepare a handoff with changed behavior, evidence, remaining owner validation, and applicable
+    specialist lanes. Stop at verification-complete `In progress`.
 
 Do not commit, push, create a PR, or merge without separate explicit authorization.
