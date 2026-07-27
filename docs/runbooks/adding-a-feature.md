@@ -22,7 +22,11 @@ Use the size as a capability contract:
 - M/L: run the issue planner and commit `docs/plans/<issue>-<slug>.md` before code.
 - XL: keep it as a parent initiative and decompose it into sub-issues.
 
-## 2. Create a Branch
+## 2. Claim It and Create a Branch
+
+Move the project item to `In progress` first. Another agent may be scanning the board for
+work right now, and the status field is the only thing that stops two of you starting the
+same issue.
 
 ```bash
 git checkout main
@@ -31,7 +35,6 @@ git checkout -b feat/short-description
 ```
 
 Use Conventional Commits prefixes: `feat/`, `fix/`, `refactor/`, `chore/`, or `docs/`.
-Move the project item to `In progress`.
 
 ## 3. Understand Existing Code
 
@@ -93,7 +96,8 @@ Fix must-fix and should-fix findings and rerun the same lanes until they converg
 - Link the M/L plan or state `N/A — XS/S`.
 - Separate verification evidence from owner validation steps.
 - Include before/after screenshots for UI changes.
-- Move the project item to `In progress`.
+- Leave the project item where it is. It went to `In progress` back in *Claim It and Create a
+  Branch* and stays there until merge.
 
 Only `Shreyasdbz` and `exitzerolabs-admin` may merge or update `main`.
 Commit, push, PR creation, approval, and merge each require explicit authorization. Owners

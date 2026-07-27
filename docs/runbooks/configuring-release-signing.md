@@ -552,7 +552,8 @@ When the rehearsal passes:
 - Attach or link the retained evidence to issues #49, #50, #51, and #52.
 - Confirm the PR reviewer, slop auditor, and security auditor have no unresolved must-fix or
   should-fix findings.
-- Move each completed child issue to `In progress`.
+- Confirm each child issue is still `In progress`; they reach `Done` only after the owner
+  validates and the PR merges.
 - Have an owner validate intended publisher presentation, install behavior, and update
   behavior.
 - Squash-merge only after owner validation and separate merge authorization.

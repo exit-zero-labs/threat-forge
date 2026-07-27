@@ -136,8 +136,10 @@ may pull an `M3` item forward into `M2` at any time; agents may not.
 - **Validation:** owner judgment that the change solves the right problem and avoids
   plausible-but-wrong behavior.
 
-Green CI never means `Done`. `In progress` means verification is complete and only owner
-validation and merge remain.
+Green CI never means `Done`. `In progress` covers the whole of implementation and the whole PR
+cycle, so the status never signals that verification is finished — the handoff record does that.
+Verification-complete work waits in `In progress` for owner validation. There is no state
+between them.
 
 ## Authorization boundaries
 
@@ -192,16 +194,21 @@ budget, not a free resource. A saturated machine is an outage for the owner.
 ## Engineering workflow
 
 1. **Triage:** shape the issue and populate Project 2 metadata. Do not code.
-2. **Plan:** for M/L work, an independent planner writes the committed plan. XL work is
+2. **Claim:** move the issue to `In progress` before doing anything else. Parallel agents rely
+   on the board to avoid starting the same work twice, and a claim you have not recorded is not
+   a claim. It stays there until merge.
+3. **Plan:** for M/L work, an independent planner writes the committed plan. XL work is
    decomposed first.
-3. **Implement:** execute settled criteria without silently rescoping. Add tests with the
+4. **Implement:** execute settled criteria without silently rescoping. Add tests with the
    behavior.
-4. **Self-review:** run `anti-slop-review` and fix behavior-preserving findings.
-5. **Preflight:** run the general PR reviewer and independent slop auditor, plus security
+5. **Self-review:** run `anti-slop-review` and fix behavior-preserving findings.
+6. **Preflight:** run the general PR reviewer and independent slop auditor, plus security
    and threat-model specialists when their lanes apply. Repeat the same lanes until
    must-fix and should-fix findings are resolved.
-6. **Handoff:** move the issue to `In progress` only after verification and preflight.
-7. **Validate and merge:** an owner performs intent validation and the final merge.
+7. **Handoff:** record the changed behavior, the verification evidence, and the owner
+   validation still outstanding. No status changes — the issue has been `In progress` since
+   step 2.
+8. **Validate and merge:** an owner performs intent validation and the final merge.
 
 Newly discovered work becomes a linked issue or sub-issue. Do not expand scope silently.
 Replans append a dated change log rather than rewriting history.

@@ -69,16 +69,18 @@ For a red CI check rather than a reported bug, start from
 [Diagnosing CI Failures](diagnosing-ci-failures.md) — it distinguishes a runner
 infrastructure fault from a real break.
 
-1. **Reproduce** the bug locally
-2. **Create a branch**: `git checkout -b fix/issue-description`
-3. **Write a failing test** that captures the bug
-4. **Fix the bug** — minimal change, don't refactor surrounding code
-5. **Verify the test passes**
-6. **Run anti-slop review and preflight**
-7. **Run full verification**: `npm run ci:local`
-8. **Open a PR** referencing the issue: `Fixes #42`
-9. **Stay `In progress`** through review — there is no `In review` state
-10. **Close the issue** when PR is merged (GitHub auto-closes with `Fixes #N`)
+1. **Claim it**: move the issue to `In progress` before starting, so a parallel agent does not
+   pick up the same bug
+2. **Reproduce** the bug locally
+3. **Create a branch**: `git checkout -b fix/issue-description`
+4. **Write a failing test** that captures the bug
+5. **Fix the bug** — minimal change, don't refactor surrounding code
+6. **Verify the test passes**
+7. **Run anti-slop review and preflight**
+8. **Run full verification**: `npm run ci:local`
+9. **Open a PR** referencing the issue: `Fixes #42`
+10. **Stay `In progress`** through review — there is no `In review` state
+11. **Close the issue** when PR is merged (GitHub auto-closes with `Fixes #N`)
 
 ## Security Issues
 

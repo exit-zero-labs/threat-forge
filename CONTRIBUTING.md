@@ -77,8 +77,9 @@ Verification is deterministic evidence that the written contract was implemented
 lint, tests, builds, security checks, and artifacts. Validation is an owner decision that the
 change solves the right problem and avoids plausible-but-wrong outcomes.
 
-Green CI does not mean a change is done. Move work to `In progress` only after verification and
-agent preflight; owners perform final validation and merge.
+Green CI does not mean a change is done. Work moves to `In progress` when you claim it, before
+you start, and stays there through verification and preflight; owners perform final validation
+and merge.
 
 ### Branch Naming
 
