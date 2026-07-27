@@ -328,7 +328,19 @@ The honest list, with what closes each one:
    criterion 5 is therefore met in the Worker and violated where the user actually is. Tracked as
    `#285`.
 
-   **Inferred, not measured — and it should be checked at the same dashboard visit:** whether the
+   **Measured after deploy on 2026-07-27, and the answer is no.** With `wrangler tail --format
+   json` running, ten requests carrying ten distinct query strings all returned
+   `cf-cache-status: HIT`, and nine of the ten were observed invoking the Worker (the tenth was
+   still in flight when the log was sampled). A cache in front of the Worker would have served
+   those without invoking it, so for this route there is none: every request runs the handler,
+   and a `HIT` is the Worker's own `caches.default`. That also settles the paragraph below —
+   the round-3 conclusion was right even though its citation was not, and the `MISS`/`HIT`
+   correlation is the response pipeline reacting to the header the Cache API stamped rather than
+   evidence of a second cache. Residual risk 4's collision hazard is correspondingly inert
+   **today**; it becomes live the moment a Cache Rule is added for `/api/*`, which is why the
+   dashboard check stays on the owner-validation list.
+
+   The original reasoning, kept because it is what the remedy was designed against: whether the
    zone *also* caches this route in its own edge cache independently of `caches.default`. The
    documentation says Workers run before the cache and that Workers Caching is opt-in (this
    Worker does not enable it), which would mean no edge copy exists and every request reaches
@@ -734,12 +746,10 @@ Green CI decides none of these.
    tripwire the plan originally relied on **cannot detect it** — the zone rewrites a cached `200`'s
    `Cache-Control` to `max-age=14400`, so a collision reads identically to a healthy hit. The
    dashboard is now the only check. Two more things to settle in the same visit: `#285` asks for
-   this route's Browser Cache TTL to stop overriding the Worker's 300s, and residual risk 5 needs
-   confirmation of whether the zone caches `/api/latest-release` in its own edge cache at all —
-   the plan reasons it does not, and has not measured it. Do not take the live
-   `cf-cache-status: HIT` as settling it in either direction — see residual risk 5 for why that
-   measurement is ambiguous rather than decisive. Cache Rules in the dashboard are the only
-   place this is legible.
+   this route's Browser Cache TTL to stop overriding the Worker's 300s. The second question
+   residual risk 5 raised — whether the zone caches `/api/latest-release` at all — was
+   **measured after deploy and answered no**, so what remains at the dashboard is confirming
+   that no Cache Rule exists which would change that, rather than establishing today's state.
 4. **Deploy, then verify live.** The Cache API documentation guarantees functional cache
    operations for custom-domain Workers and states that previews have none, so a dev or preview
    session is not evidence about production. Run the three step-5 commands after
@@ -817,4 +827,5 @@ Append changes; do not rewrite prior decisions.
 | 2026-07-27 | Round 2 | `CACHE_KEY_ORIGIN` tied to `wrangler.jsonc`; preview URLs pinned off | **Two lanes independently** on the first: the constant duplicated the zone hostname with nothing tying them, and the drift fails silently toward 100% upstream traffic — the exact exhaustion this issue exists to fix, arriving with every response still looking correct. `worker/cache-key-origin.test.ts` now asserts the coupling. Security separately found `preview_urls` was never asserted by the repository, so every deploy inherited whatever the API last held, on a hostname where the Cache API is a documented no-op and this route degrades to an unthrottled proxy of `api.github.com`. Both subdomain keys are now stated |
 | 2026-07-27 | Round 2 | Runbook `wrangler tail` correlation step corrected; residual risk 5 narrowed | Slop: `--format pretty` prints an outcome, and a sanitized `502` is an `Ok` invocation, so the step could never answer the question it was written for — now `--format json` with `event.response.status`. Reviewer and slop both found residual risk 5 asserted an edge-level mechanism on browser-level evidence; the difference changes the 24-hour ceiling arithmetic. Reframed as browser-level, with the edge-cache question marked inferred and routed to owner validation rather than asserted |
 | 2026-07-27 | Implementation | Step 5's `curl` tripwire corrected during implementation; steps 1–4 unchanged | The plan states "Nothing caches this Worker's responses in front of it today" and builds step 5's collision tripwire on it (`max-age=86400` observed ⇒ entries collided). Measured against the live endpoint instead: `curl -sS -D- https://threatforge.dev/api/latest-release` returns `cf-cache-status: HIT`, a non-zero `age`, and `cache-control: public, max-age=14400` — a value this Worker never emits — while a `cf-cache-status` miss returns the Worker's own `public, max-age=300`. The zone caches this route and rewrites `Cache-Control` to a 4-hour Browser Cache TTL on hits, so the tripwire could never fire: a collision would also read `14400`. `no-store` is passed through unrewritten (observed on a live `502`), so the stale and never-cached cases stay legible and the fix's guarantees are unaffected. Step 5 now records the measured steady state and routes the collision check to the dashboard, which the plan already required as owner-validation item 3. Residual risk 4 is therefore **not** self-announcing as the plan claims — raised for the owner rather than resolved here |
+| 2026-07-27 | Post-deploy | The edge-cache question measured rather than left inferred | Ten live requests with ten distinct query strings all returned `cf-cache-status: HIT`, and nine were observed invoking the Worker under `wrangler tail --format json`; a front-of-Worker cache would have served them without an invocation. So there is none for this route, the `HIT` is `caches.default`, and residual risk 4's collision hazard is inert until someone adds a Cache Rule. This is the measurement three review rounds argued about from documentation, and it took four minutes once the code was deployed — worth remembering next time a question is routed to owner validation because it looked unmeasurable |
 | 2026-07-27 | — | Initial plan | Issue `#284` (no comments) and closed `#172`; branch `bug/284-release-lookup-stale` at `24e350e`, clean tree. Source read in full: `worker/latest-release.ts:1-112`, `worker/latest-release.test.ts:1-265`, `worker/index.ts`, `src/lib/github-release-schema.ts`, `src/lib/github-releases.ts:83-127`, `src/hooks/use-latest-release.ts`, `src/pages/downloads-page.tsx:30-75`, `wrangler.jsonc`, `tsconfig.worker.json`, `public/_headers`, `docs/runbooks/deploying-the-website.md`, `AGENTS.md`, `.github/instructions/tests.instructions.md`, `.github/instructions/security.instructions.md`, and `docs/plans/234-vault-usable-status.md` as the shape reference. Baseline executed: `npx vitest run worker/latest-release.test.ts` → 12 passed. Cloudflare documentation read rather than assumed: `workers/runtime-apis/cache/` (expired `match` returns `undefined`; `Cache-Control` respected on `put`; `stale-while-revalidate`/`stale-if-error` unsupported; `put` refuses `no-store`; per-colo; custom domains functional), `cache/how-to/configure-cache-status-code/` (120-minute default Edge TTL for `200`), `workers/cache/` and `workers/cache/configuration/` (Workers Cache is opt-in via `cache.enabled`, needs Wrangler ≥ 4.69.0 — repo has 4.113.0 — supports `stale-if-error` with an unbounded default, and bills static-asset requests that are free today). The issue's proposed mechanism is adopted; the correction is that the fallback entry's own `Cache-Control` is what makes it readable after 300s, and the existing test double could not have detected getting that wrong |
