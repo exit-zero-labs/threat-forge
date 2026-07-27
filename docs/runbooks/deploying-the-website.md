@@ -76,6 +76,34 @@ Wrangler serves the production build with the same SPA fallback behavior used at
   and `curl -sI https://threatforge.dev | grep -i set-cookie`. Both must return no match.
 - Load the site in a real browser and confirm the console is clean. A CSP violation here means
   the edge is injecting a script the policy blocks — safe, but visible to every visitor.
+- Check the release lookup, which serves the downloads widget:
+  `curl -sS -D- -o /dev/null https://threatforge.dev/api/latest-release`.
+  - `200` with `cache-control: public, max-age=300` — a fresh answer the Worker just built.
+  - `200` with `cache-control: no-store` — GitHub is refusing us and this colo is serving its
+    last known good copy. The page is intact; the version may be up to a day behind.
+  - `502` — this colo has never stored a good answer, or its copy aged out. This is the only
+    case the downloads page's "Could not load releases" copy should still be reachable through.
+  - `200` with `cf-cache-status: HIT`, a non-zero `age`, and `cache-control: public,
+    max-age=14400` — the zone is serving its own cached copy and has rewritten `Cache-Control`
+    to the 4-hour Browser Cache TTL. **This is the normal steady state**, measured on
+    2026-07-27, not a fault. It does mean the `max-age` a client sees is set by zone
+    configuration rather than by the Worker, so **do not read a stale-vs-fresh conclusion out of
+    the `max-age` number** unless `cf-cache-status` says the response came from the Worker.
+    `no-store` is passed through unrewritten, so the stale and `502` cases above stay legible.
+  - Because the zone rewrites `Cache-Control` on cached hits, `curl` **cannot** detect the one
+    failure this route's two-entry cache design is exposed to: a zone cache key that strips the
+    query string would collapse the 5-minute freshness entry and the 24-hour fallback entry onto
+    one key, letting a day-old release be served as fresh. Confirm in the dashboard instead —
+    Caching → Cache Rules, checking for a custom cache key on `/api/*` — and if one exists, the
+    fallback must move to a distinct path rather than a query variant.
+- Watch how often the fallback is carrying the page: `npx wrangler tail --format pretty` and
+  look for `latest-release: upstream unavailable` with its `reason`. `"upstream-status"` is the
+  shared-egress rate limiting this fallback exists for. `"schema-rejected"` means GitHub's
+  payload contract broke and the widget is only alive because of a stale copy — investigate that
+  one rather than letting it ride out the 24-hour ceiling.
+- Run these against a real deploy, not a preview. Cloudflare guarantees functional cache
+  operations for Workers on custom domains and states that dashboard-editor and Playground
+  previews have none, so a local or preview session is not evidence about production.
 
 ## Roll Back
 
