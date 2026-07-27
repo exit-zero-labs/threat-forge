@@ -68,9 +68,14 @@ Wrangler serves the production build with the same SPA fallback behavior used at
   `curl -sI https://threatforge.dev | grep -i content-security-policy`.
 - Confirm the zone has not started injecting anything the repo cannot see. Cloudflare can add
   an analytics beacon to the served HTML and set cookies without any change here, which would
-  make the privacy page's claims false even though every test still passes. Both must return
-  no match: `curl -s https://threatforge.dev | grep -i cloudflareinsights` and
-  `curl -sI https://threatforge.dev | grep -i set-cookie`.
+  make the privacy page's claims false even though every test still passes. **`curl` alone will
+  not catch this** — Cloudflare's Web Analytics auto-injection is conditional on a browser-like
+  `User-Agent`, so a plain `curl` returns clean HTML while every real visitor gets the script.
+  Send a browser UA:
+  `curl -s https://threatforge.dev -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' | grep -i cloudflareinsights`
+  and `curl -sI https://threatforge.dev | grep -i set-cookie`. Both must return no match.
+- Load the site in a real browser and confirm the console is clean. A CSP violation here means
+  the edge is injecting a script the policy blocks — safe, but visible to every visitor.
 
 ## Roll Back
 
