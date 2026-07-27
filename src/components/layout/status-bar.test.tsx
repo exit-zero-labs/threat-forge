@@ -1,9 +1,11 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DocumentPersistenceState } from "@/lib/persistence/types";
 import { useCanvasStore } from "@/stores/canvas-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
+import { useKeyResidueStore } from "@/stores/key-residue-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { ThreatModel } from "@/types/threat-model";
 import { StatusBar } from "./status-bar";
@@ -224,5 +226,64 @@ describe("StatusBar local persistence indicator", () => {
 		render(<StatusBar />);
 
 		expect(screen.getByTestId("local-persistence-status")).toHaveTextContent("Recovery needed");
+	});
+});
+
+/**
+ * #233: a clear-text API key that survived deletion is readable by anything with access to this
+ * site's storage, and the user may never reopen AI settings to find out. The status bar carries
+ * the standing claim — but only the certain one.
+ */
+describe("StatusBar clear-text API key indicator", () => {
+	beforeEach(() => {
+		useKeyResidueStore.setState({ residue: { anthropic: null, openai: null } });
+		useSettingsStore.setState({ settingsDialogOpen: false, settingsDialogInitialTab: null });
+	});
+
+	it("reports a clear-text key that is known to still be readable", () => {
+		useKeyResidueStore.setState({ residue: { anthropic: "retained", openai: null } });
+
+		render(<StatusBar />);
+
+		expect(screen.getByTestId("clear-text-key-status")).toHaveTextContent("Clear-text API key");
+		// Announced once when it first appears, through an always-mounted live region rather
+		// than one that mounts with the state and may be missed.
+		expect(screen.getByTestId("clear-text-key-alert")).toHaveTextContent(
+			"still readable in this browser",
+		);
+	});
+
+	it("stays silent when the check itself was blocked", () => {
+		useKeyResidueStore.setState({ residue: { anthropic: "unverified", openai: "unverified" } });
+
+		render(<StatusBar />);
+
+		// `unverified` may describe a profile that never had a clear-text slot at all — a
+		// blocked-storage browser answers this way forever. That claim is too uncertain to earn
+		// permanent application chrome, so it stays in the AI settings panel.
+		expect(screen.queryByTestId("clear-text-key-status")).toBeNull();
+		expect(screen.getByTestId("clear-text-key-alert")).toBeEmptyDOMElement();
+	});
+
+	it("shows nothing when no provider has residue", () => {
+		render(<StatusBar />);
+
+		// That the desktop keychain adapter carries no residue check, and so can only ever leave
+		// this store holding `null`, is asserted where it is observable: `app-layout.test.tsx`
+		// proves the launch path never asks on that platform.
+		expect(screen.queryByTestId("clear-text-key-status")).toBeNull();
+		expect(screen.getByTestId("clear-text-key-alert")).toBeEmptyDOMElement();
+	});
+
+	it("routes to the AI settings tab, where the retry and the instructions are", () => {
+		useKeyResidueStore.setState({ residue: { anthropic: null, openai: "retained" } });
+
+		render(<StatusBar />);
+		fireEvent.click(screen.getByTestId("clear-text-key-status"));
+
+		// The indicator states the fact; acting on it needs the panel, so it is a real control
+		// rather than inert text.
+		expect(useSettingsStore.getState().settingsDialogOpen).toBe(true);
+		expect(useSettingsStore.getState().settingsDialogInitialTab).toBe("ai");
 	});
 });

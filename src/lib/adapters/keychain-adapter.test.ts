@@ -63,6 +63,38 @@ describe("the shared keychain interface", () => {
 		expect("getKey" in new TauriKeychainAdapter()).toBe(false);
 	});
 
+	it("does not carry a residue check on the desktop adapter", () => {
+		// The clear-text `localStorage` slot is a browser artefact, and a desktop implementation
+		// returning `null` would report a check it never performed. See `LegacyResidue` for why
+		// `undefined` and `null` are kept as different claims.
+		expect("readLegacyResidue" in new TauriKeychainAdapter()).toBe(false);
+
+		const shared: KeychainAdapter = new TauriKeychainAdapter();
+		expect(shared.readLegacyResidue?.("anthropic")).toBeUndefined();
+	});
+
+	it("makes an unguarded residue call a type error", () => {
+		const shared: KeychainAdapter = new TauriKeychainAdapter();
+
+		// The compile assertion. `tsc --noEmit` fails with "unused '@ts-expect-error'
+		// directive" the moment `readLegacyResidue` stops being optional — which is what would
+		// let a caller assume every platform can answer, and hand the desktop build an
+		// obligation it cannot fulfil honestly.
+		// @ts-expect-error `readLegacyResidue` is optional: this platform may not have a slot.
+		const callWithoutGuarding = (): unknown => shared.readLegacyResidue("anthropic");
+
+		expect(callWithoutGuarding).toThrowError(TypeError);
+	});
+
+	it("answers the residue check through the shared interface in the browser", async () => {
+		localStorage.setItem("tf-api-key-anthropic", "sk-ant-pre-encryption");
+		const shared: KeychainAdapter = new BrowserKeychainAdapter();
+
+		// The optional call is not decoration: where the capability exists it resolves to a
+		// closed union with no cast, no `in` check, and no key material.
+		await expect(shared.readLegacyResidue?.("anthropic")).resolves.toBe("retained");
+	});
+
 	it("still lets the desktop adapter report whether a key exists", () => {
 		const desktop: KeychainAdapter = new TauriKeychainAdapter();
 		expect(desktop.hasKey).toBeTypeOf("function");

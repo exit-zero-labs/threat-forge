@@ -2,9 +2,24 @@ import { sanitizeDisplayText } from "@/lib/document-display-title";
 import type { DocumentPersistenceState, WorkspaceUnavailableReason } from "@/lib/persistence/types";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { useHistoryStore } from "@/stores/history-store";
+import { useKeyResidueStore } from "@/stores/key-residue-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
+
+/**
+ * The clear-text key indicator's detail text (#233).
+ *
+ * Only a `retained` reading reaches this surface. `unverified` means the check itself was
+ * refused, which may describe a profile that never had a clear-text slot at all, and a claim
+ * that uncertain does not earn permanent application chrome — it stays in AI settings.
+ *
+ * It does not promise removal. `retained` means ThreatForge already tried to erase the slot and
+ * the browser refused, so the panel this routes to offers a retry that may fail again and the
+ * site-data remedy — not a button that removes the key.
+ */
+const CLEAR_TEXT_KEY_DETAIL =
+	"An API key saved before ThreatForge encrypted keys is still readable in this browser. Open AI settings to deal with it.";
 
 /**
  * What the local-persistence indicator says. `attention` states are announced to assistive
@@ -96,6 +111,13 @@ export function StatusBar() {
 	const persistenceState = useWorkspaceStore((s) =>
 		activeDocumentId ? s.persistence[activeDocumentId] : undefined,
 	);
+	// True only where a provider's pre-encryption clear-text slot is known to be readable, read
+	// across every provider the store tracks rather than a second list of them. On desktop the
+	// keychain adapter carries no residue check at all, so this is always false.
+	const clearTextKeyRetained = useKeyResidueStore((s) =>
+		Object.values(s.residue).some((residue) => residue === "retained"),
+	);
+	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
 
 	// The file save status and the local persistence status are distinct: one tracks the on-disk
 	// `.thf` file, the other the browser workspace copy.
@@ -154,6 +176,33 @@ export function StatusBar() {
 			    routine "Saving.../Saved locally" transition would talk over the user as they type. */}
 			<span data-testid="local-persistence-alert" role="status" className="sr-only">
 				{localPersistence?.attention ? localPersistence.detail : ""}
+			</span>
+
+			{/* A readable clear-text API key is worth knowing about from anywhere in the app: the
+			    user may have deleted the key, been told once that a copy survived, and never
+			    reopened settings (#233). */}
+			{clearTextKeyRetained && (
+				<>
+					<Separator />
+					<button
+						type="button"
+						data-testid="clear-text-key-status"
+						onClick={() => openSettingsDialogAtTab("ai")}
+						title={CLEAR_TEXT_KEY_DETAIL}
+						className="rounded text-destructive underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive"
+					>
+						Clear-text API key
+					</button>
+				</>
+			)}
+
+			{/* Its live region, mounted whether or not the condition holds, for the same
+			    announce-once reason as the persistence region above. Separate from that one
+			    because the two states are independent: coalescing them would let a save failure
+			    silence a standing claim about a readable credential, or re-announce it on every
+			    persistence transition. */}
+			<span data-testid="clear-text-key-alert" role="status" className="sr-only">
+				{clearTextKeyRetained ? CLEAR_TEXT_KEY_DETAIL : ""}
 			</span>
 
 			{model && displayFilePath && (

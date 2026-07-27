@@ -8,9 +8,11 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { LegacyResidue } from "@/lib/adapters/keychain-adapter";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
 import { type ChatMessage, useChatStore } from "@/stores/chat-store";
+import { useKeyResidueStore } from "@/stores/key-residue-store";
 import type { ThreatModel } from "@/types/threat-model";
 
 const streamConversationMock = vi.hoisted(() => vi.fn());
@@ -21,6 +23,30 @@ vi.mock("@/lib/ai/protocol/client", () => ({
 
 vi.mock("@/lib/adapters/get-chat-transport", () => ({
 	getChatTransport: () => Promise.resolve({ open: vi.fn() }),
+}));
+
+// `checkApiKey` crosses the keychain boundary twice: `hasKey`, which also migrates and erases a
+// pre-#133 clear-text slot, and the residue re-read that follows it. Mocked so both the order of
+// those calls and the slot's fate are observable without IndexedDB.
+let keychainCalls: string[] = [];
+/** The clear-text slot as the real adapter would see it, per provider. */
+let slot: Record<string, LegacyResidue> = { anthropic: null, openai: null };
+/** Whether `hasKey` migrates the slot away, as it does for every upgrading pre-#133 user. */
+let hasKeyMigrates = false;
+vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
+	getKeychainAdapter: async () => ({
+		setKey: async () => undefined,
+		hasKey: async (provider: string) => {
+			keychainCalls.push(`hasKey:${provider}`);
+			if (hasKeyMigrates) slot[provider] = null;
+			return false;
+		},
+		deleteKey: async () => undefined,
+		readLegacyResidue: async (provider: string) => {
+			keychainCalls.push(`residue:${provider}`);
+			return slot[provider] ?? null;
+		},
+	}),
 }));
 
 function emptyModel(): ThreatModel {
@@ -65,6 +91,10 @@ function lastMessage(): ChatMessage {
 beforeEach(() => {
 	vi.clearAllMocks();
 	localStorage.clear();
+	keychainCalls = [];
+	slot = { anthropic: null, openai: null };
+	hasKeyMigrates = false;
+	useKeyResidueStore.setState({ residue: { anthropic: null, openai: null } });
 	seedSession();
 });
 
@@ -258,5 +288,40 @@ describe("chat store persistence", () => {
 			{ role: "user", content: [{ type: "text", text: "remember this" }] },
 			{ role: "assistant", content: [{ type: "text", text: "remembered answer" }] },
 		]);
+	});
+});
+
+/**
+ * #233: `checkApiKey` is the third path that runs the legacy migration, and the only one that
+ * runs outside both the launch effect and the settings panel — `ai-chat-tab.tsx` calls it on
+ * mount. Without a residue re-read here, opening the AI chat tab can erase the clear-text slot
+ * while the status bar keeps claiming one is there for the rest of the session.
+ */
+describe("chat store clear-text key residue", () => {
+	it("re-reads the clear-text slot after the key check that can erase it", async () => {
+		useKeyResidueStore.setState({ residue: { anthropic: "retained", openai: null } });
+		slot = { anthropic: "retained", openai: null };
+		hasKeyMigrates = true;
+
+		await useChatStore.getState().checkApiKey("anthropic");
+
+		expect(useKeyResidueStore.getState().residue.anthropic).toBeNull();
+		// Ordered, not merely present: `hasKey` is what migrates the slot, so a read taken
+		// before it would answer "retained" for storage this same call just cleaned up. Only
+		// the checked provider is re-read — the other's slot was not touched.
+		expect(keychainCalls).toEqual(["hasKey:anthropic", "residue:anthropic"]);
+	});
+
+	it("leaves a standing warning alone when the check did not clear the slot", async () => {
+		// Seeded empty, not `retained`: if the store already held the value the assertion looks
+		// for, it would pass with the refresh deleted. The warning has to arrive from the slot.
+		useKeyResidueStore.setState({ residue: { anthropic: null, openai: null } });
+		slot = { anthropic: "retained", openai: null };
+
+		await useChatStore.getState().checkApiKey("anthropic");
+
+		// The re-read is a re-derivation, not a dismissal: a browser that still refuses the
+		// erase keeps its warning.
+		expect(useKeyResidueStore.getState().residue.anthropic).toBe("retained");
 	});
 });
