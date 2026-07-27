@@ -19,3 +19,6 @@ Review:
 Use `docs/knowledge/file-format.md` and `docs/knowledge/glossary.md` as canonical references.
 Distinguish verified facts from assumptions. Preserve backward compatibility and require a
 migration path for breaking changes.
+
+Open your report with the commit you read, so a finding taken from a stale checkout is
+detectable. You have no shell, so the tree is whatever the orchestrator left there.
