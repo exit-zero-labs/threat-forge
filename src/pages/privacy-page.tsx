@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { PageShell } from "./shared/page-shell";
 
-const LAST_UPDATED = "July 20, 2026";
+const LAST_UPDATED = "July 26, 2026";
 
 export function PrivacyPage() {
 	return (
@@ -36,12 +36,25 @@ export function PrivacyPage() {
 
 					<Section title="Web Application">
 						<p>
-							The web version at threatforge.dev is hosted on Cloudflare Workers. Standard hosting
-							logs (IP addresses, request timestamps) may be collected as part of infrastructure
-							operation. We use Cloudflare Web Analytics, which is privacy-first and cookieless — it
-							does not use cookies, fingerprinting, or cross-site tracking, and does not profile
-							individual users. No cookies are used beyond <code>sessionStorage</code> for caching
-							GitHub API responses on the downloads page.
+							The web version at threatforge.dev runs on Cloudflare Workers. Standard hosting logs —
+							IP addresses, request timestamps — may be collected as the infrastructure operates,
+							and Cloudflare asks your browser to report network errors it runs into while loading
+							the site. Threat Forge itself adds nothing on top of that: no analytics script, no
+							telemetry, no cookies. The content security policy admits no third-party script at
+							all, so there is nothing we could quietly add later without changing the policy in
+							public.
+						</p>
+						<p>
+							The browser does keep a fair amount on your behalf. Your threat models and your
+							encrypted API keys live in IndexedDB; your settings, theme, panel layout and AI chat
+							history live in <code>localStorage</code>; the downloads page caches its release
+							lookup in <code>sessionStorage</code> for five minutes. None of it is sent to Exit
+							Zero Labs. The only thing that leaves your browser is an AI request you initiate, and
+							that goes to your provider, as described above.
+						</p>
+						<p>
+							Clearing your browser data for this site deletes all of it, including your threat
+							models.
 						</p>
 					</Section>
 
@@ -59,14 +72,11 @@ export function PrivacyPage() {
 								<strong>GitHub</strong> — source code hosting, releases, issue tracking
 							</li>
 							<li>
-								<strong>Cloudflare</strong> — web application hosting and privacy-first, cookieless
-								web analytics
+								<strong>Cloudflare</strong> — web application hosting, and the operational logging
+								and network-error reporting that comes with it
 							</li>
 						</ul>
-						<p>
-							We do not use advertising networks, tracking pixels, or analytics services that
-							profile users.
-						</p>
+						<p>We do not use advertising networks, tracking pixels, or product analytics.</p>
 					</Section>
 
 					<Section title="Contact">
