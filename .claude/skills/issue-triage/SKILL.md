@@ -11,12 +11,17 @@ Triage one issue. Do not plan M/L work or edit production code.
 1. Read `AGENTS.md`, the full issue/comments, related issues/PRs, roadmap context, and relevant
    repository evidence.
 2. If the report is a vulnerability, stop public discussion and follow `SECURITY.md`.
-3. Discover current Project 2 field and option IDs with `gh project field-list`; never rely on
-   saved IDs.
+3. Discover the live IDs before writing. `Status` is a project field, so `gh project field-list`
+   finds it. `Priority`, `Effort`, and `Type` are **native org issue fields and do not appear
+   there at all** — enumerate them from `organization.issueFields` and `organization.issueTypes`
+   on the GraphQL API, and write them with `setIssueFieldValue` / `updateIssueIssueType`. Reading
+   them through the project API returns nothing and raises no error, which reads as "unset" on a
+   board that is fully populated.
 4. Decide and explain:
    - native issue type: `Task`, `Bug`, or `Feature`
    - relevant domain labels
-   - `Priority`: P0/P1/P2
+   - `Priority`: `Urgent`/`High`/`Medium`/`Low`, answering how soon *within* the milestone.
+     `Urgent` and `High` require a comment naming what specifically goes wrong if this waits.
    - `Effort`: High/Medium/Low, with the matching `model/opus|sonnet|haiku` label
    - exactly one autonomy label: `AUTO` or `HITL`
    - parent, dependencies, and acceptance criteria
