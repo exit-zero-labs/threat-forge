@@ -64,7 +64,7 @@ export function SupportPage() {
 									href={`${GITHUB_URL}/issues`}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="mt-3 inline-block text-sm text-tf-signal hover:underline"
+									className="mt-3 inline-block text-sm text-tf-signal-ink hover:underline"
 								>
 									Open an issue on GitHub
 								</a>
@@ -76,7 +76,7 @@ export function SupportPage() {
 								</p>
 								<a
 									href="mailto:admin@exitzerolabs.com"
-									className="mt-3 inline-block text-sm text-tf-signal hover:underline"
+									className="mt-3 inline-block text-sm text-tf-signal-ink hover:underline"
 								>
 									admin@exitzerolabs.com
 								</a>
@@ -207,7 +207,7 @@ function FirstRunSection() {
 					href={`${GITHUB_URL}/releases`}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="text-tf-signal hover:underline"
+					className="text-tf-signal-ink underline"
 				>
 					View releases on GitHub
 				</a>
@@ -225,7 +225,7 @@ function renderAnswer(answer: string): ReactNode {
 					href={`${GITHUB_URL}/blob/main/SECURITY.md`}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="text-tf-signal hover:underline"
+					className="text-tf-signal-ink underline"
 				>
 					Security Policy
 				</a>{" "}
@@ -241,7 +241,7 @@ function renderAnswer(answer: string): ReactNode {
 					href={GITHUB_URL}
 					target="_blank"
 					rel="noopener noreferrer"
-					className="text-tf-signal hover:underline"
+					className="text-tf-signal-ink underline"
 				>
 					GitHub repository
 				</a>{" "}

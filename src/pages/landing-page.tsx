@@ -84,7 +84,7 @@ function HeroSection() {
 				</div>
 				<h1 className="text-3xl font-bold tracking-tight text-balance text-foreground sm:text-4xl lg:text-5xl">
 					Threat modeling for people who <br className="hidden sm:inline" />
-					<span className="text-tf-signal">hate threat modeling tools</span>
+					<span className="text-tf-signal-ink">hate threat modeling tools</span>
 				</h1>
 				<p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
 					You know the drill. Install something Windows-only, drag boxes around for an afternoon,
@@ -126,7 +126,7 @@ function FeaturesSection() {
 				<div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
 					{FEATURES.map((feature) => (
 						<div key={feature.title} className="rounded-lg border border-border/50 bg-card p-6">
-							<feature.icon className="h-8 w-8 text-tf-signal" />
+							<feature.icon className="h-8 w-8 text-tf-signal-ink" />
 							<h3 className="mt-4 text-sm font-semibold text-foreground">{feature.title}</h3>
 							<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
 								{feature.description}

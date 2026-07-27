@@ -27,7 +27,7 @@ export function PageFooter({ onOpenSettings }: PageFooterProps) {
 							</a>
 							.
 						</p>
-						<p className="mt-1 text-xs text-muted-foreground/60">v{__APP_VERSION__ ?? "dev"}</p>
+						<p className="mt-1 text-xs text-muted-foreground">v{__APP_VERSION__ ?? "dev"}</p>
 					</div>
 
 					{/* Product */}
@@ -126,14 +126,14 @@ export function PageFooter({ onOpenSettings }: PageFooterProps) {
 					</div>
 				</div>
 
-				<div className="mt-10 flex items-center justify-center gap-4 border-t border-border/50 pt-6 text-xs text-muted-foreground/60">
+				<div className="mt-10 flex items-center justify-center gap-4 border-t border-border/50 pt-6 text-xs text-muted-foreground">
 					<span>
 						&copy; {new Date().getFullYear()}{" "}
 						<a
 							href="https://www.exitzerolabs.com"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="transition-colors hover:text-muted-foreground"
+							className="transition-colors hover:text-foreground"
 						>
 							Exit Zero Labs LLC
 						</a>

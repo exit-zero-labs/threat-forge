@@ -53,6 +53,19 @@
 	--color-tf-canvas: #fafaf8;
 	--color-tf-mist: #94a3b8;
 
+	/*
+	 * Signal drawn *on* the page background, rather than being the surface itself.
+	 *
+	 * The brand green is tuned for dark surfaces, where it reaches 10.2:1; on white it is 1.87:1
+	 * and fails WCAG 1.4.3 outright (#292). Where the green is the surface — button fills, badge
+	 * backgrounds, borders, rings — it keeps `--color-tf-signal`, because contrast there is a
+	 * question about whatever sits on top of it. Where the green is the mark being read against
+	 * the page, it uses this token, which `html.light` darkens: links, the landing headline
+	 * accent, and the marketing feature icons, which are read against the same background as the
+	 * text and would otherwise be the one washed-out element on a legible page.
+	 */
+	--color-tf-signal-ink: #00d97e;
+
 	/* Sidebar — for shadcn sidebar component */
 	--color-sidebar: oklch(0.145 0 0);
 	--color-sidebar-foreground: oklch(0.985 0 0);
@@ -109,6 +122,9 @@ html.light {
 	--color-sidebar-accent-foreground: oklch(0.205 0 0);
 	--color-sidebar-border: oklch(0.922 0 0);
 	--color-sidebar-ring: oklch(0.708 0 0);
+
+	/* 5.91:1 on white. The brand green at this lightness, not a different hue. */
+	--color-tf-signal-ink: #00734a;
 }
 
 /*
