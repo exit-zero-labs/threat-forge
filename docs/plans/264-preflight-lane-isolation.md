@@ -100,8 +100,8 @@ passes.
   three prose variations of the same rules — now byte-identical, with one lane-specific line
   each, so drift is greppable. The skill no longer restates them at all.
 - 2026-07-27 — preflight ran two read-only lanes in parallel under the new rules; both attested
-  the same clean tree at `2813aaf`. They converged on two defects and the reviewer found two
-  more, all four of which were the change failing its own standard. The plan said option (1) was
+  the same clean tree at `2813aaf`. Five defects between them — two both lanes found, three only
+  the reviewer did — and every one was the change failing its own standard. The plan said option (1) was
   "rejected on measured cost" and then said nothing had been measured. The skill rejected any
   report without a tree attestation while `threat-model-expert`, which has no shell, was told to
   produce one — an infinite reject-and-rerun loop for every `.thf` review. The lane files said
@@ -116,3 +116,19 @@ passes.
   lane's. The claim that the three hygiene blocks were byte-identical was also false as written:
   each ended with a different lane-specific sentence. That sentence moved above the heading, so
   the sections now really are identical to end of file, and the claim is checkable.
+- 2026-07-27 — round two, both lanes read-only and parallel, both attesting `db141be` clean with
+  the same empty-diff hash. Two findings, both real, both about the fix rather than the problem.
+  The rule serialized *lanes* and forgot that **the orchestrator is a writer too**: nothing
+  stopped it starting on an early report while another lane was still reading, and an edit made
+  and reverted inside a lane's window is invisible to both of that lane's snapshots. That is the
+  #233 shape with the roles swapped, and it was still wide open. Second, recovery said "reset to
+  the known commit", which leaves untracked scratch behind to fail the next lane's clean-tree
+  precondition, and applied to read-only lanes too — where the tree may hold uncommitted work
+  that was never the lane's, and resetting destroys it. Recovery is now scoped to the case whose
+  entry state is known, and a read-only lane that dirtied the tree is something to stop and look
+  at rather than reset. The clean-tree precondition also implied "commit first", which needs an
+  authorization preflight may not hold: when it cannot commit, every lane is read-only. That
+  buys the isolation without the authority. Two smaller corrections: the recognition-log entry
+  still said "every lane" must report `git status --porcelain` after the no-shell exemption had
+  been written everywhere else, and this log undercounted round one as four defects when it was
+  five.

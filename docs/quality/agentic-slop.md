@@ -121,6 +121,6 @@ a report that omits that state cannot be checked.** The dangerous direction is n
 makes a suite pass for a lane that then clears the change.
 
 **Fix:** serialize any lane that mutates the working tree, keep read-only lanes parallel, and
-require every lane to open its report with the commit and `git status --porcelain` it observed
-and to confirm — not assume — that it restored what it changed. See #264 and
-`.claude/skills/pr-preflight/SKILL.md`.
+require every lane that has a shell to open its report with the tree state it observed and to
+confirm — not assume — that it restored what it changed. A lane with no shell cannot read that
+state and is given its commit instead. See #264 and `.claude/skills/pr-preflight/SKILL.md`.

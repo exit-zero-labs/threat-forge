@@ -15,6 +15,9 @@ moving its issue to `In progress`.
    - **a lane you invoke `MUTATING` runs alone.** Nothing else runs while it holds the tree,
      including you, and it may only be dispatched against a clean tree at a known commit
    - a shell lane invoked without a stated mode is read-only
+   - **you are a writer too.** Do not start fixing an early report while another lane, or a
+     command it launched, is still reading. Wait for the cohort. An edit you make and revert
+     inside a lane's window is invisible to both of its snapshots and is exactly the #233 shape
 3. Run in independent contexts:
    - always: `pr-reviewer`
    - always: `slop-auditor`
@@ -54,8 +57,16 @@ purpose, so drift between them is greppable. Enforcing them is your job, not the
   what makes its restoration checkable: `git status --porcelain` reports paths and status, not
   contents, so it can only confirm a restore when the state it is confirming a return to is
   *empty*. On a tree that was already dirty it cannot tell a restored file from a differently
-  broken one — and restoring blind would destroy work that was never yours. Commit first.
+  broken one. Committing first is the way there, and committing needs authorization you may not
+  have — **when you cannot commit, every lane is read-only.** That costs mutation proofs for one
+  round. It costs nothing you can lose.
 - When a lane's exit state differs from its entry state, or its report contradicts the tree it
-  claims to have observed, reset to the known commit and re-run it. Discard what it got from
-  running something; what it found by reading the diff still stands. Do not reconcile a
-  contradicted result by reasoning about which half was true.
+  claims to have observed, discard what it got from running something; what it found by reading
+  the diff still stands. Do not reconcile a contradicted result by reasoning about which half
+  was true.
+- Recover only from a state you know how to recover from. A `MUTATING` lane entered on a clean
+  commit, so `git checkout -- . && git clean -fd` returns it there — including the untracked
+  scratch a bare reset would leave behind to fail the next lane's precondition. Confirm
+  `git status --porcelain` is empty before re-dispatching. A read-only lane that dirtied the
+  tree anyway is a different problem: it may have written over uncommitted work that was never
+  yours, so stop and look rather than resetting.
