@@ -80,6 +80,6 @@ before issue #254, so they are not hypothetical.
 - Find the concession. If there is none, you have written a brochure.
 - Check every claim is still literally true. Voice work is where overclaims get introduced,
   because confident phrasing is more fun to write — the CTA once said "no data leaves your
-  machine", which BYOK provider calls and web analytics both contradict.
+  machine", which BYOK provider calls contradict outright and hosting logs qualify.
 - Screenshot the result at 1280px and at mobile width. Headlines that read well in a source
   file orphan words on screen.

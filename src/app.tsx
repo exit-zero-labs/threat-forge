@@ -1,6 +1,5 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { CloudflareAnalytics } from "./components/cloudflare-analytics";
 import { isTauri } from "./lib/platform";
 
 const AppLayout = lazy(() =>
@@ -24,7 +23,6 @@ const SupportPage = lazy(() =>
 export function App() {
 	return (
 		<BrowserRouter>
-			{!isTauri() && <CloudflareAnalytics />}
 			<Suspense fallback={<LoadingFallback />}>
 				<Routes>
 					<Route path="/" element={isTauri() ? <Navigate to="/app" replace /> : <LandingPage />} />

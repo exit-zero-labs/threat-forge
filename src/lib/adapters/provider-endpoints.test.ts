@@ -25,15 +25,6 @@ import { PROVIDER_ENDPOINTS, providerEndpoint } from "./provider-endpoints";
 /** `pub const ANTHROPIC_API_URL: &str = "https://…";` */
 const RUST_ENDPOINT_CONSTANT = /pub const (\w+_API_URL): &str = "([^"]+)";/g;
 
-/**
- * Origins the web CSP (`public/_headers`) allows for connect-src that carry no
- * key — currently only the write-only analytics beacon — so they are excluded
- * when the web `connect-src` is compared against the key-bearing endpoint table.
- * See the rationale in `public/_headers`. Adding an origin here is a security
- * change: it asserts the origin is not a usable exfiltration drop for the key.
- */
-const WEB_NON_KEY_ORIGINS = new Set(["https://cloudflareinsights.com"]);
-
 const tauriConfigSchema = z.object({
 	app: z.object({ security: z.object({ csp: z.string() }) }),
 });
@@ -61,11 +52,29 @@ function tauriCspConnectSrcOrigins(): string[] {
 	return connectSrcOrigins(config.app.security.csp);
 }
 
-/** The single CSP the deployed web build serves for every route via `_headers`. */
+/**
+ * The single CSP the deployed web build serves for every route via `_headers`.
+ *
+ * Asserts the file declares exactly one policy and that it sits under the `/*`
+ * catch-all. Cloudflare applies the most specific matching rule, so a second,
+ * looser block for a narrower path (`/downloads`, say) would override this one
+ * for the route that actually performs the release-lookup fetch while every
+ * assertion below still read the strict `/*` policy and passed.
+ */
 function webCsp(): string {
-	const match = webHeadersSource.match(/Content-Security-Policy:\s*([^\n]+)/);
-	expect(match, "public/_headers must declare a Content-Security-Policy").not.toBeNull();
-	return match?.[1]?.trim() ?? "";
+	const matches = [...webHeadersSource.matchAll(/Content-Security-Policy:\s*([^\n]+)/g)];
+	expect(matches, "public/_headers must declare exactly one Content-Security-Policy").toHaveLength(
+		1,
+	);
+	const policy = matches[0];
+	expect(policy, "public/_headers must declare a Content-Security-Policy").toBeDefined();
+
+	const pathRules = webHeadersSource
+		.split("\n")
+		.filter((line) => line.length > 0 && !line.startsWith("#") && !/^\s/.test(line));
+	expect(pathRules, "the CSP must be served under the /* catch-all only").toEqual(["/*"]);
+
+	return policy?.[1]?.trim() ?? "";
 }
 
 const tableUrls = Object.values(PROVIDER_ENDPOINTS).map((endpoint) => endpoint.url);
@@ -104,20 +113,45 @@ describe("provider endpoint drift", () => {
 		}
 	});
 
-	it("allows the web build no key-bearing connect origin beyond the endpoint table", () => {
-		// The deployed web build additionally allows a small set of no-key service
-		// origins (analytics, GitHub release lookup); every other https origin the
-		// web CSP permits must be a table endpoint, so a stray host added to either
-		// side fails here.
+	it("allows the web build no https connect origin beyond the endpoint table", () => {
+		// Every https origin the web CSP permits must be a key-bearing provider
+		// endpoint. There is no exempt set: #232 removed the last non-key origin
+		// (the analytics beacon), so a stray host added to either side fails here
+		// rather than being waved through as "harmless".
 		const tableOrigins = new Set(tableUrls.map((url) => new URL(url).origin));
-		const keyBearing = connectSrcOrigins(webCsp()).filter(
-			(origin) => !WEB_NON_KEY_ORIGINS.has(origin),
-		);
-		expect([...keyBearing].sort()).toEqual([...tableOrigins].sort());
+		expect([...connectSrcOrigins(webCsp())].sort()).toEqual([...tableOrigins].sort());
+	});
+
+	it("admits no third-party script origin into the web build", () => {
+		// script-src is the primary defense for the browser BYOK key, not a
+		// secondary one: script on this origin reaches the same wrapping key and
+		// decrypts exactly as the app does. Any origin beyond 'self' — and any
+		// 'unsafe-inline' or 'unsafe-eval' — is therefore trusted with the key.
+		//
+		// Matched across the whole script family rather than `script-src` alone.
+		// CSP3 lets `script-src-elem` override `script-src` for <script> elements,
+		// so pinning only `script-src` would let a third-party origin back in via
+		// `script-src-elem` with this test still green — the failure mode where a
+		// passing security guard vouches for the hole it was written to close.
+		const scriptDirectives = webCsp()
+			.split(";")
+			.map((directive) => directive.trim())
+			.filter((directive) => /^script-src(-elem|-attr)?\s/.test(directive));
+		expect(
+			scriptDirectives,
+			"the web CSP must set `script-src 'self'` and no -elem/-attr override",
+		).toEqual(["script-src 'self'"]);
 	});
 
 	it("fails the web build's non-connect vectors closed", () => {
-		const csp = webCsp();
+		// Exact directive equality, not substring: `default-src 'self'` is a
+		// substring of `default-src 'self' https://evil.example`, so `toContain`
+		// would pass against a widened fallback.
+		const directives = new Set(
+			webCsp()
+				.split(";")
+				.map((directive) => directive.trim()),
+		);
 		for (const directive of [
 			"default-src 'self'",
 			"object-src 'none'",
@@ -125,7 +159,9 @@ describe("provider endpoint drift", () => {
 			"form-action 'self'",
 			"frame-ancestors 'none'",
 		]) {
-			expect(csp, `the web CSP must set ${directive}`).toContain(directive);
+			expect([...directives], `the web CSP must set exactly ${directive}`).toContainEqual(
+				directive,
+			);
 		}
 	});
 

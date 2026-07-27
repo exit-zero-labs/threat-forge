@@ -22,12 +22,7 @@ Cloudflare is the origin. Do not add another hosting provider in front of the Wo
 
 ## Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `VITE_CF_BEACON_TOKEN` | Optional Cloudflare Web Analytics site token. Web-only; the desktop build never reads it. |
-
-Set the optional value in the shell or deployment environment before the build. See
-`.env.example` for local setup. It is a public site token, not an AI provider credential.
+None. The web build reads no build-time environment variables.
 
 ## Deploy
 
@@ -69,7 +64,13 @@ Wrangler serves the production build with the same SPA fallback behavior used at
   `/privacy`, `/terms`, and `/support`; deep links must resolve.
 - Run `curl -I https://threatforge.dev` and `curl -I https://www.threatforge.dev`; responses
   must identify Cloudflare as the serving edge.
-- Confirm analytics traffic appears under **Web Analytics** when the beacon token is set.
+- Confirm the served CSP still contains `script-src 'self'` with no third-party origin:
+  `curl -sI https://threatforge.dev | grep -i content-security-policy`.
+- Confirm the zone has not started injecting anything the repo cannot see. Cloudflare can add
+  an analytics beacon to the served HTML and set cookies without any change here, which would
+  make the privacy page's claims false even though every test still passes. Both must return
+  no match: `curl -s https://threatforge.dev | grep -i cloudflareinsights` and
+  `curl -sI https://threatforge.dev | grep -i set-cookie`.
 
 ## Roll Back
 
