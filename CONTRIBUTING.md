@@ -34,9 +34,8 @@ execution tracker.
 There are four states and no `In review`: for a solo studio there is nobody to hand to, so an
 issue stays `In progress` until it merges.
 
-Every non-trivial issue receives an `Urgent`/`High`/`Medium`/`Low` `Priority`, a
-`High`/`Medium`/`Low` `Effort`, a `Task`/`Bug`/`Feature` `Type`, and exactly one
-autonomy label:
+Every non-trivial issue receives a `High`/`Medium`/`Low` `Priority`, a `High`/`Medium`/`Low`
+`Effort`, a `Task`/`Bug`/`Feature` `Type`, and exactly one autonomy label:
 
 - `AUTO` — an agent can reach a verification-complete PR without earlier human action
 - `HITL` — a secret, account, provisioning step, or unresolved decision is needed

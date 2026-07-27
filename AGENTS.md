@@ -86,11 +86,15 @@ sees an empty board and reports it as missing metadata. Read and write them thro
 `setIssueFieldValue` on the GraphQL API instead, and enumerate the option IDs from
 `organization.issueFields`.
 
-`Priority` is `Urgent` → `High` → `Medium` → `Low`, and answers *how soon* within the current
-milestone. It never means how big, and it never overrides the milestone. Every `Urgent` or `High`
-issue carries a comment naming the cost of delay; a priority with no stated reason is
-indistinguishable from one set by whoever filed it last. If more than about a fifth of open issues
-sit in the top two, the field has stopped routing anything.
+`Priority` is `High` → `Medium` → `Low`, and answers *how soon* within the current milestone. It
+never means how big, and it never overrides the milestone. Every `High` issue carries a comment
+naming the cost of delay; a priority with no stated reason is indistinguishable from one set by
+whoever filed it last. If more than about a fifth of open issues are `High`, the field has
+stopped routing anything.
+
+GitHub's field carries an `Urgent` option that is **never assigned** — `High` is the ceiling.
+That is the distribution test one level up: a fourth level above `High` only becomes the new
+`High`, and everything beneath it stops being read.
 
 `Effort` is the reasoning class the work needs — not how long it takes:
 

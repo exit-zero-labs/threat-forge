@@ -20,8 +20,9 @@ Triage one issue. Do not plan `Medium` or `High` work, and do not edit productio
 4. Decide and explain:
    - native issue type: `Task`, `Bug`, or `Feature`
    - relevant domain labels
-   - `Priority`: `Urgent`/`High`/`Medium`/`Low`, answering how soon *within* the milestone.
-     `Urgent` and `High` require a comment naming what specifically goes wrong if this waits.
+   - `Priority`: `High`/`Medium`/`Low`, answering how soon *within* the milestone.
+     `High` requires a comment naming what specifically goes wrong if this waits. The field's
+     `Urgent` option is never assigned; `High` is the ceiling.
    - `Effort`: the reasoning class the work needs, not how long it takes — `High`/`Medium`/`Low`
      with the matching `model/opus|sonnet|haiku` label. It is a floor: cryptography, the IPC
      boundary, the `.thf` schema, and trust boundaries are `High` however small the diff looks.

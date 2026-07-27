@@ -19,7 +19,8 @@ Reject candidates with:
 Rank remaining work by:
 
 1. active roadmap/parent initiative
-2. `Urgent`, then `High`, then `Medium`, then `Low`
+2. `High`, then `Medium`, then `Low`; a stray `Urgent` ranks with `High` and is flagged in the
+   recommendation
 3. dependency leverage and unblock value
 4. lower `Effort`
 5. oldest settled Ready item
