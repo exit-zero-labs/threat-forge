@@ -42,12 +42,6 @@ const FALLBACK_CACHE_QUERY = "fallback=last-known-good";
 /**
  * The one key space this route caches in.
  *
- * Every incoming request is normalized to this exact origin, so the path, query,
- * scheme, host, and port a caller supplies never reach the key. That is what stops
- * a client from bypassing the five-minute cache — and, through it, GitHub's
- * unauthenticated per-IP rate limit, which is the constraint this whole route
- * exists to survive.
- *
  * The authority half is load-bearing, not tidiness. Cloudflare answers this zone on
  * `www.` as well as the apex (`wrangler.jsonc` binds both) and on a set of alternate
  * proxy ports — `https://threatforge.dev:8443/api/latest-release` and `:2053` both
@@ -57,7 +51,7 @@ const FALLBACK_CACHE_QUERY = "fallback=last-known-good";
  * order of magnitude against a 60/hour budget, keep the colo permanently refused,
  * and fragment the fallback across namespaces so it could not carry the page either.
  */
-const CACHE_KEY_ORIGIN = "https://threatforge.dev";
+export const CACHE_KEY_ORIGIN = "https://threatforge.dev";
 
 /** GitHub rejects unauthenticated API requests that omit a User-Agent. */
 const UPSTREAM_HEADERS: HeadersInit = {
@@ -97,6 +91,7 @@ function errorResponse(status: number): Response {
 /** Why a lookup could not produce a validated release. Fixed tokens, never free text. */
 type UnavailableReason =
 	| "fetch-failed"
+	| "upstream-timeout"
 	| "upstream-status"
 	| "invalid-json"
 	| "schema-rejected"
@@ -124,12 +119,43 @@ function logUnavailable(reason: UnavailableReason, status?: number): void {
  * How long to wait for GitHub before treating the lookup as failed.
  *
  * Every other failure this route handles is a prompt refusal. A hung or very slow
- * upstream is the one that hurts most: without a bound the request waits past the
- * edge timeout, the visitor gets a 524, and a perfectly good last-known-good copy
- * sits in this colo's cache unread. Aborting rejects the fetch, which lands in the
- * same `catch` as any other network failure and falls through to the fallback.
+ * upstream is the one that hurts most: without a bound the request runs past
+ * Cloudflare's client-facing timeout and errors, while a perfectly good last-known-good
+ * copy sits in this colo's cache unread. Aborting rejects the fetch, which falls
+ * through to the fallback like any other refusal.
+ *
+ * The cost is that a healthy-but-slow GitHub now yields a stale serve where it
+ * previously yielded a fresh one. At five seconds that trade is one-sided: a visitor
+ * waiting longer than that has already decided the page is broken.
+ *
+ * Five seconds is roughly twenty times inside Cloudflare's 100-second client-facing
+ * timeout — the ceiling this exists to stay under — and comfortably above GitHub's
+ * normal latency for this endpoint. Aborting a slow-but-alive GitHub costs a stale
+ * serve, never a 502, because the next request retries.
  */
 const UPSTREAM_TIMEOUT_MS = 5_000;
+
+/**
+ * Did this fail because our own clock ran out, rather than because GitHub said
+ * something we could not use?
+ *
+ * The signal covers the whole exchange, so it can fire before the headers arrive or
+ * while the body is still streaming. Those land in different `catch` blocks, and
+ * without this the second one is logged as `invalid-json` — which tells an operator
+ * that GitHub's payload contract broke, the one reason token the runbook says to
+ * drop everything and investigate. Same behaviour either way; the point is that the
+ * log says what actually happened.
+ *
+ * Recognised by `name` rather than by `instanceof`, because `AbortSignal.timeout`
+ * rejects with a `DOMException` and `DOMException instanceof Error` is not reliably
+ * true across runtimes — it is false under jsdom, where these tests run. `name` is
+ * the part the specification pins.
+ */
+function isUpstreamTimeout(error: unknown): boolean {
+	return (
+		typeof error === "object" && error !== null && "name" in error && error.name === "TimeoutError"
+	);
+}
 
 /**
  * Ask GitHub for the latest release and return it only if it validates. Every way
@@ -143,8 +169,8 @@ async function fetchUpstreamRelease(): Promise<GithubRelease | null> {
 			headers: UPSTREAM_HEADERS,
 			signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
 		});
-	} catch {
-		logUnavailable("fetch-failed");
+	} catch (error) {
+		logUnavailable(isUpstreamTimeout(error) ? "upstream-timeout" : "fetch-failed");
 		return null;
 	}
 
@@ -156,8 +182,8 @@ async function fetchUpstreamRelease(): Promise<GithubRelease | null> {
 	let raw: unknown;
 	try {
 		raw = await upstream.json();
-	} catch {
-		logUnavailable("invalid-json");
+	} catch (error) {
+		logUnavailable(isUpstreamTimeout(error) ? "upstream-timeout" : "invalid-json");
 		return null;
 	}
 

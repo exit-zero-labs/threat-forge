@@ -390,6 +390,44 @@ describe("handleLatestRelease", () => {
 		expect(cache.put).not.toHaveBeenCalled();
 	});
 
+	it("says the clock ran out, not that GitHub's payload broke", async () => {
+		// The signal covers the whole exchange, so it can fire before the headers arrive or
+		// while the body is still streaming. Reported as `invalid-json`, the second case sends
+		// an operator after a broken payload contract — the one reason the runbook says to
+		// drop everything and investigate.
+		const timeout = new DOMException("signal timed out", "TimeoutError");
+		const cases = [
+			{ name: "before the headers arrive", body: Promise.reject(timeout) },
+			{
+				name: "while the body is still streaming",
+				body: Promise.resolve(
+					new Response(
+						new ReadableStream({
+							start(controller) {
+								controller.error(timeout);
+							},
+						}),
+						{ status: 200 },
+					),
+				),
+			},
+		];
+
+		for (const { name, body } of cases) {
+			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(body);
+			const ctx = createCtx();
+
+			await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(warnSpy, name).toHaveBeenCalledWith(expect.any(String), {
+				reason: "upstream-timeout",
+			});
+			vi.restoreAllMocks();
+		}
+	});
+
 	it("records why a lookup failed without logging the upstream body", async () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			new Response("rate limited: token abc", { status: 403 }),
