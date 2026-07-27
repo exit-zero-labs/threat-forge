@@ -23,6 +23,8 @@ interface UpdateState {
 	dismissed: boolean;
 	/** Error message from a failed install attempt */
 	installError: string | null;
+	/** Error message from the last update check, cleared once one succeeds */
+	checkError: string | null;
 
 	// Actions
 	checkForUpdate: () => Promise<void>;
@@ -44,6 +46,7 @@ export const useUpdateStore = create<UpdateState>()(
 			skippedVersion: null,
 			dismissed: false,
 			installError: null,
+			checkError: null,
 
 			checkForUpdate: async () => {
 				if (!isTauri() || get().isChecking) return;
@@ -56,12 +59,15 @@ export const useUpdateStore = create<UpdateState>()(
 						updateAvailable: info,
 						lastCheckTime: Date.now(),
 						dismissed: false,
+						checkError: null,
 					});
 				} catch (err) {
-					// Update check may fail if updater is not configured or network is down.
-					// Still record the check time to avoid retrying too frequently.
-					console.warn("Update check failed:", err);
-					set({ lastCheckTime: Date.now() });
+					// A failed check is recorded as one, not passed off as a check that found
+					// nothing. The app cannot install an update until releases are signed, so this
+					// is the expected path today and the user is entitled to know it (#259).
+					// The timestamp is still written, because it throttles the retry.
+					const message = err instanceof Error ? err.message : String(err);
+					set({ lastCheckTime: Date.now(), checkError: message });
 				} finally {
 					set({ isChecking: false });
 				}
@@ -89,9 +95,14 @@ export const useUpdateStore = create<UpdateState>()(
 		}),
 		{
 			name: "threatforge-updates",
+			// `checkError` travels with the timestamp it describes. Persisting one without the
+			// other is what made the old bug survive a restart: `lastCheckTime` came back, the
+			// error did not, and the next launch skipped its re-check because the stamp looked
+			// recent — so Settings showed a clean "Last checked" for a check that had failed.
 			partialize: (state) => ({
 				lastCheckTime: state.lastCheckTime,
 				skippedVersion: state.skippedVersion,
+				checkError: state.checkError,
 			}),
 		},
 	),

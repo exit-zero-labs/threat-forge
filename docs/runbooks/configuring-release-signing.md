@@ -32,6 +32,11 @@ Signing is complete only when all of the following are true:
 - Verification output, checksums, updater manifests, and release workflow provenance are retained
   with the draft release.
 - No long-lived Azure client secret is required by GitHub Actions.
+- The privacy page and the Settings updates section no longer say automatic updates are switched
+  off. Both currently state that they are, and `privacy-page.test.tsx` only catches the half of
+  that drift visible in `tauri.conf.json` — it cannot see a published `latest.json`, so shipping
+  one while the copy still says the check fails would leave both surfaces lying with a green
+  suite. See #259.
 - Provider credential rotation, failed notarization, compromised-key response, and release
   rollback procedures have been exercised or reviewed by an owner.
 
