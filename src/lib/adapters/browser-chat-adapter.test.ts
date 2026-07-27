@@ -19,6 +19,7 @@ import { BrowserChatTransport } from "./browser-chat-adapter";
 import { KEY_VAULT_DB_NAME } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import type { ProviderStreamRequest, TransportCallbacks } from "./chat-adapter";
+import { CLEARING_SITE_DATA_COST } from "./keychain-adapter";
 import { PROVIDER_ENDPOINTS } from "./provider-endpoints";
 
 const ANTHROPIC_KEY = "sk-ant-test-browser-key";
@@ -290,7 +291,12 @@ describe("BrowserChatTransport request building", () => {
 		await expect(
 			new BrowserChatTransport().open(anthropicRequest, recordingCallbacks()),
 		).rejects.toMatchObject({
-			error: { code: "no_api_key", message: expect.stringContaining("browser data") },
+			// Matching the cost clause, not "browser data": the pre-fix message contained that
+			// substring too, so the old assertion could not fail for the reason it existed.
+			error: {
+				code: "no_api_key",
+				message: expect.stringContaining(CLEARING_SITE_DATA_COST),
+			},
 		});
 		expect(fetch).not.toHaveBeenCalled();
 	});

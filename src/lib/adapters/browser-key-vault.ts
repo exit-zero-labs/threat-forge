@@ -28,7 +28,7 @@
  * key storage never share a namespace; see `src/lib/persistence/no-key-leakage.test.ts`.
  */
 
-import type { LEGACY_RETAINED } from "./keychain-adapter";
+import { CLEARING_SITE_DATA_COST, type LEGACY_RETAINED } from "./keychain-adapter";
 
 /** Key-vault database name. Disjoint from `WORKSPACE_STORAGE_NAMESPACE`. */
 export const KEY_VAULT_DB_NAME = "threatforge-keychain";
@@ -181,8 +181,7 @@ function corruptRecord(record: SecretRecord | null): KeyVaultError {
 const UNAVAILABLE_MESSAGE =
 	"Encrypted key storage is unavailable in this browser. Check that this site is allowed to store data, then try again.";
 const CORRUPT_MESSAGE = "The stored API key could not be read and needs to be entered again.";
-const VAULT_CORRUPT_MESSAGE =
-	"Encrypted key storage in this browser is damaged. Clear this site's browser data, then add your API key again.";
+const VAULT_CORRUPT_MESSAGE = `Encrypted key storage in this browser is damaged. Clear this site's browser data, then add your API key again. ${CLEARING_SITE_DATA_COST}`;
 
 function unavailable(): KeyVaultError {
 	return new KeyVaultError("unavailable", UNAVAILABLE_MESSAGE);
