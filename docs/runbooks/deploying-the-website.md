@@ -85,13 +85,12 @@ Wrangler serves the production build with the same SPA fallback behavior used at
     case the downloads page's "Could not load releases" copy should still be reachable through.
   - `200` with `cf-cache-status: HIT`, a non-zero `age`, and `cache-control: public,
     max-age=14400` — `Cache-Control` has been rewritten to the 4-hour Browser Cache TTL.
-    **This is the normal steady state**, measured on 2026-07-27, not a fault. What produced the
-    `HIT` is not settled: `caches.default` is documented as the same cache `fetch` uses, so a
-    hit the Worker itself served may carry the header, and it is not established that a separate
-    zone cache sits in front of this route. Either way the `max-age` a client sees is set by
-    zone configuration rather than by the Worker, so **do not read a stale-vs-fresh conclusion
-    out of the `max-age` number**, and do not read a `HIT` as proof of where the response came
-    from.
+    **This is the normal steady state**, measured on 2026-07-27, not a fault. The `HIT` is the
+    Worker's own `caches.default`, not a cache in front of it: ten requests with ten distinct
+    query strings all returned `HIT`, and `wrangler tail` showed the Worker running for nine of
+    them (the tenth was still in flight). So every request does reach the handler. The `max-age`
+    a client sees is still set by zone configuration rather than by the Worker, so **do not read
+    a stale-vs-fresh conclusion out of the `max-age` number** — that is `#285`.
     `no-store` is passed through unrewritten — observed on a live `502`, and inferred for the
     stale `200` on the documented rule that the override is a numeric comparison `no-store` does
     not participate in.
