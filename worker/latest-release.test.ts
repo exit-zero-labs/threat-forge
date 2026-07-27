@@ -1,18 +1,76 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { routeRequest } from "./index";
 import { handleLatestRelease, LATEST_RELEASE_PATH } from "./latest-release";
 
 const RELEASE_URL = `https://threatforge.dev${LATEST_RELEASE_PATH}`;
+/** The handler-owned second cache key holding the last known good release. */
+const FALLBACK_URL = `${RELEASE_URL}?fallback=last-known-good`;
 
-/** A minimal Cache API double that records what the handler stores. */
+/**
+ * The two lifetimes the handler promises, written as literals rather than imported
+ * from the module under test — a test that took the number from the implementation
+ * would agree with any number the implementation chose.
+ */
+const FRESHNESS_TTL_SECONDS = 300;
+const FALLBACK_TTL_SECONDS = 86_400;
+
+/** `Cache-Control: public, max-age=300` → `300`; no directive → `null` (never expires here). */
+function storedMaxAgeSeconds(response: Response): number | null {
+	const directive = response.headers.get("Cache-Control");
+	const matched = directive ? /max-age=(\d+)/.exec(directive) : null;
+	return matched ? Number(matched[1]) : null;
+}
+
+/**
+ * A Cache API double that records what the handler stores and models the two
+ * documented behaviours this route depends on
+ * (https://developers.cloudflare.com/workers/runtime-apis/cache/):
+ *
+ *   - "cache.match generates a 504 error response when the requested content is
+ *     missing or expired. The Cache API does not expose this 504 directly to the
+ *     Worker script, instead returning `undefined`." An expired entry is a miss,
+ *     so a fallback entry only outlives the freshness entry if it was stored with
+ *     a longer lifetime of its own.
+ *   - The Cache API "respects the following HTTP headers on the response passed
+ *     to `put()`: Cache-Control ...". The stored response's own `max-age` is what
+ *     decides that lifetime, which is why `match` reads it back rather than
+ *     taking a TTL from the caller.
+ *
+ * Time is a virtual counter advanced by `advanceSeconds`; the handler reads no
+ * clock, so stubbing a global one would mock more than the tests need.
+ *
+ * One deliberate divergence: an entry stored without `Cache-Control` never
+ * expires here, where Cloudflare would apply its 120-minute default Edge TTL for
+ * a 200. No production path stores one — only the hand-seeded cache-hit fixture
+ * below does — so the divergence is unreachable from the code under test.
+ */
 function createCache() {
 	const store = new Map<string, Response>();
+	const storedAt = new Map<string, number>();
+	let now = 0;
 	return {
-		match: vi.fn((request: Request) => Promise.resolve(store.get(request.url))),
+		match: vi.fn((request: Request) => {
+			const stored = store.get(request.url);
+			if (!stored) {
+				return Promise.resolve(undefined);
+			}
+			const maxAge = storedMaxAgeSeconds(stored);
+			if (maxAge !== null && now - (storedAt.get(request.url) ?? 0) >= maxAge) {
+				return Promise.resolve(undefined);
+			}
+			// A fresh Response per match: production reads the fallback entry's body,
+			// and handing back the same object twice would fail on a consumed body in
+			// a way the real Cache API never would.
+			return Promise.resolve(stored.clone());
+		}),
 		put: vi.fn((request: Request, response: Response) => {
 			store.set(request.url, response);
+			storedAt.set(request.url, now);
 			return Promise.resolve();
 		}),
+		advanceSeconds: (seconds: number) => {
+			now += seconds;
+		},
 		store,
 	};
 }
@@ -47,10 +105,81 @@ const FULL_GITHUB_RESPONSE = {
 	],
 };
 
+/** Exactly what the contract lets through: schema fields only, upstream noise dropped. */
+const NARROWED_RELEASE = {
+	tag_name: "v0.2.0",
+	published_at: "2026-07-01T00:00:00Z",
+	html_url: "https://github.com/exit-zero-labs/threat-forge/releases/tag/v0.2.0",
+	assets: [
+		{
+			name: "Threat.Forge_0.2.0_aarch64.dmg",
+			browser_download_url:
+				"https://github.com/exit-zero-labs/threat-forge/releases/download/v0.2.0/aarch64.dmg",
+			size: 10_000_000,
+		},
+	],
+};
+
+function spyOnFetch() {
+	return vi.spyOn(globalThis, "fetch");
+}
+
+/** Every way GitHub can refuse to give us a validated release. */
+const UPSTREAM_FAILURES: readonly {
+	name: string;
+	apply: (fetchSpy: ReturnType<typeof spyOnFetch>) => void;
+}[] = [
+	{
+		name: "upstream returns 403",
+		apply: (fetchSpy) => {
+			fetchSpy.mockResolvedValueOnce(new Response("rate limited: token abc", { status: 403 }));
+		},
+	},
+	{
+		name: "upstream returns 500",
+		apply: (fetchSpy) => {
+			fetchSpy.mockResolvedValueOnce(new Response("upstream exploded", { status: 500 }));
+		},
+	},
+	{
+		name: "the upstream fetch times out",
+		apply: (fetchSpy) => {
+			fetchSpy.mockRejectedValueOnce(new DOMException("signal timed out", "TimeoutError"));
+		},
+	},
+	{
+		name: "the upstream fetch rejects",
+		apply: (fetchSpy) => {
+			fetchSpy.mockRejectedValueOnce(new Error("network down"));
+		},
+	},
+	{
+		name: "the upstream body is not JSON",
+		apply: (fetchSpy) => {
+			fetchSpy.mockResolvedValueOnce(new Response("<html>not json</html>", { status: 200 }));
+		},
+	},
+	{
+		name: "the upstream payload fails schema validation",
+		apply: (fetchSpy) => {
+			fetchSpy.mockResolvedValueOnce(
+				new Response(JSON.stringify({ assets: [{ name: 42 }] }), { status: 200 }),
+			);
+		},
+	},
+];
+
 let cache: ReturnType<typeof createCache>;
+/**
+ * The handler logs one line per failed lookup. Spying in `beforeEach` keeps the
+ * failure-path tests from writing to the runner's stderr and gives every test the
+ * same handle to assert on.
+ */
+let warnSpy: MockInstance<typeof console.warn>;
 
 beforeEach(() => {
 	cache = createCache();
+	warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 	vi.stubGlobal("caches", { default: cache });
 });
 
@@ -98,24 +227,12 @@ describe("handleLatestRelease", () => {
 
 		const body = await response.json();
 		// Only the contract fields survive; upstream noise is dropped.
-		expect(body).toEqual({
-			tag_name: "v0.2.0",
-			published_at: "2026-07-01T00:00:00Z",
-			html_url: "https://github.com/exit-zero-labs/threat-forge/releases/tag/v0.2.0",
-			assets: [
-				{
-					name: "Threat.Forge_0.2.0_aarch64.dmg",
-					browser_download_url:
-						"https://github.com/exit-zero-labs/threat-forge/releases/download/v0.2.0/aarch64.dmg",
-					size: 10_000_000,
-				},
-			],
-		});
+		expect(body).toEqual(NARROWED_RELEASE);
 		expect(JSON.stringify(body)).not.toContain("token");
 		expect(JSON.stringify(body)).not.toContain("download_count");
 	});
 
-	it("stores the validated response in the edge cache", async () => {
+	it("stores the validated response under both the freshness key and the fallback key", async () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }),
 		);
@@ -124,7 +241,13 @@ describe("handleLatestRelease", () => {
 		await handleLatestRelease(new Request(RELEASE_URL), ctx);
 		await ctx.settle();
 
-		expect(cache.put).toHaveBeenCalledOnce();
+		expect(cache.put).toHaveBeenCalledTimes(2);
+		// The two lifetimes must differ, or the fallback expires with the copy it
+		// exists to outlive and can never once be read.
+		expect(cache.store.get(RELEASE_URL)?.headers.get("Cache-Control")).toBe("public, max-age=300");
+		expect(cache.store.get(FALLBACK_URL)?.headers.get("Cache-Control")).toBe(
+			"public, max-age=86400",
+		);
 	});
 
 	it("serves the cached response without a second upstream fetch on a cache hit", async () => {
@@ -159,8 +282,56 @@ describe("handleLatestRelease", () => {
 
 		expect(second.status).toBe(200);
 		expect(fetchSpy).toHaveBeenCalledOnce();
-		expect(cache.store.size).toBe(1);
-		expect([...cache.store.keys()]).toEqual([RELEASE_URL]);
+		// Both keys are handler-owned constants; neither carries a client query string.
+		expect([...cache.store.keys()]).toEqual([RELEASE_URL, FALLBACK_URL]);
+	});
+
+	it("keys on one origin regardless of the host and port the request arrived on", async () => {
+		// Cloudflare answers this zone on `www.` as well as the apex and on alternate proxy
+		// ports — `https://threatforge.dev:8443/api/latest-release` and `:2053` both return
+		// 200, measured live. Deriving the key from `request.url` gave each of those its own
+		// entry and its own upstream fetch, so a client cycling host × port could multiply
+		// our request rate against GitHub's 60/hour per-IP budget and keep the colo refused —
+		// defeating the rate protection this route's cache exists to provide.
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }));
+		const firstCtx = createCtx();
+		await handleLatestRelease(new Request(RELEASE_URL), firstCtx);
+		await firstCtx.settle();
+
+		for (const origin of [
+			"https://threatforge.dev:8443",
+			"https://threatforge.dev:2053",
+			"https://www.threatforge.dev",
+		]) {
+			const response = await handleLatestRelease(
+				new Request(`${origin}${LATEST_RELEASE_PATH}`),
+				createCtx(),
+			);
+			expect(response.status).toBe(200);
+		}
+
+		expect(fetchSpy).toHaveBeenCalledOnce();
+		expect([...cache.store.keys()]).toEqual([RELEASE_URL, FALLBACK_URL]);
+	});
+
+	it("bounds the upstream fetch so a hung GitHub cannot outlast the edge", async () => {
+		// Without a bound the request waits past Cloudflare's own timeout and the visitor
+		// gets a 524 while a good last-known-good copy sits in this colo unread. Aborting
+		// rejects the fetch, which is already the stale path's entry point.
+		const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }));
+		const ctx = createCtx();
+
+		await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+		const init = fetchSpy.mock.calls[0][1];
+		expect(init?.signal).toBe(timeoutSpy.mock.results[0].value);
 	});
 
 	it("returns a sanitized 502 and caches nothing when upstream is not ok", async () => {
@@ -219,6 +390,116 @@ describe("handleLatestRelease", () => {
 		expect(cache.put).not.toHaveBeenCalled();
 	});
 
+	it("says the clock ran out, not that GitHub's payload broke", async () => {
+		// The signal covers the whole exchange, so it can fire before the headers arrive or
+		// while the body is still streaming. Reported as `invalid-json`, the second case sends
+		// an operator after a broken payload contract — the one reason the runbook says to
+		// drop everything and investigate.
+		const timeout = new DOMException("signal timed out", "TimeoutError");
+		const cases = [
+			{ name: "before the headers arrive", body: Promise.reject(timeout) },
+			{
+				name: "while the body is still streaming",
+				body: Promise.resolve(
+					new Response(
+						new ReadableStream({
+							start(controller) {
+								controller.error(timeout);
+							},
+						}),
+						{ status: 200 },
+					),
+				),
+			},
+		];
+
+		for (const { name, body } of cases) {
+			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(body);
+			const ctx = createCtx();
+
+			await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(warnSpy, name).toHaveBeenCalledWith(expect.any(String), {
+				reason: "upstream-timeout",
+			});
+			vi.restoreAllMocks();
+		}
+	});
+
+	it("trusts the signal when the runtime names the rejection something else", async () => {
+		// The half of the guard that carries the point: workerd is not contractually bound to
+		// name an aborted fetch `TimeoutError`, and if it picks another name the reason token
+		// silently reverts to the one the runbook escalates. A real signal cannot be made to
+		// abort here — a mocked `fetch` never reaches it — so the deadline is simulated by
+		// substituting an already-aborted signal, and the rejection is given a name the `name`
+		// check cannot match. What this pins is that the signal is consulted at all.
+		const unnamed = new DOMException("aborted", "SomeNameWorkerdChose");
+		const cases = [
+			{ name: "before the headers arrive", body: Promise.reject(unnamed) },
+			{
+				name: "while the body is still streaming",
+				body: Promise.resolve(
+					new Response(
+						new ReadableStream({
+							start(controller) {
+								controller.error(unnamed);
+							},
+						}),
+						{ status: 200 },
+					),
+				),
+			},
+		];
+
+		for (const { name, body } of cases) {
+			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			// `Once`, so a second consultation would fall through to a real, un-aborted
+			// signal: this pins the signal handed to `fetch`, not merely some timeout signal.
+			vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(AbortSignal.abort(unnamed));
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(body);
+			const ctx = createCtx();
+
+			await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(warnSpy, name).toHaveBeenCalledWith(expect.any(String), {
+				reason: "upstream-timeout",
+			});
+			vi.restoreAllMocks();
+		}
+	});
+
+	it("records why a lookup failed without logging the upstream body", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			new Response("rate limited: token abc", { status: 403 }),
+		);
+		const ctx = createCtx();
+
+		await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		expect(warnSpy).toHaveBeenCalledOnce();
+		const logged = JSON.stringify(warnSpy.mock.calls[0]);
+		expect(logged).toContain("upstream-status");
+		expect(logged).toContain("403");
+		// The upstream body is not a thing a log may carry either.
+		expect(logged).not.toContain("token");
+	});
+
+	it("logs nothing when the lookup succeeds", async () => {
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }),
+		);
+		const ctx = createCtx();
+
+		await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		expect(warnSpy).not.toHaveBeenCalled();
+	});
+
 	it("rejects non-GitHub asset links instead of proxying them to the downloads page", async () => {
 		const unsafe = structuredClone(FULL_GITHUB_RESPONSE);
 		unsafe.assets[0].browser_download_url = "javascript:alert(document.domain)";
@@ -230,6 +511,131 @@ describe("handleLatestRelease", () => {
 
 		expect(response.status).toBe(502);
 		expect(cache.put).not.toHaveBeenCalled();
+	});
+
+	describe("when GitHub will not answer", () => {
+		/**
+		 * Populate both cache entries from a real successful lookup, then let the
+		 * five-minute freshness copy expire. Only the 24-hour fallback copy survives,
+		 * so the next call has to go upstream — which is what makes the assertions
+		 * below about the *second* fetch meaningful rather than a still-fresh hit.
+		 */
+		async function seedThenExpireFreshness(
+			fetchSpy: ReturnType<typeof spyOnFetch>,
+			upstream: unknown = FULL_GITHUB_RESPONSE,
+		): Promise<void> {
+			fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify(upstream), { status: 200 }));
+			const ctx = createCtx();
+			await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+			cache.advanceSeconds(FRESHNESS_TTL_SECONDS + 1);
+		}
+
+		it.each(UPSTREAM_FAILURES)(
+			"serves the last known good release when $name",
+			async ({ apply }) => {
+				const fetchSpy = spyOnFetch();
+				await seedThenExpireFreshness(fetchSpy);
+				apply(fetchSpy);
+
+				const ctx = createCtx();
+				const response = await handleLatestRelease(new Request(RELEASE_URL), ctx);
+				await ctx.settle();
+
+				// The freshness copy really did expire, so this answer came from the fallback.
+				expect(fetchSpy).toHaveBeenCalledTimes(2);
+				expect(response.status).toBe(200);
+				expect(response.headers.get("Cache-Control")).toBe("no-store");
+				expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+				expect(await response.json()).toEqual(NARROWED_RELEASE);
+				// Nothing new was cached: still just the two entries the seed wrote.
+				expect(cache.put).toHaveBeenCalledTimes(2);
+			},
+		);
+
+		it("does not leak the upstream status or body on the stale path", async () => {
+			const fetchSpy = spyOnFetch();
+			await seedThenExpireFreshness(fetchSpy);
+			fetchSpy.mockResolvedValueOnce(new Response("rate limited: token abc", { status: 403 }));
+
+			const ctx = createCtx();
+			const response = await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(response.status).toBe(200);
+			const serialized = JSON.stringify(await response.json());
+			expect(serialized).not.toContain("token");
+			expect(serialized).not.toContain("403");
+		});
+
+		it("serves the fresh release again as soon as upstream recovers", async () => {
+			const fetchSpy = spyOnFetch();
+			await seedThenExpireFreshness(fetchSpy);
+
+			fetchSpy.mockResolvedValueOnce(new Response("rate limited", { status: 403 }));
+			const staleCtx = createCtx();
+			const stale = await handleLatestRelease(new Request(RELEASE_URL), staleCtx);
+			await staleCtx.settle();
+			expect(stale.status).toBe(200);
+			expect(await stale.json()).toEqual(NARROWED_RELEASE);
+
+			fetchSpy.mockResolvedValueOnce(
+				new Response(JSON.stringify({ ...FULL_GITHUB_RESPONSE, tag_name: "v0.3.0" }), {
+					status: 200,
+				}),
+			);
+			const recoveredCtx = createCtx();
+			const recovered = await handleLatestRelease(new Request(RELEASE_URL), recoveredCtx);
+			await recoveredCtx.settle();
+
+			// No stale answer was left behind under the freshness key to shadow this one.
+			expect(recovered.status).toBe(200);
+			expect(recovered.headers.get("Cache-Control")).toBe("public, max-age=300");
+			expect(await recovered.json()).toMatchObject({ tag_name: "v0.3.0" });
+		});
+
+		it("stops serving the last known good release once it is older than a day", async () => {
+			const fetchSpy = spyOnFetch();
+			await seedThenExpireFreshness(fetchSpy);
+
+			fetchSpy.mockResolvedValueOnce(new Response("rate limited", { status: 403 }));
+			const withinCeiling = await handleLatestRelease(new Request(RELEASE_URL), createCtx());
+			expect(withinCeiling.status).toBe(200);
+
+			// Past 24 hours from the single store, which a stale serve must not have reset.
+			cache.advanceSeconds(FALLBACK_TTL_SECONDS - FRESHNESS_TTL_SECONDS);
+			fetchSpy.mockResolvedValueOnce(new Response("rate limited", { status: 403 }));
+			const ctx = createCtx();
+			const expired = await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(expired.status).toBe(502);
+			expect(expired.headers.get("Cache-Control")).toBe("no-store");
+			expect(await expired.json()).toEqual({ error: "release lookup unavailable" });
+		});
+
+		it.each([
+			["is not JSON at all", new Response("<html>not json</html>")],
+			["parses but fails the release schema", new Response(JSON.stringify({ tag_name: 42 }))],
+		])("returns the sanitized 502 when the stored copy %s", async (_name, stored) => {
+			cache.store.set(
+				FALLBACK_URL,
+				new Response(stored.body, {
+					headers: { "Cache-Control": `public, max-age=${FALLBACK_TTL_SECONDS}` },
+				}),
+			);
+			const fetchSpy = spyOnFetch();
+			fetchSpy.mockResolvedValueOnce(new Response("rate limited", { status: 403 }));
+			const ctx = createCtx();
+
+			const response = await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(response.status).toBe(502);
+			expect(response.headers.get("Cache-Control")).toBe("no-store");
+			expect(await response.json()).toEqual({ error: "release lookup unavailable" });
+			expect(JSON.stringify(warnSpy.mock.calls)).toContain("fallback-unreadable");
+		});
 	});
 });
 
