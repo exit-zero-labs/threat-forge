@@ -148,12 +148,13 @@ differently, which is worth knowing before assuming a revert undid them:
 
 - `workers_dev` is recomputed on every deploy as `config.workers_dev ?? (routes.length === 0)`,
   so with routes configured it is sent as `false` whether or not the key is present. Deleting the
-  key changes nothing; deleting the **routes** flips workers.dev back on with nobody having
-  touched the setting.
+  key changes nothing on its own. Deleting the **routes** while the key is also absent flips
+  workers.dev back on with nobody having touched a setting named `workers_dev`.
 - `preview_urls` has no default, so with the key absent Wrangler omits it from the request
-  entirely. What the API does with an omitted key is not established here — Wrangler carries a
-  branch for it changing — so a revert leaves preview URLs in an unasserted state. Set the value
-  explicitly and deploy rather than inferring it.
+  entirely. What the API does with an omitted key is not established here — Wrangler holds two
+  different assumptions about it in the same file, one that omits the key and one that models
+  the API defaulting it to `routes.length === 0` — so a revert leaves preview URLs in an
+  unasserted state. Set the value explicitly and deploy rather than inferring it.
 
 ## Local Check Before Pushing
 

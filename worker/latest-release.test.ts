@@ -435,19 +435,40 @@ describe("handleLatestRelease", () => {
 		// abort here — a mocked `fetch` never reaches it — so the deadline is simulated by
 		// substituting an already-aborted signal, and the rejection is given a name the `name`
 		// check cannot match. What this pins is that the signal is consulted at all.
-		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-		vi.spyOn(AbortSignal, "timeout").mockReturnValue(
-			AbortSignal.abort(new DOMException("aborted", "SomeNameWorkerdChose")),
-		);
-		vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("connection reset"));
-		const ctx = createCtx();
+		const unnamed = new DOMException("aborted", "SomeNameWorkerdChose");
+		const cases = [
+			{ name: "before the headers arrive", body: Promise.reject(unnamed) },
+			{
+				name: "while the body is still streaming",
+				body: Promise.resolve(
+					new Response(
+						new ReadableStream({
+							start(controller) {
+								controller.error(unnamed);
+							},
+						}),
+						{ status: 200 },
+					),
+				),
+			},
+		];
 
-		await handleLatestRelease(new Request(RELEASE_URL), ctx);
-		await ctx.settle();
+		for (const { name, body } of cases) {
+			const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+			// `Once`, so a second consultation would fall through to a real, un-aborted
+			// signal: this pins the signal handed to `fetch`, not merely some timeout signal.
+			vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(AbortSignal.abort(unnamed));
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(body);
+			const ctx = createCtx();
 
-		expect(warnSpy).toHaveBeenCalledWith(expect.any(String), {
-			reason: "upstream-timeout",
-		});
+			await handleLatestRelease(new Request(RELEASE_URL), ctx);
+			await ctx.settle();
+
+			expect(warnSpy, name).toHaveBeenCalledWith(expect.any(String), {
+				reason: "upstream-timeout",
+			});
+			vi.restoreAllMocks();
+		}
 	});
 
 	it("records why a lookup failed without logging the upstream body", async () => {
