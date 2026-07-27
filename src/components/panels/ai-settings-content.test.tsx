@@ -216,7 +216,7 @@ describe("key storage that cannot answer", () => {
 		// reported as "No API key configured" — reassurance in exactly the wrong direction,
 		// on a surface whose whole job is telling the user where their credential is.
 		expect(screen.queryByText("No API key configured")).toBeNull();
-		expect(screen.getByText("Key storage could not be checked")).toBeInTheDocument();
+		expect(screen.getByText("Key storage could not be read")).toBeInTheDocument();
 		expect(screen.getByText("Key storage in this browser is damaged.")).toBeInTheDocument();
 	});
 
@@ -243,7 +243,7 @@ describe("key storage that cannot answer", () => {
 		);
 		expect(control).toHaveTextContent("Try removing it again");
 		// A readable clear-text copy outranks an unreadable vault in the status row. Both facts
-		// are true at once here, and "Key storage could not be checked" is the weaker one: it
+		// are true at once here, and "Key storage could not be read" is the weaker one: it
 		// describes the encrypted record while a usable credential sits in clear text.
 		expect(screen.getByText("Clear-text API key still in this browser")).toBeInTheDocument();
 
@@ -298,6 +298,27 @@ describe("key storage that cannot answer", () => {
 			expect.stringContaining("Key storage adapter failed to load"),
 			expect.objectContaining({ message: expect.stringContaining("dynamically imported") }),
 		);
+	});
+
+	it("does not render an object as its own explanation", async () => {
+		// A rejection that is neither an `Error` nor a string came from no layer that authored
+		// a message. `String(error)` would put `[object Object]` on screen as the app's account
+		// of what went wrong, so the shape adapter fails closed onto authored copy instead.
+		getAdapter = async () => ({
+			setKey: async () => undefined,
+			hasKey: async () => {
+				throw { code: 17, name: "InvalidStateError" };
+			},
+			deleteKey: async () => undefined,
+		});
+
+		await act(async () => {
+			render(<AiSettingsContent />);
+		});
+
+		expect(screen.getByText(/does not recognise/)).toBeInTheDocument();
+		expect(screen.queryByText(/object Object/)).not.toBeInTheDocument();
+		expect(screen.queryByText(/InvalidStateError/)).not.toBeInTheDocument();
 	});
 
 	it("does not put a bundler failure in front of the user when saving", async () => {

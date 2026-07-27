@@ -4,7 +4,7 @@ import { KEY_VAULT_DB_NAME, KEY_VAULT_DB_VERSION, KeyVaultError } from "./browse
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
 import { CLEARING_SITE_DATA_COST, LEGACY_RETAINED } from "./keychain-adapter";
 import { yieldHostTask } from "./test-fixtures/host-task";
-import { resetKeyVault } from "./test-fixtures/key-vault";
+import { openVaultDb, resetKeyVault, writeWrapKeyStore } from "./test-fixtures/key-vault";
 
 /**
  * #133: browser BYOK keys are encrypted at rest under a non-extractable wrapping key.
@@ -88,15 +88,6 @@ function describeStoredValue(value: unknown): string {
 	return Object.values(value).map(describeStoredValue).join(",");
 }
 
-/** Open the vault database directly, to inspect or damage it the way a test needs. */
-async function openVaultDb(): Promise<IDBDatabase> {
-	return new Promise<IDBDatabase>((resolve, reject) => {
-		const request = globalThis.indexedDB.open(KEY_VAULT_DB_NAME);
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error);
-	});
-}
-
 /**
  * Empty the wrap-key store immediately after the next read of it, then stop.
  *
@@ -150,21 +141,6 @@ async function writeMetaValue(key: string, value: unknown): Promise<void> {
 		tx.objectStore("meta").put(value, key);
 		tx.oncomplete = () => resolve();
 		tx.onerror = () => reject(tx.error);
-	});
-	db.close();
-}
-
-/** Replace the contents of the wrap-key store, simulating a damaged vault. */
-async function writeWrapKeyStore(entries: [unknown, string][]): Promise<void> {
-	const db = await openVaultDb();
-	await new Promise<void>((resolve, reject) => {
-		const tx = db.transaction("wrap-key", "readwrite");
-		const store = tx.objectStore("wrap-key");
-		store.clear();
-		for (const [value, key] of entries) store.put(value, key);
-		tx.oncomplete = () => resolve();
-		tx.onerror = () => reject(tx.error);
-		tx.onabort = () => reject(tx.error);
 	});
 	db.close();
 }
@@ -1238,8 +1214,10 @@ describe("a wrapping key of the wrong shape", () => {
 		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
 
 		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
-		// The record survives, so restoring the correct wrapping key would recover it.
-		expect(await adapter.hasKey("anthropic")).toBe(true);
+		// The record survives, so restoring the correct wrapping key would recover it. Observed
+		// by counting rather than by `hasKey`, which used to answer `true` here and thereby
+		// reported an unreadable credential as configured (#234).
+		expect(await countSecrets()).toBe(1);
 	});
 
 	it("refuses to save under it rather than reporting a save that cannot be read back", async () => {
@@ -1254,6 +1232,105 @@ describe("a wrapping key of the wrong shape", () => {
 		await expect(adapter.setKey("anthropic", "sk-ant-second")).rejects.toBeInstanceOf(
 			KeyVaultError,
 		);
+	});
+});
+
+/**
+ * #234: a status check answered "is there a record", never "could this browser read one", so a
+ * profile that lost its wrapping key while its ciphertext survived was reported as configured.
+ * The check establishes the vault's preconditions now — and only those. It still performs no
+ * decryption and still deletes nothing, because a status check that destroys key material is a
+ * worse defect than the one it would close.
+ */
+describe("a status check over a vault that cannot decrypt", () => {
+	it("reports a stored key the vault can no longer decrypt as a fault, not as configured", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([]);
+
+		await expect(adapter.hasKey("anthropic")).rejects.toMatchObject({
+			reason: "vault-corrupt",
+		});
+		// Reported without touching the record: restoring the profile's storage restores the
+		// key, and nothing a user only looked at may delete a credential.
+		expect(await countSecrets()).toBe(1);
+	});
+
+	it("reports a wrapping key of the wrong shape as a fault", async () => {
+		const encryptOnly = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+			"encrypt",
+		]);
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([[encryptOnly, "aes-gcm-256-v1"]]);
+
+		// A key that is present but cannot decrypt is the same fact as one that is gone, and
+		// `readWrapKey` reaches it down a different branch — a throw rather than a `null`.
+		await expect(adapter.hasKey("anthropic")).rejects.toMatchObject({
+			reason: "vault-corrupt",
+		});
+		expect(await countSecrets()).toBe(1);
+	});
+
+	it("still answers false for a provider with no record while another's is stranded", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([]);
+
+		// The wrapping key is shared, so the damage is vault-wide — but a provider with nothing
+		// stored has nothing it cannot read. Reporting a fault for it would put a storage
+		// warning on a provider the user never configured.
+		expect(await adapter.hasKey("openai")).toBe(false);
+	});
+
+	it("does not decrypt to answer a status check", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		const decrypt = vi.spyOn(crypto.subtle, "decrypt");
+
+		expect(await adapter.hasKey("anthropic")).toBe(true);
+		// The cost of the check, pinned rather than asserted in prose: a status check reads the
+		// wrap-key handle's shape and never runs AES-GCM, so it stays off the crypto path even
+		// though the settings panel runs it on mount for every provider.
+		expect(decrypt).not.toHaveBeenCalled();
+	});
+
+	it("reports a stored key as unreadable when Web Crypto is unavailable", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		vi.spyOn(globalThis.crypto, "subtle", "get").mockReturnValue(
+			undefined as unknown as SubtleCrypto,
+		);
+
+		// `crypto.subtle` is exposed only in secure contexts, so an `http://` deployment has
+		// none — and there no record is decryptable, which is the same vault-level fact as a
+		// missing wrapping key. Entering a key would not help, so it must not read as absence.
+		await expect(adapter.hasKey("anthropic")).rejects.toMatchObject({
+			reason: "unavailable",
+		});
+		// The other half of the count gate. `requireSubtle` sits below the count, so a provider
+		// with nothing stored still answers "no key" on an insecure origin rather than being
+		// told storage is broken — which would be a fault report about a record that does not
+		// exist. Hoisting `requireSubtle` above the count is what this catches.
+		expect(await adapter.hasKey("openai")).toBe(false);
+		vi.restoreAllMocks();
+		expect(await countSecrets()).toBe(1);
+	});
+
+	it("reports a per-record decryption failure only once a read has established it", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await corruptStoredRecord("anthropic");
+
+		// The deliberate boundary of the fix, written down so a later reader does not assume
+		// the per-record case is covered. The wrapping key is healthy, so only a decrypt could
+		// reveal this record's damage — and a decrypt on the status path would have to either
+		// delete the record from a render, or report a fault the next `getKey` contradicts.
+		expect(await adapter.hasKey("anthropic")).toBe(true);
+		// The read the user asked for is where it is established, and where the record is
+		// dropped. The panel is honest from then on.
+		expect(await adapter.getKey("anthropic")).toBeNull();
+		expect(await adapter.hasKey("anthropic")).toBe(false);
 	});
 });
 

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { getChatTransport } from "@/lib/adapters/get-chat-transport";
-import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
+import { keychainErrorText, loadKeychainAdapter } from "@/lib/adapters/load-keychain-adapter";
 import { capMessageHistory } from "@/lib/ai/protocol/budget";
 import { streamConversation } from "@/lib/ai/protocol/client";
 import type { StopReason, StreamEvent, TokenUsage } from "@/lib/ai/protocol/events";
@@ -191,6 +191,16 @@ interface ChatState {
 	provider: AiProvider;
 	/** Whether the selected provider has an API key configured */
 	hasApiKey: boolean;
+	/**
+	 * Authored message for storage that could not be read at all, or `null` when it answered.
+	 *
+	 * Separate from `error`, which is "the last request failed" and only exists once a request
+	 * has been made; this one is "storage cannot be read" and is true before any request. And
+	 * separate from `hasApiKey`, which gates sending: a fault means no request can be signed, so
+	 * both are set, but nothing gates sending on this field. Holds only text the keychain layer
+	 * authored — never key material — and lives in memory only, never persisted.
+	 */
+	keyFault: string | null;
 	/** Error message from the last request, if any */
 	error: string | null;
 
@@ -217,6 +227,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	isStreaming: false,
 	provider: "anthropic",
 	hasApiKey: false,
+	keyFault: null,
 	error: null,
 
 	loadSessionsForFile: (filePath) => {
@@ -519,11 +530,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	checkApiKey: async (providerOverride) => {
 		const provider = providerOverride ?? get().provider;
 		try {
-			const adapter = await getKeychainAdapter();
+			const adapter = await loadKeychainAdapter();
 			const hasKey = await adapter.hasKey(provider);
-			set({ hasApiKey: hasKey });
-		} catch {
-			set({ hasApiKey: false });
+			set({ hasApiKey: hasKey, keyFault: null });
+		} catch (err) {
+			// `hasApiKey: false` because no request can be signed, which is true. But a rejection
+			// is not the claim "there is no key" — the record may be sitting in a vault this
+			// browser cannot read — so the reason is carried too, and the chat surface reports
+			// the fault rather than an absence the user would try to fix by entering a key.
+			// What keeps an internal string out of this field is upstream: the browser vault
+			// remaps everything that is not a `KeyVaultError` before it leaves `withVault`, and
+			// the desktop adapter relays a sentence authored in Rust.
+			set({ hasApiKey: false, keyFault: keychainErrorText(err) });
 		}
 		// `hasKey` is also what migrates a pre-#133 clear-text key into the vault and erases the
 		// slot, so a slot that was there when the session started may be gone now. Re-read it

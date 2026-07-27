@@ -33,13 +33,24 @@ let keychainCalls: string[] = [];
 let slot: Record<string, LegacyResidue> = { anthropic: null, openai: null };
 /** Whether `hasKey` migrates the slot away, as it does for every upgrading pre-#133 user. */
 let hasKeyMigrates = false;
+/**
+ * What `hasKey` rejects with, or `null` when it answers.
+ *
+ * A knob on the one keychain mock rather than a second mock: `checkApiKey`'s two boundary
+ * calls have to stay in the same order and the same recording, and a separate mock for the
+ * failure case would let the two drift into testing different call sequences (#234).
+ */
+let hasKeyRejection: Error | null = null;
+/** What `hasKey` answers when it does not reject. */
+let hasKeyAnswer = false;
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
 	getKeychainAdapter: async () => ({
 		setKey: async () => undefined,
 		hasKey: async (provider: string) => {
 			keychainCalls.push(`hasKey:${provider}`);
+			if (hasKeyRejection) throw hasKeyRejection;
 			if (hasKeyMigrates) slot[provider] = null;
-			return false;
+			return hasKeyAnswer;
 		},
 		deleteKey: async () => undefined,
 		readLegacyResidue: async (provider: string) => {
@@ -78,6 +89,8 @@ function seedSession(): void {
 		messages: [],
 		isStreaming: false,
 		error: null,
+		hasApiKey: false,
+		keyFault: null,
 	});
 }
 
@@ -94,6 +107,8 @@ beforeEach(() => {
 	keychainCalls = [];
 	slot = { anthropic: null, openai: null };
 	hasKeyMigrates = false;
+	hasKeyRejection = null;
+	hasKeyAnswer = false;
 	useKeyResidueStore.setState({ residue: { anthropic: null, openai: null } });
 	seedSession();
 });
@@ -322,6 +337,63 @@ describe("chat store clear-text key residue", () => {
 
 		// The re-read is a re-derivation, not a dismissal: a browser that still refuses the
 		// erase keeps its warning.
+		expect(useKeyResidueStore.getState().residue.anthropic).toBe("retained");
+	});
+});
+
+/**
+ * #234: `hasKey` rejects for a vault that holds records this browser cannot decrypt. The
+ * store's `catch` used to turn that into `hasApiKey: false` and nothing else, which the AI
+ * chat tab renders as "No API key configured" — the exact claim the settings panel refuses to
+ * make about the same storage. Two surfaces, one fact, opposite answers.
+ */
+describe("chat store key storage faults", () => {
+	/**
+	 * A stand-in, not the vault's copy. The keychain is mocked here, so this suite injects the
+	 * string and reads it back — any sentence would pass, and spelling the real one would read
+	 * as a pin it is not. The vault's actual wording is pinned once, against a real vault, in
+	 * `ai-settings-damaged-vault.test.tsx`. What this suite proves is that whatever the
+	 * keychain says arrives intact rather than being replaced by "no key configured".
+	 */
+	const VAULT_DAMAGED = "TEST-ONLY authored fault sentence from the keychain layer.";
+
+	it("does not report a vault it cannot read as no key configured", async () => {
+		hasKeyRejection = new Error(VAULT_DAMAGED);
+
+		await useChatStore.getState().checkApiKey("anthropic");
+
+		// Both, and they say different things. No request can be signed, which is what
+		// `hasApiKey` means — but the reason is not an absence, and the reason is what the user
+		// has to read, because entering a key is not what repairs a damaged vault.
+		expect(useChatStore.getState().hasApiKey).toBe(false);
+		expect(useChatStore.getState().keyFault).toBe(VAULT_DAMAGED);
+	});
+
+	it("clears the storage fault once the check answers again", async () => {
+		hasKeyRejection = new Error(VAULT_DAMAGED);
+		await useChatStore.getState().checkApiKey("anthropic");
+
+		hasKeyRejection = null;
+		hasKeyAnswer = true;
+		await useChatStore.getState().checkApiKey("anthropic");
+
+		// A fault that outlived the condition would leave a permanent warning over storage that
+		// is working — and saving a fresh key is exactly what repairs this vault.
+		expect(useChatStore.getState().keyFault).toBeNull();
+		expect(useChatStore.getState().hasApiKey).toBe(true);
+	});
+
+	it("re-reads the clear-text slot even when the key check failed", async () => {
+		useKeyResidueStore.setState({ residue: { anthropic: null, openai: null } });
+		slot = { anthropic: "retained", openai: null };
+		hasKeyRejection = new Error(VAULT_DAMAGED);
+
+		await useChatStore.getState().checkApiKey("anthropic");
+
+		// #233's guarantee is not conditional on the key check succeeding. A damaged vault is
+		// precisely when a surviving clear-text copy matters most, so the residue read has to
+		// run after both outcomes.
+		expect(keychainCalls).toEqual(["hasKey:anthropic", "residue:anthropic"]);
 		expect(useKeyResidueStore.getState().residue.anthropic).toBe("retained");
 	});
 });

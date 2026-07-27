@@ -21,8 +21,12 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 // transport is an inert stand-in the mocked client never touches.
 const streamConversationMock = vi.hoisted(() => vi.fn());
 // Whether the mocked keychain reports a stored key; a test flips it to reach the
-// chat view instead of the empty state.
-const keychain = vi.hoisted(() => ({ hasKey: false }));
+// chat view instead of the empty state. `rejection` is the #234 case: storage that
+// could not answer at all, which must not read as "no key configured".
+const keychain = vi.hoisted((): { hasKey: boolean; rejection: Error | null } => ({
+	hasKey: false,
+	rejection: null,
+}));
 
 vi.mock("@/lib/ai/protocol/client", () => ({
 	streamConversation: streamConversationMock,
@@ -33,7 +37,13 @@ vi.mock("@/lib/adapters/get-chat-transport", () => ({
 }));
 
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
-	getKeychainAdapter: () => Promise.resolve({ hasKey: async () => keychain.hasKey }),
+	getKeychainAdapter: () =>
+		Promise.resolve({
+			hasKey: async () => {
+				if (keychain.rejection) throw keychain.rejection;
+				return keychain.hasKey;
+			},
+		}),
 }));
 
 function makeModel(title: string): ThreatModel {
@@ -58,6 +68,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	localStorage.clear();
 	keychain.hasKey = false;
+	keychain.rejection = null;
 	// jsdom does not implement scrollIntoView, which the message list calls on update.
 	Element.prototype.scrollIntoView = vi.fn();
 	useDocumentRegistry.setState({
@@ -77,6 +88,8 @@ beforeEach(() => {
 		messages: [],
 		isStreaming: false,
 		error: null,
+		hasApiKey: false,
+		keyFault: null,
 		provider: "anthropic",
 	});
 });
@@ -475,5 +488,64 @@ describe("AiChatTab undo affordance", () => {
 		const undoButton = screen.getByRole("button", { name: /Undo this turn/ });
 		expect(undoButton).toBeDisabled();
 		expect(undoButton.getAttribute("title")).toContain("superseded");
+	});
+});
+
+/**
+ * #234: `checkApiKey` rejects when the vault holds records this browser cannot decrypt. The
+ * tab used to render that as "No API key configured" — the same claim the settings panel
+ * refuses to make about the same storage, so the two surfaces disagreed about one fact.
+ */
+describe("AiChatTab key storage faults", () => {
+	/**
+	 * A stand-in, not the vault's copy. The keychain is mocked here, so this suite injects the
+	 * string and reads it back — any sentence would pass, and spelling the real one would read
+	 * as a pin it is not. The vault's actual wording is pinned once, against a real vault, in
+	 * `ai-settings-damaged-vault.test.tsx`. What this suite proves is that whatever the
+	 * keychain says reaches the chat surface instead of "No API key configured".
+	 */
+	const VAULT_DAMAGED = "TEST-ONLY authored fault sentence from the keychain layer.";
+
+	function openDocument(): void {
+		const registry = useDocumentRegistry.getState();
+		const id = registry.createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		registry.activateDocument(id);
+	}
+
+	it("shows the storage fault instead of claiming no key is configured", async () => {
+		keychain.rejection = new Error(VAULT_DAMAGED);
+		openDocument();
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+
+		// The heading is the settings panel's status text verbatim, so the two surfaces state
+		// one fact in one sentence, and the vault's authored remedy is what the user reads.
+		expect(screen.getByTestId("key-storage-fault")).toBeInTheDocument();
+		expect(screen.getByText("Key storage could not be read")).toBeInTheDocument();
+		expect(screen.getByText(VAULT_DAMAGED)).toBeInTheDocument();
+		expect(screen.queryByText("No API key configured")).toBeNull();
+		expect(screen.getByRole("button", { name: "Open AI settings" })).toBeInTheDocument();
+	});
+
+	it("still shows the empty state when storage answers that there is no key", async () => {
+		keychain.hasKey = false;
+		openDocument();
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+
+		// Without this the fault branch could swallow the ordinary unconfigured path and no
+		// test would notice: a first-run user has no key and no fault, and must be invited to
+		// add one rather than warned about storage.
+		expect(screen.getByText("No API key configured")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Configure API Key" })).toBeInTheDocument();
+		expect(screen.queryByTestId("key-storage-fault")).toBeNull();
 	});
 });

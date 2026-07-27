@@ -83,7 +83,7 @@ export function AppLayout() {
 					await Promise.allSettled(RESIDUE_PROVIDERS.map((name) => adapter.hasKey(name)));
 				}
 			} catch (err) {
-				// Logged rather than swallowed: the panel's `ADAPTER_LOAD_ERROR` reaches a user
+				// Logged rather than swallowed: the authored `KEYCHAIN_LOAD_ERROR` reaches a user
 				// who opens AI settings, and a permanently broken chunk has to leave a trace for
 				// one who never does. The refresh below leaves the previous value rather than
 				// claiming absence.

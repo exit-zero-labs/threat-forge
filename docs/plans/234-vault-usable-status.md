@@ -362,7 +362,8 @@ first if the implementer prefers a clean diff.
 - **Behavior:** loading the keychain adapter and rendering a keychain failure as user-safe text
   are done by one pair of functions that the settings panel and `chat-store` share. No
   behaviour changes.
-- **Files:** `src/lib/adapters/get-keychain-adapter.ts`,
+- **Files:** `src/lib/adapters/load-keychain-adapter.ts` (new — see the 2026-07-27 replan row;
+  the plan originally named `get-keychain-adapter.ts` and was wrong about the test harness),
   `src/components/panels/ai-settings-content.tsx`.
 - **Implementation:**
   1. Move `ADAPTER_LOAD_ERROR` and `loadAdapter` (`ai-settings-content.tsx:17-33`) into
@@ -587,6 +588,12 @@ Green CI cannot decide any of these.
    it. Confirm that is acceptable rather than worth a single-transaction read.
 5. **Launch behaviour is unchanged.** A profile with no clear-text slot must still create no
    keychain database at launch. Confirm on a fresh browser profile with devtools open.
+6. **First run in a storage-blocked profile is now a fault, not onboarding.** Private mode or
+   blocked cookies makes `openVault` reject regardless of count, so a user who has never
+   configured anything sees the fault card where they used to see "No API key configured".
+   That follows from the acceptance criteria and is arguably the better answer — inviting
+   someone to save a key that cannot be saved is the absence-claim problem again — but it is a
+   first-run product change, and it is the owner's call rather than the plan's.
 
 ## Follow-up issues to file (not sub-issues, not in scope)
 
@@ -630,3 +637,7 @@ Append changes; do not rewrite prior decisions.
 | Date | Change | Evidence and reason |
 |------|--------|---------------------|
 | 2026-07-27 | Initial plan | Issue `#234` and its two comments; `main` at `24fc808`; source read at `browser-key-vault.ts:608-647`, `browser-keychain-adapter.ts:123-228`, `keychain-adapter.ts`, `tauri-keychain-adapter.ts`, `ai_commands.rs:19-56`, `keychain.rs:31-123`, `lib.rs:52-57`, `ai-settings-content.tsx:47-121,283-334,556-616`, `chat-store.ts:512-534`, `ai-chat-tab.tsx:56-145`, `app-layout.tsx:61-94`, `browser-chat-adapter.ts:327-346`; existing coverage read at `browser-keychain-adapter.test.ts:456-800,1221-1259,1770-1810` and `ai-settings-content.test.tsx:50-330`; `browser-keychain-adapter.test.ts:1222` executed green as proof that `hasKey` returns `true` on a vault `getKey` refuses |
+| 2026-07-27 | Step 2 lands in a new `load-keychain-adapter.ts`, not in `get-keychain-adapter.ts` | The plan was wrong about the test harness. Six suites `vi.mock("@/lib/adapters/get-keychain-adapter")` with a factory returning only `getKeychainAdapter`, so extracting into that module puts the extracted code behind every one of those mocks: implemented literally, the panel suite went 24 failed / 7 passed on `No "keychainErrorText" export is defined on the ... mock`. Adding the exports to each mock factory would make `says so when the storage adapter itself will not load` assert a re-implementation rather than production code, which `tests.instructions.md` forbids; `importActual` does not help, because `loadKeychainAdapter`'s call to `getKeychainAdapter` would be a module-local binding no mock intercepts, so the real `BrowserKeychainAdapter` would be constructed and cached for the file. A sibling module that *imports* `getKeychainAdapter` crosses a module boundary the mocks do intercept. Result: 31 panel tests pass with zero assertion edits, which is what step 2's own tripwire asked for |
+| 2026-07-27 | `hasSecret`'s fault can no longer escape as a raw `DOMException`; `withVault` now opens inside its `try` | Security lane, #234 preflight. `openVault` guarded `factory.open()` and a null factory, but not the `globalThis.indexedDB` property read itself, which is a getter that throws `SecurityError` in a sandboxed iframe or storage-blocked profile — the hazard `readLegacySlot` already catches for `localStorage`. Awaited outside the `try`, that rejection bypassed the remap and would have rendered `The operation is insecure.` as the app's explanation, defeating the exact-text assertion in `ai-settings-damaged-vault.test.tsx`. Pre-existing, but this change adds a second verbatim-rendering surface reachable at mount without opening settings, so it is fixed here rather than filed |
+| 2026-07-27 | `keychainErrorText` fails closed on a rejection that is neither `Error` nor string; three comments stop crediting it with a guarantee it does not provide | Reviewer and slop lanes, independently. The function is a shape adapter — routing through it cannot establish authorship, and `String(error)` on an object renders `[object Object]` as the app's account of itself. The guarantee is real but lives upstream in `withVault`'s remap and in `key_refusal` on the Rust side; the comments now name that, because a maintainer reading "nothing unauthored can arrive" would not add a guard where one is needed |
+| 2026-07-27 | `KEY_STORAGE_UNREADABLE` exported from `keychain-adapter.ts`; both surfaces render the constant | Reviewer and slop lanes, independently. The sentence this issue exists to keep identical across two surfaces shipped as two literals coupled by nothing but a docblock claiming they matched — a copy edit to one would diverge them silently and every suite would still pass. That is #234's own defect one layer up, in copy instead of state |
