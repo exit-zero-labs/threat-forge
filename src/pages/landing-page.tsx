@@ -174,9 +174,30 @@ function YamlShowcaseSection() {
 						<FileCode className="h-4 w-4 text-muted-foreground" />
 						<span className="font-mono text-xs text-muted-foreground">payment-service.thf</span>
 					</div>
-					<pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-muted-foreground">
-						<code>{YAML_SAMPLE}</code>
-					</pre>
+					{/*
+					 * Below about 440px this sample scrolls sideways — `white-space: pre` is the point of
+					 * showing a file, so it cannot reflow, and without a tab stop a keyboard user cannot
+					 * read the right-hand half of any line (WCAG 2.1.1, #249).
+					 *
+					 * The `<section>` exists to carry the label: `<pre>` maps to `generic`, which supports no
+					 * accessible name at all. `w-max` on the `<pre>` stops a block child from shrinking to
+					 * the scroller. The ring is inset because the card wrapping this is `overflow-hidden`
+					 * and would clip an outset one.
+					 *
+					 * No `onKeyDown` guard here, unlike the component palette this borrows from. That guard
+					 * exists to keep arrow keys away from the canvas shortcuts, and those mount in
+					 * `app-layout`, which the marketing routes never render.
+					 */}
+					<section
+						aria-label="Example threat model file"
+						className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+						// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable for keyboard access
+						tabIndex={0}
+					>
+						<pre className="w-max p-4 font-mono text-xs leading-relaxed text-muted-foreground">
+							<code>{YAML_SAMPLE}</code>
+						</pre>
+					</section>
 				</div>
 			</div>
 		</section>

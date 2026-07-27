@@ -58,6 +58,14 @@ describe("LandingPage", () => {
 		renderLandingPage();
 		expect(screen.getByText("Yes, it's just a file")).toBeInTheDocument();
 		expect(screen.getByText("payment-service.thf")).toBeInTheDocument();
+		// The sample scrolls sideways on a narrow screen, so it needs a name and a tab stop
+		// (#249). Asserted here as well as in E2E because this suite catches a rename in under a
+		// second, and because the E2E lane runs Chromium only — where the tab stop is invisible,
+		// since Chromium focuses overflowing scrollers whether or not the attribute is there.
+		expect(screen.getByRole("region", { name: "Example threat model file" })).toHaveAttribute(
+			"tabindex",
+			"0",
+		);
 	});
 
 	it("renders the bottom CTA section", () => {

@@ -417,3 +417,99 @@ test.describe("Accessibility audit", () => {
 		).toBeLessThanOrEqual(overflow.clientWidth);
 	});
 });
+
+/**
+ * The marketing routes have no axe coverage (#292). This describe block is narrower on purpose:
+ * one measured keyboard property on each container that was measured to scroll on those routes.
+ * A sweep of `/`, `/downloads`, `/about`, `/privacy`, `/terms` and `/support` at 1280/768/390/320
+ * found exactly two, plus the page `<body>`, which is inherently keyboard-scrollable.
+ */
+test.describe("Marketing route keyboard access", () => {
+	test("the .thf sample can be reached and scrolled by keyboard where it overflows", async ({
+		page,
+	}) => {
+		// 320px, the narrowest width #249 measured. The sample is 392px wide and cannot reflow,
+		// so this is where a keyboard user would otherwise lose the right-hand half of every line.
+		await page.setViewportSize({ width: 320, height: 900 });
+		await page.goto("/");
+
+		const sample = page.getByRole("region", { name: "Example threat model file", exact: true });
+		await expect(sample).toBeVisible();
+
+		const before = await sample.evaluate((element) => ({
+			scrollWidth: element.scrollWidth,
+			clientWidth: element.clientWidth,
+			scrollLeft: element.scrollLeft,
+		}));
+		expect(
+			before.scrollWidth,
+			`the sample must actually overflow at 320px for this test to mean anything (scrollWidth ${before.scrollWidth} vs clientWidth ${before.clientWidth})`,
+		).toBeGreaterThan(before.clientWidth);
+		expect(before.scrollLeft).toBe(0);
+
+		// Tab from the top of the document rather than calling focus(): the WCAG property is that
+		// the region is *reachable*, which focus() would assert nothing about. The bound is the
+		// page's focusable count plus a small margin, so it fails on unreachable rather than
+		// hanging, and the count is reported when it does. Undercounting only ever produces a
+		// false red; overcounting only permits wrap-around, and a region reached after wrapping
+		// is still reachable.
+		const focusableCount = await page.evaluate(
+			() => document.querySelectorAll("a[href], button, input, [tabindex]").length,
+		);
+		await page.evaluate(() => document.body.focus());
+		let reached = false;
+		for (let press = 0; press < focusableCount + 5 && !reached; press++) {
+			await page.keyboard.press("Tab");
+			reached = await sample.evaluate((element) => element === document.activeElement);
+		}
+		expect(
+			reached,
+			`the sample never took focus within ${focusableCount + 5} Tab presses, so a keyboard user cannot reach it`,
+		).toBe(true);
+
+		await page.keyboard.press("ArrowRight");
+		await expect
+			.poll(() => sample.evaluate((element) => element.scrollLeft))
+			.toBeGreaterThan(before.scrollLeft);
+
+		// The traversal above cannot see the explicit tab stop, and this is the only honest way to
+		// pin it. Chromium focuses overflowing scroll containers on its own, so the loop passes
+		// with `tabIndex` deleted — measured, not assumed. WebKit does not: probing a minimal
+		// overflowing `<pre>` between two buttons, Tab goes straight past it to the second button.
+		// Safari users are the ones this attribute is for, and this project only runs Chromium.
+		await expect(sample).toHaveAttribute("tabindex", "0");
+	});
+
+	test("the licence notices box can be reached and scrolled by keyboard", async ({ page }) => {
+		// Worse than the landing sample and found only because a review lane swept the route the
+		// first sweep missed: 4784px of licence text in a 384px box, so this one hides its content
+		// at every viewport width rather than only narrow ones.
+		await page.goto("/terms");
+
+		await page.getByText("Open-source and third-party license notices").click();
+
+		const notices = page.getByRole("region", { name: "Open-source licence notices", exact: true });
+		await expect(notices).toBeVisible();
+
+		const before = await notices.evaluate((element) => ({
+			scrollHeight: element.scrollHeight,
+			clientHeight: element.clientHeight,
+			scrollTop: element.scrollTop,
+		}));
+		expect(
+			before.scrollHeight,
+			`the notices box must actually overflow for this test to mean anything (scrollHeight ${before.scrollHeight} vs clientHeight ${before.clientHeight})`,
+		).toBeGreaterThan(before.clientHeight);
+		expect(before.scrollTop).toBe(0);
+
+		await notices.focus();
+		await page.keyboard.press("ArrowDown");
+		await expect
+			.poll(() => notices.evaluate((element) => element.scrollTop))
+			.toBeGreaterThan(before.scrollTop);
+
+		// Same reason as above: Chromium focuses overflowing scrollers by itself, so only a direct
+		// assertion can see the tab stop that WebKit needs.
+		await expect(notices).toHaveAttribute("tabindex", "0");
+	});
+});
