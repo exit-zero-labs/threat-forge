@@ -60,17 +60,18 @@ before issue #254, so they are not hypothetical.
 2. **Coverage sentences.** "Build X, run Y, and produce Z — all in a free, cross-platform
    desktop app." A comma series closed by an em-dash summary is the single most recognizable
    generated sentence shape. Break it into sentences of violently different lengths.
-3. **No antagonist.** "Everything you need for threat modeling" — compared to what? Naming
-   Microsoft TMT and the five-figure enterprise platforms gives the reader somewhere to
-   stand. Vagueness is what you write when you are avoiding being wrong.
+3. **No antagonist.** "Everything you need for threat modeling" — compared to what? The reader
+   needs somewhere to stand: the free tool locked to one OS, the platform priced for banks.
+   Name the situation sharply even when you choose not to name the vendor — the sharpness does
+   the work, not the brand. Vagueness is what you write when you are avoiding being wrong.
 4. **Nothing conceded.** Text optimized for approval never admits a limit. If every line is a
    strength, the reader discounts all of them.
 5. **Stated virtue instead of shown.** "direct, crafted, and grounded", "fills that gap".
    Saying you are direct is the least direct available move. Replace the claim with the
    evidence for it.
 6. **No one speaking.** Hero → feature grid → code sample → CTA is a template, not an argument.
-   A page should build: here is the situation, here is why it persists, here is the third
-   option. If the sections can be reordered without loss, there was no argument.
+   A page should build: here is the situation, here is why it persists, here is the way out.
+   If the sections can be reordered without loss, there was no argument.
 
 ## Checks before shipping copy
 

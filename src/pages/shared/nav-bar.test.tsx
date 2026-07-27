@@ -33,7 +33,7 @@ describe("NavBar", () => {
 
 	it("renders the browser CTA linking to /app", () => {
 		renderNavBar();
-		const cta = screen.getByText("Try it in the browser");
+		const cta = screen.getByText("Try it");
 		expect(cta.closest("a")).toHaveAttribute("href", "/app");
 	});
 

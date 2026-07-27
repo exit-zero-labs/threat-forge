@@ -7,7 +7,7 @@ const FEATURES = [
 		icon: Shield,
 		title: "STRIDE, minus the workshop",
 		description:
-			"All six categories, run against every element and flow where they apply. It won't find the clever bug in your auth logic. It will find the twelve boring ones you were going to skip.",
+			"All six categories, checked against every element and flow they apply to. It won't find the clever bug in your auth logic. It will find the twelve boring ones you were going to skip.",
 	},
 	{
 		icon: FileCode,
@@ -19,12 +19,13 @@ const FEATURES = [
 		icon: Sparkles,
 		title: "AI that edits, not advises",
 		description:
-			"Bring your own key. The model edits elements, flows, and threats directly instead of describing what you should type. Every edit is schema-checked and waits for your approval before it lands.",
+			"Bring your own key. It edits elements, flows, and threats directly instead of telling you what to type. Every change is schema-checked, then waits for your approval — which is about the trust a language model has earned.",
 	},
 	{
 		icon: Monitor,
 		title: "Runs anywhere, weighs nothing",
-		description: "A few megabytes on most platforms. macOS, Windows, Linux, or no install at all.",
+		description:
+			"A few megabytes on most platforms. macOS, Windows, Linux, or the browser if you'd rather not install anything. Same file either way.",
 	},
 ] as const;
 
@@ -119,9 +120,8 @@ function FeaturesSection() {
 					What it actually does
 				</h2>
 				<p className="mx-auto mt-3 max-w-2xl text-center text-muted-foreground">
-					Microsoft&apos;s Threat Modeling Tool is free, Windows-only, and saves a .NET object graph
-					with some XML wrapped around it. ThreatModeler bought IriusRisk, so the grown-up
-					alternative is now one vendor charging five figures a year. This is the third option.
+					Threat modeling tools come in two flavors: free, but locked to one OS or a file format
+					nobody reads by choice — or excellent, and priced for banks. This is the one in between.
 				</p>
 				<div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
 					{FEATURES.map((feature) => (
