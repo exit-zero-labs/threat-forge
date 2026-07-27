@@ -32,10 +32,16 @@ const FALLBACK_TTL_SECONDS = 86_400;
 
 /**
  * Query that distinguishes the last-known-good entry from the freshness entry.
- * It stays on this path rather than becoming a path of its own because every
- * incoming request is normalized to the bare path before any lookup, so no client
- * request can ever be keyed onto it. A cache key is only ever a key — nothing
- * fetches it — so what a distinct path would route to does not enter into it.
+ *
+ * A distinct path would work equally well: every incoming request is normalized to the
+ * bare path before any lookup, so neither form is reachable from outside, and a cache
+ * key is only ever a key — nothing fetches it, so what a path would route to does not
+ * enter into it. The query is chosen for the smaller surface.
+ *
+ * There is one configuration where that choice is wrong. A zone cache rule with a custom
+ * cache key that strips query strings would collapse the two entries onto one, and no
+ * query value can decollide them; a distinct path is the remedy. See residual risk 4 in
+ * `docs/plans/284-release-lookup-stale.md`.
  */
 const FALLBACK_CACHE_QUERY = "fallback=last-known-good";
 
@@ -124,14 +130,11 @@ function logUnavailable(reason: UnavailableReason, status?: number): void {
  * copy sits in this colo's cache unread. Aborting rejects the fetch, which falls
  * through to the fallback like any other refusal.
  *
- * The cost is that a healthy-but-slow GitHub now yields a stale serve where it
- * previously yielded a fresh one. At five seconds that trade is one-sided: a visitor
- * waiting longer than that has already decided the page is broken.
- *
- * Five seconds is roughly twenty times inside Cloudflare's 100-second client-facing
- * timeout — the ceiling this exists to stay under — and comfortably above GitHub's
- * normal latency for this endpoint. Aborting a slow-but-alive GitHub costs a stale
- * serve, never a 502, because the next request retries.
+ * The cost is that a healthy-but-slow GitHub now yields a stale serve where a colo
+ * holds a copy, and the same 502 as any other refusal where it does not. Five seconds
+ * sits far below any of Cloudflare's request-duration ceilings and comfortably above
+ * GitHub's normal latency here, so that trade is one-sided: a visitor waiting longer
+ * than five seconds has already decided the page is broken.
  */
 const UPSTREAM_TIMEOUT_MS = 5_000;
 
@@ -146,10 +149,12 @@ const UPSTREAM_TIMEOUT_MS = 5_000;
  * drop everything and investigate. Same behaviour either way; the point is that the
  * log says what actually happened.
  *
- * Recognised by `name` rather than by `instanceof`, because `AbortSignal.timeout`
- * rejects with a `DOMException` and `DOMException instanceof Error` is not reliably
- * true across runtimes — it is false under jsdom, where these tests run. `name` is
- * the part the specification pins.
+ * The signal itself is the authority — `aborted` is true whatever the runtime chose
+ * to name the rejection, which is the half a test cannot reach, since a mocked
+ * `fetch` never aborts a real signal. The `name` check is the half a test *can*
+ * reach. Matching on `name` rather than `instanceof` because that is the part the
+ * specification pins; `instanceof` is realm- and runtime-dependent and has no place
+ * in a classification guard.
  */
 function isUpstreamTimeout(error: unknown): boolean {
 	return (
@@ -163,14 +168,17 @@ function isUpstreamTimeout(error: unknown): boolean {
  * than four.
  */
 async function fetchUpstreamRelease(): Promise<GithubRelease | null> {
+	const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
 	let upstream: Response;
 	try {
 		upstream = await fetch(GITHUB_LATEST_RELEASE_URL, {
 			headers: UPSTREAM_HEADERS,
-			signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+			signal: timeout,
 		});
 	} catch (error) {
-		logUnavailable(isUpstreamTimeout(error) ? "upstream-timeout" : "fetch-failed");
+		logUnavailable(
+			timeout.aborted || isUpstreamTimeout(error) ? "upstream-timeout" : "fetch-failed",
+		);
 		return null;
 	}
 
@@ -183,7 +191,9 @@ async function fetchUpstreamRelease(): Promise<GithubRelease | null> {
 	try {
 		raw = await upstream.json();
 	} catch (error) {
-		logUnavailable(isUpstreamTimeout(error) ? "upstream-timeout" : "invalid-json");
+		logUnavailable(
+			timeout.aborted || isUpstreamTimeout(error) ? "upstream-timeout" : "invalid-json",
+		);
 		return null;
 	}
 

@@ -9,6 +9,9 @@
 // nothing tying them together, so this ties them.
 //
 // Node environment because Wrangler's config reader is a Node package and fails under jsdom.
+// `experimental_readRawConfig` is used rather than `JSON.parse` because the config is jsonc.
+// The prefix is Cloudflare reserving the right to move it on a minor bump, so a red suite
+// straight after a Wrangler upgrade is likely to start here.
 
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -43,6 +46,19 @@ describe("CACHE_KEY_ORIGIN", () => {
 		// Guards the guard: an empty list would make the assertion below vacuous.
 		expect(patterns.length).toBeGreaterThan(0);
 		expect(patterns).toContain(new URL(CACHE_KEY_ORIGIN).hostname);
+	});
+
+	it("is the zone every deployed hostname belongs to, not merely one of them", () => {
+		// The assertion above is one-directional: adding a second, unrelated zone would
+		// leave it passing while every request arriving there wrote a cache key off its
+		// own zone — the same silent outage, reached from the other side. If a genuinely
+		// separate zone is ever wanted, this fails and forces the real decision (a key
+		// derived per zone) instead of a cache that quietly stops working.
+		const pinned = new URL(CACHE_KEY_ORIGIN).hostname;
+
+		for (const pattern of customDomainPatterns()) {
+			expect(pattern === pinned || pattern.endsWith(`.${pinned}`)).toBe(true);
+		}
 	});
 
 	it("is https, so cache writes are not silently scoped to a second key space", () => {

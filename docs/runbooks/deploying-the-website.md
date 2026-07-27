@@ -89,7 +89,9 @@ Wrangler serves the production build with the same SPA fallback behavior used at
     2026-07-27, not a fault. It does mean the `max-age` a client sees is set by zone
     configuration rather than by the Worker, so **do not read a stale-vs-fresh conclusion out of
     the `max-age` number** unless `cf-cache-status` says the response came from the Worker.
-    `no-store` is passed through unrewritten, so the stale and `502` cases above stay legible.
+    `no-store` is passed through unrewritten — observed on a live `502`, and inferred for the
+    stale `200` on the documented rule that the override is a numeric comparison `no-store` does
+    not participate in.
   - Because the zone rewrites `Cache-Control` on cached hits, `curl` **cannot** detect the one
     failure this route's two-entry cache design is exposed to: a zone cache key that strips the
     query string would collapse the 5-minute freshness entry and the 24-hour fallback entry onto
@@ -114,7 +116,7 @@ Wrangler serves the production build with the same SPA fallback behavior used at
     other than `github.com`, and the widget is alive only because of a stale copy that expires in
     24 hours.
   - `fallback-unreadable` — the stale path ran and this colo's stored copy was itself unusable.
-    Always follows one of the four above, and means the visitor got a `502`.
+    Always follows one of the five above, and means the visitor got a `502`.
 
   A logged refusal does **not** by itself tell you what the visitor saw: the first five lines are
   written identically whether the fallback then carried the page as a `200` or nothing was stored
@@ -134,6 +136,12 @@ Wrangler serves the production build with the same SPA fallback behavior used at
 npx wrangler versions list
 npx wrangler rollback
 ```
+
+`rollback` restores a *version* of the script. `workers_dev` and `preview_urls` are script-level
+settings rather than versioned ones, so it does not restore them — and neither does reverting the
+commit that set them, because with the keys absent Wrangler omits them from the request and the
+API keeps its last value. Turning preview URLs back on means setting `preview_urls: true` and
+deploying.
 
 ## Local Check Before Pushing
 
