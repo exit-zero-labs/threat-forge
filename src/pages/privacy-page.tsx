@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { PageShell } from "./shared/page-shell";
 
-const LAST_UPDATED = "July 26, 2026";
+const LAST_UPDATED = "July 27, 2026";
 
 export function PrivacyPage() {
 	return (
@@ -60,9 +60,17 @@ export function PrivacyPage() {
 
 					<Section title="Auto-Updater">
 						<p>
-							The desktop application checks GitHub Releases for new versions. This request includes
-							only the current app version and operating system — no personally identifiable
-							information is transmitted.
+							The desktop app asks GitHub whether a newer release exists when you open it, at most
+							once a day, and whenever you press Check for updates. Left running, it does not ask
+							again. The address it requests is fixed, so the request carries no version number and
+							nothing about your machine. GitHub does see your IP address and that the request came
+							from a Tauri updater, the same as it would for any other download from them.
+						</p>
+						<p>
+							Automatic updates are not switched on yet. Installing one requires a signed release,
+							and Threat Forge is not signing its binaries yet, so the check has nothing valid to
+							find and reports that it failed. Until that changes, moving to a new version means
+							downloading it from threatforge.dev yourself.
 						</p>
 					</Section>
 

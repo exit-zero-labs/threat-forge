@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useUpdateStore } from "@/stores/update-store";
 import { DEFAULT_USER_SETTINGS } from "@/types/settings";
 import { SettingsDialog } from "./settings-dialog";
 
@@ -96,5 +97,41 @@ describe("SettingsDialog", () => {
 		expect(tabLabels).toContain("AI");
 		expect(tabLabels).not.toContain("Editor");
 		expect(tabLabels).not.toContain("Shortcuts");
+	});
+
+	describe("Updates section after a failed check", () => {
+		beforeEach(() => {
+			useUpdateStore.setState({
+				isChecking: false,
+				isInstalling: false,
+				updateAvailable: null,
+				lastCheckTime: Date.now(),
+				skippedVersion: null,
+				dismissed: false,
+				installError: null,
+				checkError: "Could not fetch a valid release JSON",
+			});
+		});
+
+		function openUpdates(): void {
+			render(<SettingsDialog />);
+			fireEvent.click(screen.getByRole("button", { name: /Updates/ }));
+		}
+
+		it("does not also claim the version is current", () => {
+			openUpdates();
+
+			// A check that errored found nothing because it never completed. Saying both at once
+			// is how the privacy page came to describe an updater that works (#259).
+			expect(screen.getByText(/Last attempt failed/)).toBeInTheDocument();
+			expect(screen.queryByText(/running the latest version/)).not.toBeInTheDocument();
+		});
+
+		it("does not promise signature verification that no release carries", () => {
+			openUpdates();
+
+			expect(screen.queryByText(/verified with a cryptographic signature/)).not.toBeInTheDocument();
+			expect(screen.getByText(/releases are not signed yet/)).toBeInTheDocument();
+		});
 	});
 });

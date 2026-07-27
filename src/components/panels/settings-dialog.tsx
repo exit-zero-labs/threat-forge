@@ -279,6 +279,7 @@ function UpdatesSection() {
 	const isChecking = useUpdateStore((s) => s.isChecking);
 	const updateAvailable = useUpdateStore((s) => s.updateAvailable);
 	const lastCheckTime = useUpdateStore((s) => s.lastCheckTime);
+	const checkError = useUpdateStore((s) => s.checkError);
 	const checkForUpdate = useUpdateStore((s) => s.checkForUpdate);
 
 	const lastChecked = lastCheckTime ? new Date(lastCheckTime).toLocaleString() : "Never";
@@ -297,7 +298,9 @@ function UpdatesSection() {
 			<div className="flex items-center justify-between gap-4">
 				<div className="min-w-0">
 					<p className="text-sm font-medium text-foreground">Check for updates</p>
-					<p className="text-xs text-muted-foreground">Last checked: {lastChecked}</p>
+					<p className="text-xs text-muted-foreground">
+						{checkError ? `Last attempt failed: ${checkError}` : `Last checked: ${lastChecked}`}
+					</p>
 				</div>
 				<button
 					type="button"
@@ -325,14 +328,15 @@ function UpdatesSection() {
 				</div>
 			)}
 
-			{!updateAvailable && lastCheckTime && !isChecking && (
-				<p className="text-xs text-muted-foreground">You're running the latest version.</p>
+			{!updateAvailable && lastCheckTime && !isChecking && !checkError && (
+				<p className="text-xs text-muted-foreground">You&apos;re running the latest version.</p>
 			)}
 
 			<div className="border-t border-border pt-4">
 				<p className="text-xs text-muted-foreground">
-					ThreatForge checks for updates automatically every 24 hours. Updates are downloaded from
-					GitHub Releases and verified with a cryptographic signature.
+					Threat Forge looks for a new version when you open it, at most once a day. Installing one
+					needs a signed release, and releases are not signed yet, so the check has nothing valid to
+					find. New versions are a download from threatforge.dev until that changes.
 				</p>
 			</div>
 		</div>
