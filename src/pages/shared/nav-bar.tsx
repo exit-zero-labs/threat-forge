@@ -12,7 +12,9 @@ export function NavBar() {
 					className="flex items-center gap-2 text-foreground transition-opacity hover:opacity-80"
 				>
 					<img src="/logo_square.png" alt="Threat Forge" className="h-6 w-6" />
-					<span className="text-lg font-semibold tracking-tight">Threat Forge</span>
+					<span className="whitespace-nowrap text-lg font-semibold tracking-tight">
+						Threat Forge
+					</span>
 				</Link>
 
 				<div className="flex items-center gap-6">
@@ -24,9 +26,9 @@ export function NavBar() {
 					</Link>
 					<Link
 						to="/app"
-						className="rounded-md bg-tf-signal px-4 py-2 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90"
+						className="whitespace-nowrap rounded-md bg-tf-signal px-4 py-2 text-sm font-medium text-tf-zero transition-opacity hover:opacity-90"
 					>
-						Try Online
+						Try it
 					</Link>
 				</div>
 			</div>

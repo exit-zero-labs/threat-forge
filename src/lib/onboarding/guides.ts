@@ -7,30 +7,30 @@ export const WELCOME_GUIDE: OnboardingGuide = {
 	steps: [
 		{
 			targetSelector: "[data-testid='canvas-area']",
-			title: "The Canvas",
+			title: "The canvas",
 			content:
-				"This is your threat modeling canvas. Drag components from the palette to build your system architecture diagram.",
+				"Where the system goes. Drag pieces out of the palette and arrange them until it looks like the thing you actually built.",
 			placement: "bottom",
 		},
 		{
 			targetSelector: "[data-testid='component-palette']",
-			title: "Component Palette",
+			title: "The palette",
 			content:
-				"Drag generic components or pre-built library items onto the canvas. Double-click to add at center.",
+				"Generic shapes if you want to move fast, named services if you want the details filled in. Double-click drops one in the middle.",
 			placement: "right",
 		},
 		{
 			targetSelector: "[data-testid='right-panel']",
-			title: "Properties & Analysis",
+			title: "The right-hand panel",
 			content:
-				"View and edit element properties, run STRIDE threat analysis, and chat with AI for threat suggestions.",
+				"Everything about the selected element, plus the threats tab and the AI. Most of your time gets spent here.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='btn-save']",
-			title: "Save Your Work",
+			title: "Saving",
 			content:
-				"Save your threat model as a human-readable YAML file. It's git-friendly and version-controllable.",
+				"Writes one .thf file. It is YAML, so you can commit it, diff it, and read it years from now without this app.",
 			placement: "bottom",
 		},
 	],
@@ -43,22 +43,25 @@ export const DFD_BASICS_GUIDE: OnboardingGuide = {
 	steps: [
 		{
 			targetSelector: "[data-testid='palette-item-generic']",
-			title: "Add a Component",
-			content: "Drag this onto the canvas to create a generic component (process, service, etc.).",
+			title: "Add something",
+			ariaLabel: "Add a component",
+			content:
+				"Drag this out for a plain process or service. You can rename it and set its type afterwards.",
 			placement: "right",
 		},
 		{
 			targetSelector: "[data-testid='palette-item-trust-boundary']",
-			title: "Trust Boundaries",
+			title: "Trust boundaries",
 			content:
-				"Drag a boundary onto the canvas to define trust zones. Drop components inside to assign them.",
+				"Draw the lines where trust stops. Anything you drop inside a boundary belongs to it, and STRIDE cares a great deal about which side things are on.",
 			placement: "right",
 		},
 		{
 			targetSelector: "[data-testid='tab-threats']",
-			title: "Analyze Threats",
+			title: "Then find the threats",
+			ariaLabel: "Analyze threats",
 			content:
-				"Switch to the Threats tab and run STRIDE analysis to automatically identify potential security threats.",
+				"Open the Threats tab and run STRIDE. It reads the diagram you just drew and proposes what could go wrong.",
 			placement: "left",
 		},
 	],
@@ -71,23 +74,25 @@ export const STRIDE_ANALYSIS_GUIDE: OnboardingGuide = {
 	steps: [
 		{
 			targetSelector: "[data-testid='tab-threats']",
-			title: "Threats Tab",
+			title: "The threats tab",
 			content:
-				"The Threats tab shows all identified threats. Click here to switch to the threat analysis view.",
+				"Switch here for every threat on the model, in one list. This is the view you will be arguing with.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='btn-stride-analyze']",
-			title: "Run STRIDE Analysis",
+			title: "Run it",
+			ariaLabel: "Run STRIDE analysis",
 			content:
-				"Click this button to automatically generate threats based on your diagram elements. The STRIDE methodology covers Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, and Elevation of Privilege.",
+				"Walks your elements and flows through the STRIDE categories that apply to each: spoofing, tampering, repudiation, information disclosure, denial of service, elevation of privilege. It is thorough rather than clever, which is the point.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='right-panel']",
-			title: "Review & Manage Threats",
+			title: "Now do the real work",
+			ariaLabel: "Review and manage threats",
 			content:
-				"Each threat shows its STRIDE category and severity. Click a threat to edit its details, add mitigations, or change its status.",
+				"Open a threat to set severity, write the mitigation, or accept the risk. The generated list is a starting point, not a verdict.",
 			placement: "left",
 		},
 	],
@@ -100,23 +105,25 @@ export const AI_ASSISTANT_GUIDE: OnboardingGuide = {
 	steps: [
 		{
 			targetSelector: "[data-testid='tab-ai']",
-			title: "AI Chat Tab",
+			title: "The AI tab",
 			content:
-				"The AI tab lets you chat with an LLM about your threat model. It can suggest threats, review mitigations, and answer security questions.",
+				"Chat about the model you have open. It can read the document, propose threats, and edit elements and flows itself — though every edit stops for your approval first.",
 			placement: "left",
 		},
 		{
 			targetSelector: "[data-testid='btn-settings-dialog']",
-			title: "Configure API Key",
+			title: "Bring your own key",
+			ariaLabel: "Configure your API key",
 			content:
-				"To use AI features, open Settings and add your API key (OpenAI or Anthropic). Desktop keys are encrypted at rest; browser keys are encrypted using a key your browser will not export, though anything running on this page can still use them.",
+				"Add an OpenAI or Anthropic key in Settings. Calls go straight to the provider, never through a server of mine. Desktop keys are encrypted at rest; browser keys are encrypted using a key your browser will not export, though anything running on this page can still use them.",
 			placement: "bottom",
 		},
 		{
 			targetSelector: "[data-testid='tab-ai']",
-			title: "Ask About Threats",
+			title: "What to ask it",
+			ariaLabel: "Example questions to ask the AI",
 			content:
-				"Try asking: 'What threats am I missing?' or 'Review the mitigations for my API gateway.' The AI sees your current model and provides contextual suggestions.",
+				"Try 'what am I missing on the payment flow?' or 'review the mitigations on my API gateway.' Vague questions get vague answers here, same as anywhere else.",
 			placement: "left",
 		},
 	],

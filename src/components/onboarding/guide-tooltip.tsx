@@ -77,7 +77,7 @@ export function GuideTooltip({
 			ref={tooltipRef}
 			data-testid="guide-tooltip"
 			role="dialog"
-			aria-label={step.title}
+			aria-label={step.ariaLabel ?? step.title}
 			tabIndex={-1}
 			className="fixed z-[9999] w-72 rounded-lg border border-border bg-card p-4 shadow-xl outline-none"
 			style={style}

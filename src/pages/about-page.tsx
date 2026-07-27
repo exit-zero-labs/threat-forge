@@ -11,33 +11,38 @@ export function AboutPage() {
 				<section className="mt-10">
 					<h2 className="text-xl font-semibold text-foreground">Why Threat Forge exists</h2>
 					<p className="mt-3 leading-relaxed text-muted-foreground">
-						Threat modeling is one of the most effective ways to find security issues early — before
-						code is written, before systems go live. But the tooling landscape has a gap:
-						Microsoft&apos;s Threat Modeling Tool is free but Windows-only with opaque binary files,
-						while enterprise platforms like ThreatModeler and IriusRisk cost $20,000+ per year.
+						Threat modeling works. Sitting down and asking what could go wrong catches things no
+						scanner will, and it catches them before anyone has written the code. The practice is
+						fine. The tooling is where it falls apart.
 					</p>
 					<p className="mt-3 leading-relaxed text-muted-foreground">
-						Threat Forge fills that gap. It&apos;s a free, open-source, cross-platform desktop app
-						that produces human-readable, git-friendly YAML threat models. Built with Tauri and Rust
-						for a lightweight ~10MB binary that runs on macOS, Windows, and Linux.
+						The free tools are genuinely useful, right up until you need one on a Mac — or you open
+						the file it wrote and find a format only that app understands. The ones built for teams
+						solved both, and charge five figures a year for it: fine for a bank, absurd for four
+						engineers and a side project. So most teams do it once, before an audit, and never
+						again.
+					</p>
+					<p className="mt-3 leading-relaxed text-muted-foreground">
+						Threat Forge is the boring middle. Free, open source, runs on all three desktop
+						platforms and in a browser, and saves a YAML file you can read without it.
 					</p>
 				</section>
 
 				<section className="mt-10">
 					<h2 className="text-xl font-semibold text-foreground">Open source</h2>
 					<p className="mt-3 leading-relaxed text-muted-foreground">
-						Threat Forge is licensed under Apache 2.0. The{" "}
+						Apache 2.0. The{" "}
 						<code className="rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-foreground">
 							.thf
 						</code>{" "}
-						file format is the product&apos;s core — a YAML-based schema designed for humans first.
-						Your threat models are plain text files you can open in any editor, diff in any tool,
-						and review in any pull request.
+						format is the actual product — a YAML schema designed to be read by a person first and
+						parsed second. The app is how you edit one conveniently, and it is deliberately not the
+						only way.
 					</p>
 					<p className="mt-3 leading-relaxed text-muted-foreground">
-						Security tools should be accessible to everyone, not locked behind enterprise contracts.
-						Open source means you can audit the code, contribute improvements, and trust that your
-						data stays yours.
+						That matters for an unglamorous reason: a security tool you cannot audit is a security
+						tool you are taking on faith. The source is there. So is the schema. If Threat Forge
+						disappears tomorrow, your models are still plain text and still yours.
 					</p>
 				</section>
 
@@ -53,32 +58,32 @@ export function AboutPage() {
 						>
 							Exit Zero Labs LLC
 						</a>{" "}
-						— an indie software company, bootstrapped by design. Named after{" "}
+						— one person, no investors, no growth targets. Named after{" "}
 						<code className="rounded bg-secondary px-1.5 py-0.5 font-mono text-sm text-foreground">
 							exit 0
-						</code>{" "}
-						— the Unix exit code for success. We build tools for developers and security
-						practitioners that are direct, crafted, and grounded.
+						</code>
+						, which is the most anyone can reasonably ask of a program.
 					</p>
 				</section>
 
 				<section className="mt-10">
 					<h2 className="text-xl font-semibold text-foreground">Get involved</h2>
 					<p className="mt-3 leading-relaxed text-muted-foreground">
-						Threat Forge is community-driven. Here&apos;s how you can help:
+						A bug report from someone who actually threat models is worth more than a star, but both
+						are welcome:
 					</p>
 					<ul className="mt-4 space-y-2">
 						{[
 							{
-								text: "Star the repo on GitHub",
+								text: "Star it, if you're into that",
 								href: GITHUB_URL,
 							},
 							{
-								text: "Report bugs or request features",
+								text: "Tell me what broke, or what's missing",
 								href: `${GITHUB_URL}/issues`,
 							},
 							{
-								text: "Contribute code or documentation",
+								text: "Send a patch, or fix a sentence in the docs",
 								href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`,
 							},
 						].map((item) => (

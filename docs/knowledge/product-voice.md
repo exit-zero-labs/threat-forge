@@ -1,0 +1,85 @@
+# Product voice
+
+This governs copy a **user** reads: the landing page, About, empty states, onboarding
+guides, marketing sections of the support page, release notes, and the page metadata in
+`index.html` — which is the first copy anyone sees from a search result or a shared link, and
+is therefore the easiest to forget.
+
+It does not govern documentation. `.e0l/first-principles/documentation.md` owns that, and the
+two are deliberately different — docs are for someone who has already decided, product copy is
+for someone who has not.
+
+It sits on top of `.e0l/first-principles/anti-slop/copy.md`, which is the company catalogue of
+copy tells and already owns the general cases. What is here is the ThreatForge-specific part:
+the register, and the tells evidenced in our own shipped text.
+
+## The voice
+
+Wry. The joke is always at the situation or the incumbent tools, never at the reader, and there
+is always something true underneath it.
+
+> Threat modeling for people who hate threat modeling tools.
+
+Threat modeling has a real emotional truth attached: most engineers avoid it, and they avoid it
+because the tooling is miserable rather than because the practice is. Copy that acknowledges
+that earns the next sentence. Copy that opens with "Everything you need for threat modeling"
+has to be endured instead.
+
+Rules that make it work:
+
+- **Humor comes from precision and recognition, not from jokes.** "Install something
+  Windows-only, drag boxes around for an afternoon, export a report, never open it again" is
+  funny because it is specific and the reader has lived it. Puns are not the register.
+- **Never punch at the user.** They are not the problem. The tools are.
+- **Substance under every joke.** If you delete the wit and nothing informative remains, the
+  line is decoration. Cut it.
+- **On functional surfaces, the fact comes first.** Errors, instructions, onboarding steps and
+  FAQ answers may carry the voice, but never at the cost of the answer, and never at the expense
+  of someone who is stuck. If removing the wit would make the sentence clearer, remove it.
+
+  Issue #254 originally stated this more strictly — that errors, FAQ answers and instructions
+  stay plain. The looser rule is what shipped, because three FAQ answers do carry the voice and
+  are better for it. Errors are the part that stayed absolute: nothing in an error message is
+  allowed to be funny.
+- **First person singular, except in legal text.** Exit Zero Labs is one person, and the About
+  page says so, so "I" and "me" are correct in product copy. The privacy policy and terms speak
+  as the company because the obligations are the company's, and that difference is deliberate
+  rather than drift.
+- **Concede real limits.** "It won't find the clever bug in your auth logic. It will find the
+  twelve boring ones you were going to skip." A concession is the cheapest credibility
+  available and almost no marketing copy will spend it.
+
+## The six tells
+
+These are what machine-generated copy looks like. Every one of them was present on this site
+before issue #254, so they are not hypothetical.
+
+1. **Symmetry.** Four feature cards of near-identical length. That shape comes from filling a
+   grid, not from having four things worth saying. Real writing is lopsided — one thing matters
+   most and gets the most words. Keep the uneven lengths; do not tidy them.
+2. **Coverage sentences.** "Build X, run Y, and produce Z — all in a free, cross-platform
+   desktop app." A comma series closed by an em-dash summary is the single most recognizable
+   generated sentence shape. Break it into sentences of violently different lengths.
+3. **No antagonist.** "Everything you need for threat modeling" — compared to what? The reader
+   needs somewhere to stand: the free tool locked to one OS, the platform priced for banks.
+   Name the situation sharply even when you choose not to name the vendor — the sharpness does
+   the work, not the brand. Vagueness is what you write when you are avoiding being wrong.
+4. **Nothing conceded.** Text optimized for approval never admits a limit. If every line is a
+   strength, the reader discounts all of them.
+5. **Stated virtue instead of shown.** "direct, crafted, and grounded", "fills that gap".
+   Saying you are direct is the least direct available move. Replace the claim with the
+   evidence for it.
+6. **No one speaking.** Hero → feature grid → code sample → CTA is a template, not an argument.
+   A page should build: here is the situation, here is why it persists, here is the way out.
+   If the sections can be reordered without loss, there was no argument.
+
+## Checks before shipping copy
+
+- Read it aloud. Anywhere you would not say it to a colleague, rewrite it.
+- Delete the best sentence. If the paragraph is unharmed, the paragraph was padding.
+- Find the concession. If there is none, you have written a brochure.
+- Check every claim is still literally true. Voice work is where overclaims get introduced,
+  because confident phrasing is more fun to write — the CTA once said "no data leaves your
+  machine", which BYOK provider calls and web analytics both contradict.
+- Screenshot the result at 1280px and at mobile width. Headlines that read well in a source
+  file orphan words on screen.

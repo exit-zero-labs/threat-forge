@@ -67,7 +67,7 @@ function EmptyCanvas() {
 				/>
 				<h2 className="text-xl font-semibold tracking-tight">Threat Forge</h2>
 				<p className="mt-2 max-w-sm text-center text-sm text-muted-foreground">
-					Create a new threat model or open an existing one to get started.
+					Nothing open. Start a new model, or open one you saved earlier.
 				</p>
 
 				<div className="mt-6 flex gap-3 [@media(max-height:850px)]:mt-4">
