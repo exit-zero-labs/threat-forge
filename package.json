@@ -39,7 +39,7 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"js-yaml": "^5.2.2",
-		"lucide-react": "^1.25.0",
+		"lucide-react": "^1.27.0",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"react-markdown": "^10.1.0",
@@ -52,8 +52,8 @@
 	"devDependencies": {
 		"@axe-core/playwright": "^4.12.1",
 		"@biomejs/biome": "^2.5.5",
-		"@cloudflare/workers-types": "5.20260721.1",
-		"@playwright/test": "^1.58.2",
+		"@cloudflare/workers-types": "5.20260727.1",
+		"@playwright/test": "^1.62.0",
 		"@tailwindcss/vite": "^4.2.1",
 		"@tauri-apps/cli": "2.11.4",
 		"@testing-library/jest-dom": "^7.0.0",
@@ -61,14 +61,14 @@
 		"@types/node": "^22.20.1",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
-		"@vitejs/plugin-react": "^6.0.3",
+		"@vitejs/plugin-react": "^6.0.4",
 		"fake-indexeddb": "6.2.5",
 		"jsdom": "^29.1.1",
-		"simple-icons": "16.27.0",
+		"simple-icons": "16.27.1",
 		"tailwindcss": "^4.2.1",
 		"typescript": "~7.0.2",
 		"vite": "^8.1.5",
 		"vitest": "^4.0.18",
-		"wrangler": "4.113.0"
+		"wrangler": "4.114.0"
 	}
 }
