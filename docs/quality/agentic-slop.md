@@ -40,6 +40,8 @@ slop when they protect a real invariant. A review that manufactures findings is 
 - Assertions are weakened, timing is inflated, or failures are skipped to make CI green.
 - Large snapshots are updated without inspecting the behavioral difference.
 - E2E failures lose screenshots, traces, console errors, or reproducible fixture state.
+- A test result is reported without stating which tree state produced it, so a red or green
+  observed during someone else's edit is indistinguishable from a real one.
 
 ### Documentation and operations
 
@@ -103,3 +105,22 @@ host and no Cloudflare project existed.
 
 **Fix:** treat source, deployed service, custom domains, DNS, headers, analytics, privacy text,
 verification, and rollback as one migration contract.
+
+### 2026-07-27 — A concurrent review lane fabricated a finding out of another lane's mutation
+
+**Tell:** a `must-fix` arrived with everything a true finding has — a reproduction count, a named
+line, a plausible mechanism, and a verified minimal fix — and none of it existed. Three review
+lanes ran in parallel against one checkout; one had reverted a production fix to prove a test
+caught it, and another ran the suite in that window and diagnosed the breakage as a flaky test.
+The reported failure was byte-identical to the mutation the first lane said it had applied. A
+quiet tree was green 8 runs out of 8.
+
+The general shape: **a finding is only as trustworthy as the tree state it was observed on, and
+a report that omits that state cannot be checked.** The dangerous direction is not the false red
+— that one gets caught by re-running. It is the false **green**, where a half-applied mutation
+makes a suite pass for a lane that then clears the change.
+
+**Fix:** serialize any lane that mutates the working tree, keep read-only lanes parallel, and
+require every lane that has a shell to open its report with the tree state it observed and to
+confirm — not assume — that it restored what it changed. A lane with no shell cannot read that
+state and is given its commit instead. See #264 and `.claude/skills/pr-preflight/SKILL.md`.

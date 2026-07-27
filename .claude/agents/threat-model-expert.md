@@ -19,3 +19,7 @@ Review:
 Use `docs/knowledge/file-format.md` and `docs/knowledge/glossary.md` as canonical references.
 Distinguish verified facts from assumptions. Preserve backward compatibility and require a
 migration path for breaking changes.
+
+You have no shell, so you cannot read the state of the tree you are reviewing and are not asked
+to attest it. The orchestrator gives you the commit; report it back, so a finding taken from a
+stale checkout is detectable.
