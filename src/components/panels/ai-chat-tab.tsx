@@ -345,14 +345,35 @@ function SessionBar() {
 	);
 }
 
-function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStreaming: boolean }) {
-	const messagesEndRef = useRef<HTMLDivElement>(null);
+/**
+ * Keep a scroll container pinned to its own bottom as content arrives.
+ *
+ * Deliberately not `scrollIntoView`. That does not scroll one container — it walks every
+ * scrollable ancestor up to the document and scrolls each so the anchor sits at its start.
+ * `styles.css` sets `html, body { overflow: hidden }` for the desktop-app feel, which stops the
+ * *user* scrolling but not a script, so an ancestor driven that way cannot be dragged back
+ * (#293). `scrollTo` on the container itself moves that one element and nothing above it.
+ *
+ * The container is measured on each run rather than captured, because the streaming turn
+ * replaces its children between frames.
+ */
+function useScrollPinnedToBottom(dependency: unknown) {
+	const containerRef = useRef<HTMLDivElement>(null);
 
-	// Auto-scroll to bottom on new messages
-	// biome-ignore lint/correctness/useExhaustiveDependencies: messages intentionally in deps to trigger scroll on content change
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the dependency signals that new content arrived rather than supplying a value the effect reads
 	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [messages]);
+		const container = containerRef.current;
+		if (!container) {
+			return;
+		}
+		container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+	}, [dependency]);
+
+	return containerRef;
+}
+
+function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStreaming: boolean }) {
+	const messagesRef = useScrollPinnedToBottom(messages);
 
 	if (messages.length === 0) {
 		return (
@@ -366,7 +387,11 @@ function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStr
 	}
 
 	return (
-		<div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+		<div
+			ref={messagesRef}
+			data-testid="chat-messages"
+			className="flex flex-1 flex-col gap-2 overflow-y-auto"
+		>
 			{messages.map((msg, i) => (
 				<MessageBubble
 					// biome-ignore lint/suspicious/noArrayIndexKey: messages are append-only
@@ -376,7 +401,6 @@ function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStr
 					isStreaming={isStreaming && i === messages.length - 1 && msg.role === "assistant"}
 				/>
 			))}
-			<div ref={messagesEndRef} />
 		</div>
 	);
 }
@@ -399,7 +423,6 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	// those edits so the button's disabled state stays accurate; the depth itself
 	// is not otherwise needed, only its change.
 	const historyStackDepth = useHistoryStore((s) => s.past.length);
-	const messagesEndRef = useRef<HTMLDivElement>(null);
 
 	// A tool-enabled turn reviews mutations through the approval ledger, so fenced
 	// parsing is disabled for it; a text-only fallback turn keeps it.
@@ -413,13 +436,14 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	void historyStackDepth;
 	const availability = hasApplied ? undoAvailability() : "already_undone";
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: scroll to the latest on any turn change
-	useEffect(() => {
-		messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [turn]);
+	const messagesRef = useScrollPinnedToBottom(turn);
 
 	return (
-		<div className="flex flex-1 flex-col gap-2 overflow-y-auto">
+		<div
+			ref={messagesRef}
+			data-testid="chat-messages"
+			className="flex flex-1 flex-col gap-2 overflow-y-auto"
+		>
 			{bubbles.map((message, i) => (
 				<MessageBubble
 					// biome-ignore lint/suspicious/noArrayIndexKey: turn messages are append-only
@@ -476,8 +500,6 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 					<Undo2 className="h-2.5 w-2.5" /> Undo this turn
 				</button>
 			)}
-
-			<div ref={messagesEndRef} />
 		</div>
 	);
 }

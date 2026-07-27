@@ -23,6 +23,9 @@ const streamConversationMock = vi.hoisted(() => vi.fn());
 // Whether the mocked keychain reports a stored key; a test flips it to reach the
 // chat view instead of the empty state. `rejection` is the #234 case: storage that
 // could not answer at all, which must not read as "no key configured".
+/** Every `scrollTo` the component made, with the element it was aimed at. */
+let scrollCalls: { target: Element; options: ScrollToOptions }[];
+
 const keychain = vi.hoisted((): { hasKey: boolean; rejection: Error | null } => ({
 	hasKey: false,
 	rejection: null,
@@ -69,8 +72,17 @@ beforeEach(() => {
 	localStorage.clear();
 	keychain.hasKey = false;
 	keychain.rejection = null;
-	// jsdom does not implement scrollIntoView, which the message list calls on update.
-	Element.prototype.scrollIntoView = vi.fn();
+	// jsdom implements no scroll methods, so the message list's own call needs a stand-in.
+	// It records rather than discards, because a test below asserts where the scroll landed.
+	scrollCalls = [];
+	Element.prototype.scrollTo = function scrollTo(
+		this: Element,
+		options?: ScrollToOptions | number,
+	) {
+		if (typeof options === "object" && options !== null) {
+			scrollCalls.push({ target: this, options });
+		}
+	};
 	useDocumentRegistry.setState({
 		documents: {},
 		openDocumentIds: [],
@@ -304,6 +316,17 @@ describe("AiChatTab tool-loop turn", () => {
 		expect(useAiTurnStore.getState().turn?.phase).toBe("awaiting_approval");
 		expect(screen.getByTitle("Stop generating (Esc)")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+
+		// The conversation scrolls its own container and nothing above it (#293). jsdom has no
+		// layout engine, so it cannot show that ancestors stay put — that is
+		// `e2e/chat-scroll-containment.spec.ts`, and it remains the only guard for the
+		// containment itself. What this does catch is the call being dropped or aimed at the
+		// wrong element, which is how the bug was written in the first place.
+		expect(scrollCalls.length).toBeGreaterThan(0);
+		for (const { target, options } of scrollCalls) {
+			expect(target).toBe(screen.getByTestId("chat-messages"));
+			expect(options).toEqual({ top: expect.any(Number), behavior: "smooth" });
+		}
 	});
 
 	it("settles a live turn cancelled when the active document switches", async () => {
