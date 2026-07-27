@@ -142,6 +142,12 @@ const UPSTREAM_FAILURES: readonly {
 		},
 	},
 	{
+		name: "the upstream fetch times out",
+		apply: (fetchSpy) => {
+			fetchSpy.mockRejectedValueOnce(new DOMException("signal timed out", "TimeoutError"));
+		},
+	},
+	{
 		name: "the upstream fetch rejects",
 		apply: (fetchSpy) => {
 			fetchSpy.mockRejectedValueOnce(new Error("network down"));
@@ -278,6 +284,54 @@ describe("handleLatestRelease", () => {
 		expect(fetchSpy).toHaveBeenCalledOnce();
 		// Both keys are handler-owned constants; neither carries a client query string.
 		expect([...cache.store.keys()]).toEqual([RELEASE_URL, FALLBACK_URL]);
+	});
+
+	it("keys on one origin regardless of the host and port the request arrived on", async () => {
+		// Cloudflare answers this zone on `www.` as well as the apex and on alternate proxy
+		// ports — `https://threatforge.dev:8443/api/latest-release` and `:2053` both return
+		// 200, measured live. Deriving the key from `request.url` gave each of those its own
+		// entry and its own upstream fetch, so a client cycling host × port could multiply
+		// our request rate against GitHub's 60/hour per-IP budget and keep the colo refused —
+		// defeating the rate protection this route's cache exists to provide.
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }));
+		const firstCtx = createCtx();
+		await handleLatestRelease(new Request(RELEASE_URL), firstCtx);
+		await firstCtx.settle();
+
+		for (const origin of [
+			"https://threatforge.dev:8443",
+			"https://threatforge.dev:2053",
+			"https://www.threatforge.dev",
+		]) {
+			const response = await handleLatestRelease(
+				new Request(`${origin}${LATEST_RELEASE_PATH}`),
+				createCtx(),
+			);
+			expect(response.status).toBe(200);
+		}
+
+		expect(fetchSpy).toHaveBeenCalledOnce();
+		expect([...cache.store.keys()]).toEqual([RELEASE_URL, FALLBACK_URL]);
+	});
+
+	it("bounds the upstream fetch so a hung GitHub cannot outlast the edge", async () => {
+		// Without a bound the request waits past Cloudflare's own timeout and the visitor
+		// gets a 524 while a good last-known-good copy sits in this colo unread. Aborting
+		// rejects the fetch, which is already the stale path's entry point.
+		const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }));
+		const ctx = createCtx();
+
+		await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		expect(timeoutSpy).toHaveBeenCalledWith(5_000);
+		const init = fetchSpy.mock.calls[0][1];
+		expect(init?.signal).toBe(timeoutSpy.mock.results[0].value);
 	});
 
 	it("returns a sanitized 502 and caches nothing when upstream is not ok", async () => {

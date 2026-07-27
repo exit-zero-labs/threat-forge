@@ -32,14 +32,32 @@ const FALLBACK_TTL_SECONDS = 86_400;
 
 /**
  * Query that distinguishes the last-known-good entry from the freshness entry.
- * It stays on this path rather than becoming a path of its own for two reasons:
- * every incoming request is normalized to the bare path before any lookup, so no
- * client request can ever be keyed onto it; and `run_worker_first`
- * (`wrangler.jsonc`) matches by path, so a request for this exact URL still
- * enters this handler and is normalized away, where a distinct path would fall
- * through to the assets binding and be served as a 404 page.
+ * It stays on this path rather than becoming a path of its own because every
+ * incoming request is normalized to the bare path before any lookup, so no client
+ * request can ever be keyed onto it. A cache key is only ever a key — nothing
+ * fetches it — so what a distinct path would route to does not enter into it.
  */
 const FALLBACK_CACHE_QUERY = "fallback=last-known-good";
+
+/**
+ * The one key space this route caches in.
+ *
+ * Every incoming request is normalized to this exact origin, so the path, query,
+ * scheme, host, and port a caller supplies never reach the key. That is what stops
+ * a client from bypassing the five-minute cache — and, through it, GitHub's
+ * unauthenticated per-IP rate limit, which is the constraint this whole route
+ * exists to survive.
+ *
+ * The authority half is load-bearing, not tidiness. Cloudflare answers this zone on
+ * `www.` as well as the apex (`wrangler.jsonc` binds both) and on a set of alternate
+ * proxy ports — `https://threatforge.dev:8443/api/latest-release` and `:2053` both
+ * return 200, measured. `new URL(path, request.url)` keeps the authority, so each of
+ * those was previously its own cache entry with its own upstream fetch to populate
+ * it. A client cycling host × port could multiply our upstream request rate by an
+ * order of magnitude against a 60/hour budget, keep the colo permanently refused,
+ * and fragment the fallback across namespaces so it could not carry the page either.
+ */
+const CACHE_KEY_ORIGIN = "https://threatforge.dev";
 
 /** GitHub rejects unauthenticated API requests that omit a User-Agent. */
 const UPSTREAM_HEADERS: HeadersInit = {
@@ -103,6 +121,17 @@ function logUnavailable(reason: UnavailableReason, status?: number): void {
 }
 
 /**
+ * How long to wait for GitHub before treating the lookup as failed.
+ *
+ * Every other failure this route handles is a prompt refusal. A hung or very slow
+ * upstream is the one that hurts most: without a bound the request waits past the
+ * edge timeout, the visitor gets a 524, and a perfectly good last-known-good copy
+ * sits in this colo's cache unread. Aborting rejects the fetch, which lands in the
+ * same `catch` as any other network failure and falls through to the fallback.
+ */
+const UPSTREAM_TIMEOUT_MS = 5_000;
+
+/**
  * Ask GitHub for the latest release and return it only if it validates. Every way
  * this can fail collapses to `null`, so the caller has one degraded path rather
  * than four.
@@ -110,7 +139,10 @@ function logUnavailable(reason: UnavailableReason, status?: number): void {
 async function fetchUpstreamRelease(): Promise<GithubRelease | null> {
 	let upstream: Response;
 	try {
-		upstream = await fetch(GITHUB_LATEST_RELEASE_URL, { headers: UPSTREAM_HEADERS });
+		upstream = await fetch(GITHUB_LATEST_RELEASE_URL, {
+			headers: UPSTREAM_HEADERS,
+			signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+		});
 	} catch {
 		logUnavailable("fetch-failed");
 		return null;
@@ -175,16 +207,15 @@ async function readLastKnownGood(cache: Cache, key: Request): Promise<GithubRele
 /**
  * Build a cache key for this route.
  *
- * Query strings do not vary the fixed upstream lookup. Normalize the cache key so a caller
- * cannot bypass the five-minute cache (and GitHub's unauthenticated rate protection) by adding
- * arbitrary query parameters.
- *
- * `query` is only ever a handler-owned constant, never anything derived from the
- * request, so the second key stays unreachable from the outside.
+ * Nothing the caller controls reaches the key: the origin is the fixed
+ * {@link CACHE_KEY_ORIGIN} and the path is this route's own constant, so the request
+ * URL is not consulted at all. `query` is only ever a handler-owned constant, which
+ * is what keeps the fallback entry unreachable from outside.
  */
-function releaseCacheKey(requestUrl: string, query?: string): Request {
-	const path = query ? `${LATEST_RELEASE_PATH}?${query}` : LATEST_RELEASE_PATH;
-	return new Request(new URL(path, requestUrl));
+function releaseCacheKey(query?: string): Request {
+	const url = new URL(LATEST_RELEASE_PATH, CACHE_KEY_ORIGIN);
+	url.search = query ?? "";
+	return new Request(url);
 }
 
 /**
@@ -200,8 +231,8 @@ function releaseCacheKey(requestUrl: string, query?: string): Request {
  * `Cache-Control` would expire at the same instant and could never once be read.
  *
  * When GitHub will not answer, the fallback copy is served as a 200 marked
- * `no-store`, so recovery is immediate. A 502 means this colo has never stored a
- * good answer, or the one it had has aged out.
+ * `no-store` and is never written back, so recovery is immediate. A 502 means this
+ * colo has never stored a good answer, or the one it had has aged out.
  */
 export async function handleLatestRelease(
 	request: Request,
@@ -212,8 +243,8 @@ export async function handleLatestRelease(
 	}
 
 	const cache = caches.default;
-	const cacheKey = releaseCacheKey(request.url);
-	const fallbackKey = releaseCacheKey(request.url, FALLBACK_CACHE_QUERY);
+	const cacheKey = releaseCacheKey();
+	const fallbackKey = releaseCacheKey(FALLBACK_CACHE_QUERY);
 	const cached = await cache.match(cacheKey);
 	if (cached) {
 		return cached;

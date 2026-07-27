@@ -252,9 +252,12 @@ omission:
    temporary logging under `wrangler dev --remote` to obtain. Response headers are not aggregated;
    logs are.
 5. **The stale path is still externally observable without a new header.** Fresh answers carry
-   `Cache-Control: public, max-age=300`; stale answers carry `no-store` with a `200`; never-cached
-   failures are `502`. The three states are distinguishable with `curl -I`, which is what
-   acceptance criterion 7 needs.
+   `Cache-Control: public, max-age=300` from the Worker; stale answers carry `no-store` with a
+   `200`; never-cached failures are `502`. The three states are distinguishable on the wire, which
+   is what acceptance criterion 7 needs. Two corrections from implementation: the check is
+   `curl -s -D- -o /dev/null`, not `curl -I` — `HEAD` is rejected `405` on this route (`#263`) —
+   and the zone rewrites a cached `200`'s `Cache-Control` to `max-age=14400`, so only the `no-store`
+   and `502` states read verbatim at the edge. See the replan log.
 
 ### What stops a stale answer being re-cached as fresh
 
@@ -307,11 +310,19 @@ The honest list, with what closes each one:
    set via Workers or Page Rules that strips the query string"), so the hazard is real and not
    hypothetical, but it cannot be checked from the repository. The design makes it *loud*: the two
    entries differ in their stored `Cache-Control`, and the hit path returns the stored response
-   verbatim, so a collision shows up immediately as `cache-control: public, max-age=86400` on an
-   ordinary `curl -I` of the endpoint. That check is added to the deploy runbook in step 5, and
-   the dashboard confirmation is an owner-validation item. If it ever fires, the remedy is a
-   distinct path key rather than a query variant.
-5. **A user in a refused colo within 24h of a genuine release** sees release *N-1* with a working
+   verbatim, so a collision would show as `cache-control: public, max-age=86400`. **That tripwire
+   does not work**: the zone rewrites a cached `200` to `max-age=14400`, so a collision reads the
+   same as a healthy hit. Detection moves to the dashboard, which is owner-validation item 3. If it
+   ever fires, the remedy is to change the *query* the fallback key carries so the two no longer
+   collide under that rule — not a distinct path, which would still be normalized away by
+   `releaseCacheKey` and is unnecessary since a cache key is only ever a key.
+5. **The converse: the zone filling this Worker's own cache.** The Worker and the zone cache the
+   same URL. A zone hit never reaches the Worker at all, so during a 4-hour Browser Cache TTL the
+   freshness entry can be older than 300s without anyone noticing — the same staleness `#284`
+   exists to bound, arriving from the layer above. It cannot make the *fallback* wrong (nothing
+   but this handler writes it), and it is bounded by the zone TTL, but it means acceptance
+   criterion 5 is met in-Worker and violated at the edge. Tracked as `#285`.
+6. **A user in a refused colo within 24h of a genuine release** sees release *N-1* with a working
    download, where today they see a link to release *N*. Deliberate, bounded, and the trade the
    owner validates.
 
@@ -678,8 +689,11 @@ Green CI decides none of these.
    nothing durable because the entry is evictable anyway.
 3. **Confirm the zone has no custom cache key stripping query strings** for `/api/*` (Cloudflare
    dashboard → Caching → Cache Rules). This is the one assumption the repository cannot check, and
-   it is the only way this change could serve a day-old release *as fresh*. The `curl` tripwire in
-   step 5 detects it after deploy; the dashboard confirms it before.
+   it is the only way this change could serve a day-old release *as fresh*. The step-5 `curl`
+   tripwire the plan originally relied on **cannot detect it** — the zone rewrites a cached `200`'s
+   `Cache-Control` to `max-age=14400`, so a collision reads identically to a healthy hit. The
+   dashboard is now the only check. While in Cache Rules, `#285` asks for the same route's Browser
+   Cache TTL to stop overriding the Worker's 300s.
 4. **Deploy, then verify live.** The Cache API documentation guarantees functional cache
    operations for custom-domain Workers and states that previews have none, so a dev or preview
    session is not evidence about production. Run the three step-5 commands after
@@ -707,6 +721,18 @@ Green CI decides none of these.
    that, and trades against immediate recovery — worth deciding deliberately rather than inheriting.
 3. **Durable cross-colo storage for the last known good release (option F).** Only if evidence
    shows cold-and-refused colos in practice.
+4. **The hot path returns a cache hit without re-validating it; the cold fallback path does.** The
+   asymmetry is backwards — the rare path is the careful one. Nothing untrusted can write
+   `caches.default` today, so this is defence in depth rather than a live hole, but re-parsing on
+   the hit path costs one schema run per 300s per colo. Same follow-up: the schema pins the
+   *host* (`github.com`) but not the *repository*, so a `browser_download_url` pointing at any
+   other GitHub repo validates.
+5. **Unauthenticated requests can flood the Workers Logs budget.** Every refused lookup writes a
+   `console.warn`, and requests are unauthenticated, so a sustained outage — or someone driving
+   one — can exhaust the log budget and silence the diagnostic this design depends on. A negative
+   cache marker (follow-up 2) would bound it as a side effect.
+6. **Bound the zone's `Cache-Control` rewrite** — filed as `#285`. Acceptance criterion 5 is met in
+   the Worker and violated at the edge until that lands.
 
 ## Specialist review
 
@@ -726,5 +752,6 @@ Append changes; do not rewrite prior decisions.
 
 | Date | Change | Evidence and reason |
 |------|--------|---------------------|
+| 2026-07-27 | Cache key normalized to a fixed origin, not the request's; upstream fetch bounded at 5s; three documentation claims corrected | Preflight round 1, three independent lanes on frozen `08f935e`. **Security (MEDIUM, taken as must-fix):** `releaseCacheKey` built the key with `new URL(path, request.url)`, which retains scheme, host, and port. Measured live: `https://threatforge.dev:8443/api/latest-release` → 200, `:2053` → 200, `www.threatforge.dev` → 200, and each was its own cache entry with its own upstream fetch. A client cycling those namespaces multiplies our request rate against the 60/hour budget the fallback exists to survive, and fragments the fallback so it cannot carry the page either. The key is now derived from `CACHE_KEY_ORIGIN` and this route's own path constant; the request URL is not read at all, which also makes the function's existing "a caller cannot bypass the cache" docstring true rather than aspirational. **Reviewer:** the upstream `fetch` had no timeout, so a hung GitHub produced a 524 while a good fallback sat unread; `AbortSignal.timeout(5_000)` lands in the existing `catch` and therefore on the stale path. Both fixes carry tests proven to fail without them. **Slop:** the `FALLBACK_CACHE_QUERY` docblock claimed a distinct path "would be served as a 404 page" — false, `not_found_handling: "single-page-application"` returns `/index.html` at 200 and there is no 404 route; and irrelevant, since a cache key is never fetched. Rewritten. The handler docblock credited `no-store` for immediate recovery when the mechanism is never calling `cache.put`; corrected. Residual risks 4 and 5, and the client-visibility argument, corrected as noted above |
 | 2026-07-27 | Step 5's `curl` tripwire corrected during implementation; steps 1–4 unchanged | The plan states "Nothing caches this Worker's responses in front of it today" and builds step 5's collision tripwire on it (`max-age=86400` observed ⇒ entries collided). Measured against the live endpoint instead: `curl -sS -D- https://threatforge.dev/api/latest-release` returns `cf-cache-status: HIT`, a non-zero `age`, and `cache-control: public, max-age=14400` — a value this Worker never emits — while a `cf-cache-status` miss returns the Worker's own `public, max-age=300`. The zone caches this route and rewrites `Cache-Control` to a 4-hour Browser Cache TTL on hits, so the tripwire could never fire: a collision would also read `14400`. `no-store` is passed through unrewritten (observed on a live `502`), so the stale and never-cached cases stay legible and the fix's guarantees are unaffected. Step 5 now records the measured steady state and routes the collision check to the dashboard, which the plan already required as owner-validation item 3. Residual risk 4 is therefore **not** self-announcing as the plan claims — raised for the owner rather than resolved here |
 | 2026-07-27 | Initial plan | Issue `#284` (no comments) and closed `#172`; branch `bug/284-release-lookup-stale` at `24e350e`, clean tree. Source read in full: `worker/latest-release.ts:1-112`, `worker/latest-release.test.ts:1-265`, `worker/index.ts`, `src/lib/github-release-schema.ts`, `src/lib/github-releases.ts:83-127`, `src/hooks/use-latest-release.ts`, `src/pages/downloads-page.tsx:30-75`, `wrangler.jsonc`, `tsconfig.worker.json`, `public/_headers`, `docs/runbooks/deploying-the-website.md`, `AGENTS.md`, `.github/instructions/tests.instructions.md`, `.github/instructions/security.instructions.md`, and `docs/plans/234-vault-usable-status.md` as the shape reference. Baseline executed: `npx vitest run worker/latest-release.test.ts` → 12 passed. Cloudflare documentation read rather than assumed: `workers/runtime-apis/cache/` (expired `match` returns `undefined`; `Cache-Control` respected on `put`; `stale-while-revalidate`/`stale-if-error` unsupported; `put` refuses `no-store`; per-colo; custom domains functional), `cache/how-to/configure-cache-status-code/` (120-minute default Edge TTL for `200`), `workers/cache/` and `workers/cache/configuration/` (Workers Cache is opt-in via `cache.enabled`, needs Wrangler ≥ 4.69.0 — repo has 4.113.0 — supports `stale-if-error` with an unbounded default, and bills static-asset requests that are free today). The issue's proposed mechanism is adopted; the correction is that the fallback entry's own `Cache-Control` is what makes it readable after 300s, and the existing test double could not have detected getting that wrong |

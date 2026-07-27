@@ -94,13 +94,29 @@ Wrangler serves the production build with the same SPA fallback behavior used at
     failure this route's two-entry cache design is exposed to: a zone cache key that strips the
     query string would collapse the 5-minute freshness entry and the 24-hour fallback entry onto
     one key, letting a day-old release be served as fresh. Confirm in the dashboard instead —
-    Caching → Cache Rules, checking for a custom cache key on `/api/*` — and if one exists, the
-    fallback must move to a distinct path rather than a query variant.
+    Caching → Cache Rules, checking for a custom cache key on `/api/*` — and if one exists, give
+    the fallback entry a different query so the two keys stop colliding under that rule. A
+    distinct *path* would not work: the handler normalizes every request onto one path before it
+    looks anything up.
 - Watch how often the fallback is carrying the page: `npx wrangler tail --format pretty` and
-  look for `latest-release: upstream unavailable` with its `reason`. `"upstream-status"` is the
-  shared-egress rate limiting this fallback exists for. `"schema-rejected"` means GitHub's
-  payload contract broke and the widget is only alive because of a stale copy — investigate that
-  one rather than letting it ride out the 24-hour ceiling.
+  look for `latest-release: upstream unavailable`. Every refusal logs one line with a `reason`:
+  - `upstream-status` — GitHub answered with a non-`2xx`. Nearly always the shared-egress rate
+    limiting this fallback exists for; the logged `status` says which.
+  - `fetch-failed` — the request never completed. Network failure, or our own 5-second timeout
+    firing on a hung GitHub.
+  - `invalid-json` — GitHub's body was not JSON.
+  - `schema-rejected` — valid JSON that failed `parseGithubRelease`. **Investigate this one.** It
+    means GitHub's payload contract broke, or a release shipped an asset link pointing somewhere
+    other than `github.com`, and the widget is alive only because of a stale copy that expires in
+    24 hours.
+  - `fallback-unreadable` — the stale path ran and this colo's stored copy was itself unusable.
+    Always follows one of the four above, and means the visitor got a `502`.
+
+  A logged refusal does **not** by itself tell you what the visitor saw: the first four lines are
+  written identically whether the fallback then carried the page as a `200` or nothing was stored
+  and a `502` went out. Read the invocation's own response status in the same `wrangler tail`
+  entry to tell them apart. The fallback entry is not externally addressable — the handler
+  normalizes every request onto the bare path — so logs are the only view of it.
 - Run these against a real deploy, not a preview. Cloudflare guarantees functional cache
   operations for Workers on custom domains and states that dashboard-editor and Playground
   previews have none, so a local or preview session is not evidence about production.
