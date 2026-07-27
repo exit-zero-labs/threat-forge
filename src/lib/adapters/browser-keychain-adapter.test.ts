@@ -507,6 +507,15 @@ describe("recovering from an unreadable record", () => {
 		expect((error as KeyVaultError).reason).toBe("vault-corrupt");
 	});
 
+	it("does not tell the user to clear site data without saying what that costs", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		await writeWrapKeyStore([["not-a-crypto-key", "aes-gcm-256-v1"]]);
+
+		const error = await adapter.getKey("anthropic").catch((caught: unknown) => caught);
+		expect((error as KeyVaultError).message).toContain(CLEARING_SITE_DATA_COST);
+	});
+
 	it("does not discard a record when the crypto layer itself fails", async () => {
 		const adapter = new BrowserKeychainAdapter();
 		await adapter.setKey("anthropic", SECRET);

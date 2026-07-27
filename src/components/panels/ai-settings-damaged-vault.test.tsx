@@ -19,6 +19,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "fake-indexeddb/auto";
 import { BrowserKeychainAdapter } from "@/lib/adapters/browser-keychain-adapter";
+import { CLEARING_SITE_DATA_COST } from "@/lib/adapters/keychain-adapter";
 import { resetKeyVault, writeWrapKeyStore } from "@/lib/adapters/test-fixtures/key-vault";
 import { useChatStore } from "@/stores/chat-store";
 import { useKeyResidueStore } from "@/stores/key-residue-store";
@@ -33,9 +34,13 @@ import { AiSettingsContent } from "./ai-settings-content";
  * could compare against it would make this assertion tautological — the test would agree with
  * whatever the module said. Spelled out here, it fails if the copy changes, which is the
  * point: this is the exact text acceptance criterion 5 requires the user to see.
+ *
+ * The cost clause is the exception, imported rather than written out (#265). It is one shared
+ * sentence appearing on every surface that gives this instruction, and a copy of it here would
+ * be the fourth place to update when it changes — which is how one surface ends up telling a
+ * user to clear their browser data without telling them it deletes their threat models.
  */
-const VAULT_DAMAGED_SENTENCE =
-	"Encrypted key storage in this browser is damaged. Clear this site's browser data, then add your API key again.";
+const VAULT_DAMAGED_SENTENCE = `Encrypted key storage in this browser is damaged. Clear this site's browser data, then add your API key again. ${CLEARING_SITE_DATA_COST}`;
 
 const SECRET = "sk-ant-test-0123456789abcdef";
 
