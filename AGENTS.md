@@ -56,7 +56,7 @@ execution tracker. Do not create a parallel Markdown or agent-only backlog.
 
 Every non-trivial change requires an issue with:
 
-- `Status`, `Priority`, and `Effort`
+- `Status`, `Priority`, `Effort`, and `Type`
 - measurable acceptance criteria
 - dependencies and parent initiative when applicable
 - exactly one autonomy label: `AUTO` or `HITL`
@@ -79,8 +79,20 @@ claimed to deliver. Merging is verification; that walkthrough is validation.
 
 See `.e0l/first-principles/planning.md` for the full model.
 
-Priority remains `P0` → `P1` → `P2`. `Effort` is the reasoning class the work needs — not how
-long it takes:
+`Status` is a project field. `Priority` and `Effort` are **native organization issue fields**,
+which matters more than it sounds: an org issue field is invisible to `gh project item-list`,
+which returns no key for it and no error either. Tooling that reads them through the project API
+sees an empty board and reports it as missing metadata. Read and write them through
+`setIssueFieldValue` on the GraphQL API instead, and enumerate the option IDs from
+`organization.issueFields`.
+
+`Priority` is `Urgent` → `High` → `Medium` → `Low`, and answers *how soon* within the current
+milestone. It never means how big, and it never overrides the milestone. Every `Urgent` or `High`
+issue carries a comment naming the cost of delay; a priority with no stated reason is
+indistinguishable from one set by whoever filed it last. If more than about a fifth of open issues
+sit in the top two, the field has stopped routing anything.
+
+`Effort` is the reasoning class the work needs — not how long it takes:
 
 | Effort | Model tier | Planning contract |
 |--------|-----------|-------------------|
@@ -91,11 +103,11 @@ long it takes:
 The tier is a floor, not a ceiling. Any work touching cryptography, the IPC boundary, the
 `.thf` schema, or a trust boundary is `High` regardless of how small the diff looks.
 
-`Effort` replaced the former `Size` field in the doctrine v1 migration, and the `size/XS`–`size/XL`
-labels were deleted with it. The `model/*` labels are **kept**: they state the reasoning class
-directly, and during the migration they proved more accurate than `Size` — the two disagreed on 53
-issues, so `Effort` was derived from the model label wherever one exists. The `Effort` field is
-authoritative; the label must not contradict it.
+`Effort` replaced the former `Size` field in the doctrine v1 migration. The `size/XS`–`size/XL`
+labels outlived it on 92 issues and were deleted in the #243 sweep. The `model/*` labels are
+**kept**: they state the reasoning class directly, and during the migration they proved more
+accurate than `Size` — the two disagreed on 53 issues, so `Effort` was derived from the model
+label wherever one exists. The `Effort` field is authoritative; the label must not contradict it.
 
 `AUTO` means an agent can reach a verification-complete PR without earlier human action. Final
 owner validation is still required. `HITL` means a secret, provisioning step, unresolved

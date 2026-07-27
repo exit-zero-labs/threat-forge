@@ -13,15 +13,15 @@ Reject candidates with:
 - unresolved dependencies or research
 - required secrets, provisioning, or account access
 - unmade product, design, security, or licensing decisions
-- size XL
-- a missing committed plan for M/L
+- `Effort` of `High` that has not been decomposed into executable sub-issues
+- a missing committed plan for `Medium` or `High`
 
 Rank remaining work by:
 
 1. active roadmap/parent initiative
-2. P0, then P1, then P2
+2. `Urgent`, then `High`, then `Medium`, then `Low`
 3. dependency leverage and unblock value
-4. smaller executable size
+4. lower `Effort`
 5. oldest settled Ready item
 
 Recommend one issue with evidence. Begin implementation only when the user has requested it.

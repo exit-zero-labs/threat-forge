@@ -26,14 +26,16 @@ execution tracker.
 
 | Status | Meaning |
 |--------|---------|
-| `Backlog` | New and not yet shaped |
-| `Backlog` | Triaged but not executable or selected |
+| `Backlog` | Filed but not yet shaped. Never picked up directly |
 | `Ready` | Criteria, dependencies, ownership, and autonomy are settled |
-| `In progress` | Implementation is underway |
-| `In progress` | Verification and agent preflight are complete; owner validation remains |
-| `Done` | Merged or closed after validation |
+| `In progress` | Claimed. Held through the whole PR cycle, including the window where verification and preflight are done and only owner validation remains |
+| `Done` | Merged and validated on a local `main`, or rejected with the `Reject` label |
 
-Every non-trivial issue receives P0/P1/P2 priority, a High/Medium/Low `Effort`, and exactly one
+There are four states and no `In review`: for a solo studio there is nobody to hand to, so an
+issue stays `In progress` until it merges.
+
+Every non-trivial issue receives an `Urgent`/`High`/`Medium`/`Low` `Priority`, a
+`High`/`Medium`/`Low` `Effort`, a `Task`/`Bug`/`Feature` `Type`, and exactly one
 autonomy label:
 
 - `AUTO` — an agent can reach a verification-complete PR without earlier human action
