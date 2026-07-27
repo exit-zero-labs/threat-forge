@@ -224,8 +224,8 @@ Use fresh reviewer context for non-trivial changes. Do not manufacture findings.
 Lanes must be isolated in **working-tree state** as well as in context. Proving a test fails
 before trusting it is correct technique, so lanes do mutate the tree — and two lanes mutating
 one checkout produce findings about each other's edits that read exactly like real defects.
-**A lane permitted to mutate the tree runs alone; read-only lanes stay parallel.** Every lane
-report opens with the tree state it observed — the commit, plus `git status --porcelain` for
+**A lane permitted to mutate the tree runs alone, against a clean tree at a known commit;
+read-only lanes stay parallel.** Every lane report opens with the tree state it observed — the commit, plus `git status --porcelain` for
 the lanes that have a shell — so a result taken from a tree someone else was editing is
 detectable rather than persuasive.
 

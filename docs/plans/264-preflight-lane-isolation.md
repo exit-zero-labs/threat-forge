@@ -23,18 +23,22 @@ and requires mutation. The skill instructs mutation and parallelism without reco
 
 ## Decision: serialize mutating lanes, keep read-only lanes parallel
 
-The issue offered three options. Choosing (2), with (1) rejected on measured cost:
+The issue offered three options. Choosing (2):
 
 - **(1) A worktree per mutating lane** preserves parallelism and removes interference entirely,
   but a `git worktree` starts with no `node_modules`, and nothing here runs `vitest` without one.
   That means a per-lane `npm ci` each round, or a shared store that couples the lanes back
-  together on the one axis the worktree was meant to separate. Neither has been built or
-  measured, and writing down a mechanism whose cost I have not paid is the speculative doctrine
-  the anti-slop rules forbid. Recorded as an option with its cost named, not mandated.
-- **(3) Hoisting mutation into a phase after convergence** loses the property that the lane which
-  found a defect is the one that proves it. Round three of #233 yielded exactly one class of
-  finding — correct code that no test pins — and every one of them was established by the finding
-  lane reverting a line and watching the suite stay green. That coupling is worth keeping.
+  together on the one axis the worktree was meant to separate. The dependency-setup cost is
+  certain; its size is not, because neither variant has been built or timed here. Recorded as an
+  option with its cost named rather than mandated on a number I have not measured.
+- **(3) Hoisting mutation into a phase after convergence** separates the lane that finds a defect
+  from the act of proving it. Not necessarily into different lanes — the same lane can be
+  relaunched for the mutation phase — but into different contexts, which means re-establishing
+  why the line mattered, or carrying a lane's context across a phase boundary for the whole
+  round. Round three of #233 yielded exactly one class of finding, correct code that no test
+  pins, and every one was established by the finding lane reverting a line and watching the
+  suite stay green, in the same breath as noticing it. That immediacy is cheap to keep and
+  awkward to reconstruct.
 - **(2) Serializing mutating lanes** costs wall-clock time and nothing else. It is what round
   three actually did, and round three produced no fabricated findings.
 
@@ -95,3 +99,20 @@ passes.
   are three, so it points at the config instead of restating it. And the three lane blocks were
   three prose variations of the same rules — now byte-identical, with one lane-specific line
   each, so drift is greppable. The skill no longer restates them at all.
+- 2026-07-27 — preflight ran two read-only lanes in parallel under the new rules; both attested
+  the same clean tree at `2813aaf`. They converged on two defects and the reviewer found two
+  more, all four of which were the change failing its own standard. The plan said option (1) was
+  "rejected on measured cost" and then said nothing had been measured. The skill rejected any
+  report without a tree attestation while `threat-model-expert`, which has no shell, was told to
+  produce one — an infinite reject-and-rerun loop for every `.thf` review. The lane files said
+  "mutate freely" unconditionally, so a lane the orchestrator considered read-only had nothing
+  telling it so, which is the #233 path still open; mutation is now gated on a `MUTATING` mode
+  stated in the invocation, and an unstated mode means read-only. And `git status --porcelain`
+  cannot confirm a *restore*: it reports paths and status, not contents, so a lane that put back
+  the wrong bytes on an already-dirty tree exits looking identical to one that put back the right
+  ones. Rather than fingerprinting contents, a mutating lane now requires a clean tree at a known
+  commit — which makes the confirmation sound by construction and removes the earlier instruction
+  to "restore the tree yourself", which could have destroyed uncommitted work that was never the
+  lane's. The claim that the three hygiene blocks were byte-identical was also false as written:
+  each ended with a different lane-specific sentence. That sentence moved above the heading, so
+  the sections now really are identical to end of file, and the claim is checkable.

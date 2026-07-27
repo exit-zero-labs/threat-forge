@@ -9,16 +9,21 @@ Run on a complete local diff or, after explicit PR-creation authorization, a dra
 moving its issue to `In progress`.
 
 1. Confirm issue linkage, acceptance criteria, required plan, and verification evidence.
-2. Decide, per lane, whether it may mutate the working tree, and schedule on that decision:
-   - lanes you keep read-only run in parallel
-   - **a lane permitted to mutate runs alone** — nothing else runs while it holds the tree
+2. Decide, per lane, whether it may write to the working tree, and **state that mode in the
+   invocation** — a lane cannot infer it:
+   - lanes you invoke read-only run in parallel
+   - **a lane you invoke `MUTATING` runs alone.** Nothing else runs while it holds the tree,
+     including you, and it may only be dispatched against a clean tree at a known commit
+   - a shell lane invoked without a stated mode is read-only
 3. Run in independent contexts:
    - always: `pr-reviewer`
    - always: `slop-auditor`
    - conditional: `security-auditor` for security/trust-boundary lanes
    - conditional: `threat-model-expert` for `.thf`, STRIDE, or threat-quality lanes
 4. Keep reviewer ownership separate; do not collapse all checklists into one pass.
-5. Reject any lane report that does not attest its tree state, and re-run that lane.
+5. Reject any shell lane's report that does not attest its tree state, and re-run that lane.
+   `threat-model-expert` has no shell, so give it the commit yourself and expect that back —
+   a lane cannot attest a state it has no way to read.
 6. Fix must-fix and should-fix findings or record the explicit owner decision.
 7. Re-run the same reviewer lanes after revisions until they converge.
 8. Re-run affected verification.
@@ -41,11 +46,16 @@ and nothing here runs `vitest` without one — an `npm ci` per lane per round, o
 that recouples the lanes. Build that only if lane wall-clock ever dominates.
 
 `pr-reviewer`, `slop-auditor` and `security-auditor` each carry a `## Tree hygiene` section
-stating what they owe you. The three are byte-identical on purpose, so drift between them is
-greppable. Enforcing it is your job, not theirs:
+stating what they owe you. Those sections are byte-identical from the heading to end of file, on
+purpose, so drift between them is greppable. Enforcing them is your job, not theirs:
 
-- A report without an entry and exit tree state is not a result. Re-run the lane.
+- A shell lane's report without an entry and exit tree state is not a result. Re-run the lane.
+- Dispatch a `MUTATING` lane only against a clean tree at a known commit. That precondition is
+  what makes its restoration checkable: `git status --porcelain` reports paths and status, not
+  contents, so it can only confirm a restore when the state it is confirming a return to is
+  *empty*. On a tree that was already dirty it cannot tell a restored file from a differently
+  broken one — and restoring blind would destroy work that was never yours. Commit first.
 - When a lane's exit state differs from its entry state, or its report contradicts the tree it
-  claims to have observed, restore the tree yourself and re-run it. Discard what it got from
+  claims to have observed, reset to the known commit and re-run it. Discard what it got from
   running something; what it found by reading the diff still stands. Do not reconcile a
   contradicted result by reasoning about which half was true.

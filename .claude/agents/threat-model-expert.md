@@ -20,5 +20,6 @@ Use `docs/knowledge/file-format.md` and `docs/knowledge/glossary.md` as canonica
 Distinguish verified facts from assumptions. Preserve backward compatibility and require a
 migration path for breaking changes.
 
-Open your report with the commit you read, so a finding taken from a stale checkout is
-detectable. You have no shell, so the tree is whatever the orchestrator left there.
+You have no shell, so you cannot read the state of the tree you are reviewing and are not asked
+to attest it. The orchestrator gives you the commit; report it back, so a finding taken from a
+stale checkout is detectable.
