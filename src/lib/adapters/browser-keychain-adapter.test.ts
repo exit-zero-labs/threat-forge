@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } fr
 import "fake-indexeddb/auto";
 import { KEY_VAULT_DB_NAME, KEY_VAULT_DB_VERSION, KeyVaultError } from "./browser-key-vault";
 import { BrowserKeychainAdapter } from "./browser-keychain-adapter";
-import { LEGACY_RETAINED } from "./keychain-adapter";
+import { CLEARING_SITE_DATA_COST, LEGACY_RETAINED } from "./keychain-adapter";
 import { yieldHostTask } from "./test-fixtures/host-task";
 import { resetKeyVault } from "./test-fixtures/key-vault";
 
@@ -16,6 +16,33 @@ import { resetKeyVault } from "./test-fixtures/key-vault";
 
 const SECRET = "sk-ant-test-0123456789abcdef";
 const LEGACY_SLOT = "tf-api-key-anthropic";
+
+/** Make `localStorage.removeItem` a no-op, as a browser refusing the removal would. */
+function refuseLegacyRemoval(): MockInstance<Storage["removeItem"]> {
+	return vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
+}
+
+/**
+ * Collect every promise the adapter parks in its module-scoped per-provider queue.
+ *
+ * That map is private to `browser-keychain-adapter.ts`, and exporting it to observe what it
+ * holds would put a test seam in production code for a property about what production code
+ * retains. Spying on `Map.prototype.set` reads the same fact from outside, filtered to the
+ * promises stored under a provider key — which is the only thing that shape describes.
+ */
+function captureQueuedPromises(provider: string): Promise<unknown>[] {
+	const captured: Promise<unknown>[] = [];
+	const original = Map.prototype.set;
+	vi.spyOn(Map.prototype, "set").mockImplementation(function (
+		this: Map<unknown, unknown>,
+		key: unknown,
+		value: unknown,
+	) {
+		if (key === provider && value instanceof Promise) captured.push(value);
+		return original.call(this, key, value);
+	});
+	return captured;
+}
 
 /** Read every value held in the vault database, as one string, for substring scanning. */
 async function dumpVault(): Promise<string> {
@@ -800,11 +827,6 @@ describe("storage that never responds", () => {
 });
 
 describe("a clear-text slot that will not erase", () => {
-	/** Make `localStorage.removeItem` a no-op, as a browser refusing the removal would. */
-	function refuseLegacyRemoval(): MockInstance<Storage["removeItem"]> {
-		return vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => undefined);
-	}
-
 	it("does not reinstate a replaced key when the vault is started over", async () => {
 		refuseLegacyRemoval();
 		localStorage.setItem(LEGACY_SLOT, "sk-ant-old");
@@ -900,6 +922,11 @@ describe("a clear-text slot that will not erase", () => {
 		expect((error as KeyVaultError).reason).toBe(LEGACY_RETAINED);
 		// The encrypted copy is still removed; only the claim of completeness is withheld.
 		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old-cleartext");
+		// The message ends in the only instruction the app can give, so it carries what that
+		// instruction costs — clearing site data takes the user's saved threat models with it.
+		// Asserted against the shared constant rather than a copy of its words, because the
+		// point of sharing it is that every surface giving the instruction states the cost.
+		expect((error as KeyVaultError).message).toContain(CLEARING_SITE_DATA_COST);
 	});
 	it("does not let a dismissed clear-text slot come back after a delete", async () => {
 		localStorage.setItem(LEGACY_SLOT, "sk-ant-compromised");
@@ -939,6 +966,8 @@ describe("a clear-text slot that will not erase", () => {
 		// either wording is caught. Only the message distinguishes "a copy is definitely still
 		// there" from "a copy could not be checked", and they call for different advice.
 		expect((error as KeyVaultError).message).toContain("blocked the check");
+		// Both branches give the same instruction, so both state the same cost.
+		expect((error as KeyVaultError).message).toContain(CLEARING_SITE_DATA_COST);
 	});
 
 	it("keeps the stored key when the tombstone cannot be written", async () => {
@@ -1064,6 +1093,128 @@ describe("a clear-text slot that will not erase", () => {
 		// they are in — and only one of them justifies asserting a copy exists.
 		expect((retained as KeyVaultError).message).toContain("would not delete");
 		expect((retained as KeyVaultError).message).not.toContain("blocked the check");
+	});
+});
+
+/**
+ * #233: `deleteKey`'s rejection reports a surviving clear-text copy exactly once, at the moment
+ * of the action. `readLegacyResidue` is the standing answer the settings panel and the status
+ * bar read instead, so a user who missed that message is still told a usable credential is
+ * readable in this browser.
+ */
+describe("reporting a surviving clear-text copy", () => {
+	it("reports a clear-text copy the browser refused to erase", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		refuseLegacyRemoval();
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+
+		const error = await adapter.deleteKey("anthropic").catch((caught: unknown) => caught);
+
+		// The one-shot rejection is not replaced by the standing answer: a delete that leaves a
+		// live credential behind must still fail closed at the moment it is attempted.
+		expect((error as KeyVaultError).reason).toBe(LEGACY_RETAINED);
+		expect(await adapter.readLegacyResidue("anthropic")).toBe("retained");
+	});
+
+	it("reports storage that would not answer as unverified", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		// A browser that blocks site data throws on read while the value stays on disk. Absence
+		// cannot be claimed from that, so it is reported as its own state rather than as `null`.
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new DOMException("blocked", "SecurityError");
+		});
+
+		expect(await adapter.readLegacyResidue("anthropic")).toBe("unverified");
+	});
+
+	it("reports no residue when the slot is genuinely absent", async () => {
+		const adapter = new BrowserKeychainAdapter();
+
+		// A profile created after #133 never had a slot.
+		expect(await adapter.readLegacyResidue("anthropic")).toBeNull();
+
+		// And a browser that allows the removal leaves nothing behind, so the warning the panel
+		// draws from this has to go away rather than persisting as stale state.
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		await adapter.setKey("anthropic", SECRET);
+		await adapter.deleteKey("anthropic");
+
+		expect(await adapter.readLegacyResidue("anthropic")).toBeNull();
+	});
+
+	it("does not erase the slot it reports on", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		const removal = vi.spyOn(Storage.prototype, "removeItem");
+		const adapter = new BrowserKeychainAdapter();
+
+		expect(await adapter.readLegacyResidue("anthropic")).toBe("retained");
+		expect(await adapter.readLegacyResidue("anthropic")).toBe("retained");
+
+		// A read that erased would make the warning disappear on the first render that showed
+		// it, and would destroy a copy the vault may not be able to replace.
+		expect(localStorage.getItem(LEGACY_SLOT)).toBe("sk-ant-old-cleartext");
+		expect(removal).not.toHaveBeenCalledWith(LEGACY_SLOT);
+	});
+
+	it("answers with a fixed token rather than anything read from the slot", async () => {
+		localStorage.setItem(LEGACY_SLOT, SECRET);
+		const adapter = new BrowserKeychainAdapter();
+
+		// The slot's value is read only to tell `present` from `absent`, and every consumer of
+		// this renders the result somewhere a user can see. Seeding a recognisable secret and
+		// asserting the answer is exactly `"retained"` is what pins that.
+		expect(await adapter.readLegacyResidue("anthropic")).toBe("retained");
+	});
+
+	it("does not open the key vault to answer", async () => {
+		localStorage.setItem(LEGACY_SLOT, SECRET);
+		const adapter = new BrowserKeychainAdapter();
+
+		expect(await adapter.readLegacyResidue("anthropic")).toBe("retained");
+
+		// The launch-time check reads the slot before it decides whether to run the migration,
+		// precisely so a profile with nothing to migrate never materialises the keychain
+		// database. That only holds while this stays a `localStorage` read.
+		expect(await indexedDB.databases()).toEqual([]);
+		expect(await adapter.hasKey("anthropic")).toBe(true);
+		expect((await indexedDB.databases()).map((db) => db.name)).toContain("threatforge-keychain");
+	});
+
+	it("does not park the plaintext key in the provider queue", async () => {
+		const adapter = new BrowserKeychainAdapter();
+		await adapter.setKey("anthropic", SECRET);
+		const queued = captureQueuedPromises("anthropic");
+
+		expect(await adapter.getKey("anthropic")).toBe(SECRET);
+
+		// `withProviderLock` parks a promise per provider so the next operation can chain off
+		// it. That promise must not forward the operation's value: for `getKey` the value is the
+		// plaintext key, which would then sit in a module-scoped map until the provider's next
+		// call replaced it — a copy of the credential nobody asked for and nothing clears.
+		// Asserted over every promise parked under this provider, not just the last: a lock that
+		// parked a second promise per provider could otherwise hide the leak behind the
+		// sanitized one.
+		expect(queued.length).toBeGreaterThan(0);
+		for (const parked of queued) {
+			expect(await parked).toBeUndefined();
+		}
+	});
+
+	it("waits for an in-flight migration instead of warning about a slot it is erasing", async () => {
+		localStorage.setItem(LEGACY_SLOT, "sk-ant-old-cleartext");
+		const adapter = new BrowserKeychainAdapter();
+
+		// `migrateLegacyKey` erases the slot only after the import has committed. A read that
+		// landed in that gap would report `retained` on the ordinary pre-#133 upgrade path — a
+		// permanent-looking security warning for a user whose key was migrated correctly. The
+		// per-provider lock is what closes it, so the read is issued without awaiting the
+		// migration it must queue behind.
+		const migrated = adapter.hasKey("anthropic");
+		const residue = await adapter.readLegacyResidue("anthropic");
+
+		expect(await migrated).toBe(true);
+		expect(residue).toBeNull();
 	});
 });
 

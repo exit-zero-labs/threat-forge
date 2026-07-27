@@ -22,7 +22,43 @@ export interface KeychainAdapter {
 	hasKey(provider: AiProvider): Promise<boolean>;
 	/** Delete an API key for a provider. */
 	deleteKey(provider: AiProvider): Promise<void>;
+	/**
+	 * Browser only. Report whether a pre-#133 clear-text copy of this provider's key is still
+	 * readable from `localStorage`, without attempting to erase it and without returning any
+	 * part of the key.
+	 *
+	 * Optional because a platform that never had a clear-text slot has nothing to answer — see
+	 * {@link LegacyResidue} for why `undefined` and `null` are different claims.
+	 */
+	readLegacyResidue?(provider: AiProvider): Promise<LegacyResidue>;
 }
+
+/**
+ * What a pre-#133 clear-text API key slot currently holds for one provider.
+ *
+ * `null` is an answer, not an absence of one: the slot was checked and nothing is there. A
+ * caller that cannot get an answer at all sees `undefined` from the optional
+ * {@link KeychainAdapter.readLegacyResidue} call instead, meaning "there is no such storage
+ * location on this platform". Collapsing those two is the same mistake the browser adapter's
+ * `readLegacySlot` refuses to make one level down, and it is what would let a desktop build
+ * assert an erasure it never performed.
+ */
+export type LegacyResidue = "retained" | "unverified" | null;
+
+/**
+ * The cost of the one instruction that actually removes a clear-text slot (#233).
+ *
+ * "Clear this site's browser data" is the only remedy the app can offer for a slot the browser
+ * refuses to erase — and in this browser it also destroys the user's saved threat models, which
+ * live in IndexedDB with their manifest in `localStorage` (`src/lib/persistence/types.ts`).
+ * Shipping the instruction without the cost is how a user follows security advice and loses
+ * their work, so every surface that gives the instruction states it, from one string.
+ *
+ * Declared beside {@link LEGACY_RETAINED} for the same reason: the browser adapter and the
+ * settings panel both need it, and the panel must not import IndexedDB code to get it.
+ */
+export const CLEARING_SITE_DATA_COST =
+	"Clearing this site's browser data also removes the threat models saved in this browser, so export anything you need first.";
 
 /**
  * Reason code for a removal that succeeded but left a readable clear-text copy behind.

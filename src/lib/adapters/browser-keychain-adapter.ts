@@ -8,7 +8,12 @@ import {
 	putSecret,
 	retireAndDeleteSecret,
 } from "./browser-key-vault";
-import { type KeychainAdapter, LEGACY_RETAINED } from "./keychain-adapter";
+import {
+	CLEARING_SITE_DATA_COST,
+	type KeychainAdapter,
+	LEGACY_RETAINED,
+	type LegacyResidue,
+} from "./keychain-adapter";
 
 /**
  * Prefix of the clear-text `localStorage` slot this adapter used before #133. Retained only
@@ -113,7 +118,7 @@ function removeLegacyKey(provider: AiProvider): LegacyErasure {
  * A slot that refuses to be erased here is not reported. Only `deleteKey` makes a claim about
  * a credential being gone, so only it must fail when one survives; a read reporting an error
  * would break every AI request over a residue the user cannot act on from that surface.
- * Surfacing it persistently in settings is #233.
+ * {@link BrowserKeychainAdapter.readLegacyResidue} is what surfaces it persistently instead.
  */
 async function migrateLegacyKey(provider: AiProvider): Promise<void> {
 	const slot = readLegacySlot(provider);
@@ -142,10 +147,16 @@ const providerOperations = new Map<AiProvider, Promise<unknown>>();
 
 function withProviderLock<T>(provider: AiProvider, operation: () => Promise<T>): Promise<T> {
 	const pending = (providerOperations.get(provider) ?? Promise.resolve()).then(operation);
-	// The stored link never rejects, so one failed operation cannot poison the queue.
+	// The stored link never rejects, so one failed operation cannot poison the queue — and it
+	// resolves to `undefined` rather than forwarding the operation's value, which for `getKey`
+	// is the plaintext API key and would otherwise sit in this module-scoped map until the
+	// provider's next call replaced it.
 	providerOperations.set(
 		provider,
-		pending.catch(() => undefined),
+		pending.then(
+			() => undefined,
+			() => undefined,
+		),
 	);
 	return pending;
 }
@@ -233,10 +244,30 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 				throw new KeyVaultError(
 					LEGACY_RETAINED,
 					erasure === "retained"
-						? "The API key was removed from encrypted storage, but this browser would not delete an older clear-text copy. Clear this site's browser data to remove it."
-						: "The API key was removed from encrypted storage, but this browser blocked the check for an older clear-text copy. Clear this site's browser data to be sure it is gone.",
+						? `The API key was removed from encrypted storage, but this browser would not delete an older clear-text copy. Clear this site's browser data to remove it. ${CLEARING_SITE_DATA_COST}`
+						: `The API key was removed from encrypted storage, but this browser blocked the check for an older clear-text copy. Clear this site's browser data to be sure it is gone. ${CLEARING_SITE_DATA_COST}`,
 				);
 			}
+		});
+	}
+
+	/**
+	 * Browser-only: report whether a pre-#133 clear-text slot is still readable (#233).
+	 *
+	 * A pure read. It never erases, never writes, and never returns key material.
+	 *
+	 * It takes the provider lock because {@link migrateLegacyKey} erases the slot only after
+	 * {@link importLegacySecret} commits: an unlocked read landing in that gap would report
+	 * `retained` for a slot the same operation is about to erase, which is a false alarm on the
+	 * ordinary upgrade path for every pre-#133 user. Because the lock is a promise chain and is
+	 * not reentrant, this must never be called from inside another locked operation — a nested
+	 * call would wedge that provider's queue permanently.
+	 */
+	async readLegacyResidue(provider: AiProvider): Promise<LegacyResidue> {
+		return withProviderLock(provider, async () => {
+			const slot = readLegacySlot(provider);
+			if (slot.state === "absent") return null;
+			return slot.state === "present" ? "retained" : "unverified";
 		});
 	}
 }

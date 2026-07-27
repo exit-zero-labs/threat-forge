@@ -32,10 +32,9 @@ again claims "No API key configured" while a readable clear-text copy exists.
 
 1. **The UI surface is an owner decision.** The issue says so ("The right surface is a design
    decision, not a mechanical one"). Four options are specified below with a recommendation.
-   Steps 1–4 are identical under all four; step 5 exists only for options B, C, and D. An
-   implementer must not pick one. **Nothing in steps 1–4 is blocked by this** — they can be
-   executed and reviewed while the decision is pending, because the store they produce is what
-   every option reads.
+   Steps 1–4 are identical under all four; step 5 exists only for options B, C, and D.
+   **Resolved 2026-07-27:** the owner delegated the choice to the implementer, who took the
+   recommended Option B, so step 5 is in scope and no longer conditional. See the replan log.
 2. **Autonomy label.** `AUTO` is accurate only after (1) is answered. If the owner prefers to
    answer it inside the PR rather than before, the issue should carry `HITL`. Recording it
    rather than changing metadata, per the planner contract.
@@ -273,7 +272,10 @@ export const useKeyResidueStore = create<KeyResidueState>()(/* ... */);
 - **Not `chat-store`**, whose `hasApiKey` answers "can I send a request". Residue is the
   opposite: a key that is *not* usable by the transport and is a storage-hygiene problem.
   Folding it in would make a conversation store carry a security surface and would tempt a future
-  reader to gate requests on it.
+  reader to gate requests on it. This is about where the state *lives*, not who may refresh it:
+  `chat-store.checkApiKey` does call `refreshResidue` after its `hasKey`, because that `hasKey`
+  runs the migration and would otherwise erase a slot with nothing left to notice. It reads
+  through the residue store's action and holds no residue state of its own.
 - **No `persist` middleware, deliberately.** Residue is derived from storage and must be
   re-derived every session; a persisted copy is a stale claim about a secret. Worse, the
   persistence target would be `localStorage` — the storage that is, by hypothesis, refusing
@@ -283,10 +285,12 @@ export const useKeyResidueStore = create<KeyResidueState>()(/* ... */);
   is in-memory and session-scoped, never persisted.
 - **`refreshResidue` never rejects.** It loads the adapter via `getKeychainAdapter()`, calls
   `adapter.readLegacyResidue?.(provider)`, and writes the result; when the method is absent it
-  writes `null`. If the adapter *module* fails to load it leaves the previous value untouched and
-  returns — it does not write `null`, because "the bundle did not load" is not evidence the slot
-  is empty. That failure already reaches the user through the panel's `ADAPTER_LOAD_ERROR` path,
-  so nothing is swallowed that is not reported elsewhere.
+  writes `null`. If it cannot get an answer at all — the adapter *module* fails to load, or the
+  read itself throws — it leaves the previous value untouched and returns. It does not write
+  `null`, because neither "the bundle did not load" nor "the read was refused" is evidence the
+  slot is empty. A module-load failure already reaches the user through the panel's
+  `ADAPTER_LOAD_ERROR` path and the launch effect's own `console.warn`, so nothing is swallowed
+  that is not reported elsewhere.
 
 **When it is read.**
 
@@ -295,7 +299,12 @@ export const useKeyResidueStore = create<KeyResidueState>()(/* ... */);
 | Panel mount, **after** both `hasKey` calls settle | `ai-settings-content.tsx` mount effect | `hasKey` runs `migrateLegacyKey`, which retries the erase; reading first would report a slot that the same tick removed |
 | After `handleSave`, success or failure | `handleSave` `finally` | `setKey` attempts `removeLegacyKey` and ignores the outcome, so a save can both clear residue and (on a refusing browser) leave it |
 | After `handleDelete`, success **and** the `LEGACY_RETAINED` branch **and** any other error | `handleDelete` `finally` | This is the state transition the issue is about; the `finally` also covers a vault error thrown after the slot was already erased |
-| Once at app start, browser only | `AppLayout` effect (options B, C, D only) | The user may never open AI settings — the whole point of escalating |
+| After `handleRecheck`, success or failure | `handleRecheck` `finally` | The notice's only control. Its `hasKey` runs the migration, so this is the read that clears the warning when a browser finally allows the erase — and the value it writes is what the retry report is derived from |
+| After `checkApiKey`'s `hasKey` settles | `chat-store.ts` | `ai-chat-tab.tsx` calls it on mount, which runs the migration outside both the launch effect and the settings panel. Without this read, opening the chat tab can erase the slot while the status bar keeps a standing warning for the rest of the session |
+| Once at app start, browser only, **and only if a slot is actually there** | `AppLayout` effect | The user may never open AI settings — the whole point of escalating. Gated on a `localStorage` probe so a profile with no clear-text slot never opens the keychain database |
+
+Two of those triggers live outside the settings panel, which is why `RESIDUE_PROVIDERS` is
+exported rather than re-typed per caller.
 
 **How it clears.** Nothing clears it manually. Every refresh recomputes from storage, so the
 warning disappears the moment the slot reads `absent`: after a successful retry, after a mount
@@ -308,26 +317,47 @@ reads storage directly and its answer is always the newest one at the moment it 
 per-provider lock orders it behind any in-flight adapter operation. Do not extend `mutated` to
 cover it — that would suppress a fresh true answer.
 
-**AC4 in the status row.** The row becomes three-state:
+**AC4 in the status row.** `keyStatus` is not a boolean. It carries `"unknown"` for a `hasKey`
+that rejected and `"unchecked"` until the mount check answers, because both used to collapse to
+`false` and be reported as a fact about storage that had not been established (replan log rows
+*"`keyStatus` gained a third state"* and *"`keyStatus` gained a not-yet-checked state"*):
 
 | `keyStatus` | `residue` | Dot | Text |
 |---|---|---|---|
 | `true` | any | green | `API key configured` |
-| `false` | `"retained"` | destructive | `Clear-text API key still in this browser` |
+| not `true` | `"retained"` | destructive | `Clear-text API key still in this browser` |
+| `"unknown"` | `"unverified"` or `null` | amber | `Key storage could not be checked` |
+| `"unchecked"` | `"unverified"` or `null` | muted | `Checking key storage…` |
 | `false` | `"unverified"` or `null` | muted | `No API key configured` |
 
 `unverified` keeps "No API key configured" because it *is* the honest summary — nothing is known
 to be readable — and the separate notice carries the uncertainty. AC4 speaks only of a *readable*
 copy.
 
-**AC5, the retry path.** Keep the existing Remove button and widen its gate to
-`keyStatus[provider] || residue[provider] !== null`, relabelling to
-`Try removing the clear-text copy again` when `!keyStatus[provider]`. It calls the unchanged
-`handleDelete`, so the retry is `deleteKey` — which runs `removeLegacyKey` first, then re-commits
-the (idempotent) `REVOKED` marker and a no-op record delete. On a browser that has started
-allowing removal this resolves and the residue refresh clears the warning; on one that has not it
-rejects with the same authored message and the persistent warning stays. Both outcomes are
-honest, and no existing code path changes.
+**AC5, the retry path.** Every residue notice carries one control, bound to its own provider,
+and it calls `handleRecheck` unconditionally: `hasKey`, then a residue re-read. It is labelled
+`Try removing it again`, which is what `hasKey` does — it runs `migrateLegacyKey`, which retries
+the erase — and it carries no destructive iconography. If the re-read still finds a reading, the
+panel authors the report `deleteKey` used to make through its rejection, and both readings get
+one. `retained` says the browser still would not delete the slot. `unverified` says the check is
+still blocked, that nothing was removed, and that whether a copy is there is still unknown —
+which is literally what happened, because `migrateLegacyKey` returns before it touches the slot
+when the read is refused. `unverified` is the reading that never resolves on a blocked-storage
+profile, so it is the one where a silent control does the most damage: same notice, no message,
+nothing to show the click did anything.
+
+Nothing in a notice may reach `deleteKey`, and a regression test asserts that across every
+combination of `keyStatus` and residue. The `Remove API key` button keeps its existing
+`keyStatus[provider] === true` gate.
+
+This supersedes the earlier instruction to widen that gate to
+`keyStatus[provider] || residue[provider] !== null` and route the retry through `handleDelete`.
+That shape was unsafe twice over — see the replan log rows *"the removal control is gated on
+`keyStatus === true || residue === "retained"` and split in two"* and *"the destructive residue
+control is removed entirely"*. In short: it decided from a render-time snapshot that a second
+tab or a pending mount check can invalidate, and `deleteKey` bought nothing there anyway, because
+in that state a retirement marker already stands and `migrateLegacyKey` runs `removeLegacyKey`
+unconditionally after a declined import.
 
 **Considered and rejected as the offered action:** having the app call `localStorage.clear()`. If
 `removeItem` is refused, `clear()` has no reason to succeed, and on the paths where it would it
@@ -342,14 +372,19 @@ placement, persistence, dismissibility, and whether they escalate outside the pa
 
 ### Shared copy (applies to every option)
 
-Fact first, no blame, one concession — per `docs/knowledge/product-voice.md`. The existing
-`deleteKey` messages are **not** changed; this copy is the standing version of them.
+Fact first, no blame, one concession — per `docs/knowledge/product-voice.md`. Both `deleteKey`
+messages and both notices carry the same concession sentence, from one shared constant
+(`CLEARING_SITE_DATA_COST`): the only remedy the app can offer for a slot the browser will not
+erase is clearing site data, and in this browser that also destroys the user's saved threat
+models. See the replan log row *"the site-data instruction states what it costs"*.
 
 *`retained`, provider named:*
 > **A clear-text Anthropic API key is still stored in this browser.**
 > It was saved before ThreatForge encrypted keys, and this browser will not delete it. Anything
 > that can read this site's storage can read the key. Clear this site's browser data to remove
 > it, and revoke the key with Anthropic if it may have been exposed.
+> Clearing this site's browser data also removes the threat models saved in this browser, so
+> export anything you need first.
 > This copy is not a backup — ThreatForge erases it as soon as the browser allows.
 > `[ Try removing it again ]`
 
@@ -358,11 +393,15 @@ scope, and it is what stops a user treating the retained slot as a recovery copy
 `getKey` erases it.
 
 *`unverified`, visibly calmer — amber, not destructive:*
-> **ThreatForge could not check for an older clear-text API key.**
+> **ThreatForge could not check for an older clear-text Anthropic API key.**
 > This browser blocked the check, so an unencrypted copy saved by an older version may or may
 > not still be there. If you used ThreatForge in this browser before keys were encrypted, clear
 > this site's browser data to be sure.
-> `[ Check again ]`
+> Clearing this site's browser data also removes the threat models saved in this browser, so
+> export anything you need first.
+> `[ Try removing it again ]`
+
+Both notices carry the same label, because both controls do the same non-destructive thing.
 
 Neither string ever interpolates key material. Provider labels come from the existing `PROVIDERS`
 list.
@@ -516,17 +555,22 @@ Steps 1–4 are common to all four options. Step 5 is written for Option B and n
 
 ### 4. Wire the panel
 
-- **Behavior:** the three-state status row; a persistent warning block while
-  `residue[provider] !== null`; the Remove/retry button gated on
-  `keyStatus[provider] || residue[provider] !== null`; residue refreshed on mount (after both
-  `hasKey` calls settle) and in the `finally` of both `handleSave` and `handleDelete`. The
-  existing one-shot `message` stays exactly as it is.
+- **Behavior:** the status row of the AC4 table above; a persistent warning block for **every**
+  provider whose `residue` is non-`null`, each carrying one non-destructive control bound to its
+  own provider; the `Remove API key` button keeps its `keyStatus[provider] === true` gate; residue
+  refreshed on mount (after both `hasKey` calls settle) and in the `finally` of `handleSave`,
+  `handleDelete`, and `handleRecheck`. The existing one-shot `message` stays, and gains the
+  report `deleteKey` used to make when a retry changes nothing.
 - **Files:** `src/components/panels/ai-settings-content.tsx`,
-  `src/components/panels/ai-settings-content.test.tsx`.
+  `src/components/panels/ai-settings-content.test.tsx`, and — added during implementation —
+  `src/stores/chat-store.ts` and `src/stores/chat-store.test.ts`, for the `checkApiKey` refresh
+  recorded in the trigger table above.
 - **Implementation:** render the block with `role="alert"` and the same visual grammar as the
   existing legacy-model warning (`AlertTriangle`, bordered tinted box) — destructive tint for
   `retained`, amber for `unverified`. Copy exactly as specified above. Keep the existing security
-  note paragraph.
+  note paragraph. `busyProviders` is a `Set<AiProvider>`, not one slot, because two notices can
+  have work in flight at once. Nothing in a notice calls `deleteKey`; see the AC5 paragraph and
+  the replan log rows it cites.
 - **Targeted verification:** `npx vitest run src/components/panels/ai-settings-content.test.tsx`.
 - **Intent validation:** the owner deletes a key in a browser with `removeItem` stubbed, closes
   and reopens settings, and reads what the panel says.
@@ -538,11 +582,14 @@ Steps 1–4 are common to all four options. Step 5 is written for Option B and n
   `unverified` and `null` show nothing. Desktop shows nothing, ever.
 - **Files:** `src/components/layout/status-bar.tsx`, `src/components/layout/status-bar.test.tsx`,
   `src/components/layout/app-layout.tsx`, `src/components/layout/app-layout.test.tsx`.
-- **Implementation:** a browser-only startup effect in `AppLayout` calling
-  `void useKeyResidueStore.getState().refreshAllResidue()`; a derived boolean in `StatusBar`.
-  Measure the startup cost of the dynamic adapter import and, if it is not negligible, defer the
-  call behind `requestIdleCallback` with a `setTimeout` fallback rather than blocking first
-  paint.
+- **Implementation:** a browser-only startup effect in `AppLayout`, and a derived boolean in
+  `StatusBar`. The effect is **not** a bare `void refreshAllResidue()`: it reads each provider's
+  slot as an uncommitted probe, settles `hasKey` for both providers only when the probe found
+  something, and commits the reading only after that. Ordering and the reason for the probe are
+  in the replan log rows *"the launch effect settles both `hasKey` calls before the first residue
+  read"* and *"the launch sequence reads the slot before it opens the vault"*. Measure the
+  startup cost of the dynamic adapter import and, if it is not negligible, defer the call behind
+  `requestIdleCallback` with a `setTimeout` fallback rather than blocking first paint.
 - **Option C delta:** new `src/components/layout/key-residue-bar.tsx` + test, rendered beside
   `UpdateBar`; no `StatusBar` change. **Option D delta:** a session-scoped `seen` flag in the
   store and a modal component; no `StatusBar` change.
@@ -571,8 +618,14 @@ adapter-mocked and must not import `fake-indexeddb`.
 | 2 — **surviving a remount** | `still warns after the settings panel is closed and reopened` | `ai-settings-content.test.tsx` | `const { unmount } = render(...)`; assert warning; `unmount()`; re-`render`; assert the warning is present again without any user action |
 | 3 — the two states differ | `distinguishes a retained copy from a check that was blocked` | `ai-settings-content.test.tsx` | Two cases, `"retained"` vs `"unverified"`; each asserts its own copy is present **and** the other's is absent |
 | 4 — no false "no key" | `does not claim the provider is unconfigured while a clear-text copy is readable` | `ai-settings-content.test.tsx` | `hasKey → false`, residue `"retained"`; `expect(screen.queryByText("No API key configured")).toBeNull()`. The existing test at ~line 162 that asserts `"No API key configured"` after a retained delete **must be updated**, not deleted — it encodes the current wrong behavior and its comment should record why it changed |
-| 5 — retry reachable | `keeps a removal control reachable while a clear-text copy remains` | `ai-settings-content.test.tsx` | `hasKey → false`, residue `"retained"`; the button renders and clicking it calls `deleteKey` again (spy asserts the second call) |
-| 6 — **warning clears** | `stops warning once the slot is actually gone` | `ai-settings-content.test.tsx` | `readLegacyResidue` returns `"retained"`, then `null` after the first `deleteKey`; click retry; the warning and the status-row text are both gone |
+| 5 — retry reachable | `keeps a retry reachable while a clear-text copy remains` | `ai-settings-content.test.tsx` | `hasKey → false`, residue `"retained"`; the control renders and clicking it calls `hasKey` again for that provider, and `deleteKey` never |
+| 5 — nothing destructive | `never reaches deleteKey from a residue notice, whatever the panel knows` | `ai-settings-content.test.tsx` | Every combination of `keyStatus` (`true`, `false`, rejected) and residue (`"retained"`, `"unverified"`) for both providers; click every control in every notice; `deleteKey` call count stays zero |
+| 5 — the retry reports | `says so when the retry changed nothing` and `says so when a blocked check is still blocked` | `ai-settings-content.test.tsx` | Residue still `"retained"` after the re-read; the panel authors the report `deleteKey`'s rejection used to carry. The `unverified` case is the same shape and matters more, because that reading never resolves on a blocked-storage profile — its report claims no removal and no absence |
+| 6 — **warning clears** | `stops warning once the slot is actually gone` | `ai-settings-content.test.tsx` | `readLegacyResidue` returns `"retained"`, then `null` once `hasKey` — which runs the migration — is allowed to erase; click retry; the warning and the status-row text are both gone |
+| 4 — not-yet-checked | `does not claim there is no key before the check has answered` | `ai-settings-content.test.tsx` | `hasKey` left pending; the row reads `Checking key storage…`, never `No API key configured`, and offers no removal |
+| rider — no plaintext in the queue | `does not park the plaintext key in the provider queue` | `browser-keychain-adapter.test.ts` | Spy `Map.prototype.set` to capture what `withProviderLock` stores under the provider key after a `getKey`; assert it resolves `undefined` |
+| launch — no vault without a slot | `does not open the key vault when there is no clear-text slot to migrate` | `app-layout.test.tsx` | No `hasKey` call at launch on a profile with no slot; plus `does not open the key vault to answer` in `browser-keychain-adapter.test.ts`, asserting `indexedDB.databases()` is empty after a residue read and non-empty after `hasKey` |
+| launch — adapter load fails | `still reads the slot when the keychain adapter fails to load first` | `app-layout.test.tsx` | First `getKeychainAdapter()` rejects; the store's own refresh still reports `"retained"` |
 | desktop parity | `shows nothing when the adapter has no residue check` | `ai-settings-content.test.tsx` | Fake adapter object with only `setKey`/`hasKey`/`deleteKey` — the shape `TauriKeychainAdapter` actually has — asserting no warning and no relabelled button |
 | store | `key-residue-store` cases | `src/stores/key-residue-store.test.ts` (new) | Adapter mock via `vi.mock("@/lib/adapters/get-keychain-adapter")`: sets from the capability; writes `null` when the method is absent; **keeps the prior value when the adapter module rejects**; `refreshAllResidue` covers both providers |
 | escalation (B) | `status-bar` cases | `src/components/layout/status-bar.test.tsx` | Seed the store with `useKeyResidueStore.setState(...)`: indicator present for `"retained"`, absent for `"unverified"` and `null`, click calls `openSettingsDialogAtTab("ai")` |
@@ -638,7 +691,8 @@ is present after a reload.
    open. Small, but measured in step 5 and deferred behind idle time if it is not.
 7. **A `retained` warning alongside a configured key.** `setKey` also attempts and ignores the
    erase, so residue can coexist with `keyStatus === true`. The copy is written to be true in
-   both cases; the status row is only overridden in the `false` case.
+   both cases; the status row is overridden for every `keyStatus` except `true`, which keeps
+   "API key configured" because that claim is still the more important one.
 
 **What must not regress.**
 
@@ -734,3 +788,23 @@ Green CI cannot decide any of these.
 | Date | Change | Evidence and reason |
 |------|--------|---------------------|
 | 2026-07-27 | Initial plan | Issue #233 body and its four comments; `browser-keychain-adapter.ts`, `browser-key-vault.ts`, `keychain-adapter.ts`, `tauri-keychain-adapter.ts`, `ai-settings-content.tsx`, `status-bar.tsx`, `update-bar.tsx`, `settings-store.ts`, and the existing adapter/panel test suites, all read on `main` |
+| 2026-07-27 | **Option B shipped; step 5 is no longer conditional.** The owner delegated the UI decision rather than answering it, so the implementer took the plan's own recommendation. "An implementer must not pick one" no longer holds and is struck from the human blockers | Owner delegation during implementation; the recommendation's stated reasoning was not re-litigated |
+| 2026-07-27 | **Deviation:** `StatusBar` adds a *second* always-mounted `sr-only` `role="status"` region rather than joining the existing `local-persistence-alert` one, as step 5 said it would | Coalescing them makes the two independent states fight: a save-failure transition would either silence a standing claim about a readable credential or re-announce it on every persistence change. Two regions cost one span and keep each announcement tied to its own condition |
+| 2026-07-27 | **Deviation:** the residue notice renders for **every** provider holding residue, not only the selected one, and each notice carries its own action bound to its own provider (plan step 4 said `residue[provider]`) | The status bar escalates *any* provider's `retained` slot (step 5) while the panel rendered only the selected one, so clicking the indicator with residue on the unselected provider opened a panel showing "No API key configured" and no control — the exact contradiction AC2/AC5 forbid. Found by the preflight review lanes |
+| 2026-07-27 | **Deviation:** the `unverified` notice copy names the provider ("could not check for an older clear-text **Anthropic** API key"), where the plan's shared copy did not | Follows from the change above: two unattributed amber blocks cannot be told apart once notices are per-provider |
+| 2026-07-27 | **Deviation:** the removal control is gated on `keyStatus === true \|\| residue === "retained"` **and** split in two — a destructive retry only where the encrypted record is known to be gone, and a non-destructive "Check again" everywhere else. Plan step 4 specified one control gated on `keyStatus[provider] \|\| residue[provider] !== null` | As written, an `unverified` reading rendered a red `Trash2` control labelled "Check again" wired to `deleteKey`, which commits a permanent `REVOKED` marker. A blocked-storage user who never had a key was told an erasure failed, and a user with a recoverable clear-text key destroyed it by asking for a read. Found by the preflight review lanes |
+| 2026-07-27 | **Deviation:** `keyStatus` gained a third state, `"unknown"`, for a `hasKey` that rejected, with its own status-row wording | The plan kept the boolean, which reported an unreadable vault as "No API key configured" — reassurance in the wrong direction on a key-storage surface, and after the change above it would also have fed a destructive gate |
+| 2026-07-27 | **Deviation:** the launch effect settles both `hasKey` calls before the first residue read, and `chat-store.checkApiKey` refreshes residue afterwards. Plan step 5 specified a bare `refreshAllResidue()` at launch | `readLegacyResidue` takes the provider lock, but at launch it is the *first* keychain call of the session, so the lock orders it behind nothing: it answered `"retained"` and the next `hasKey` migrated the slot away, leaving every pre-#133 user a standing red status-bar item over a resolved condition. The panel mount already ordered it correctly; the launch path now mirrors it |
+| 2026-07-27 | **Step 5 measurement recorded** (the plan required it and the first implementation asserted it instead). Chromium against the dev server: the whole launch sequence took a median 27ms with no legacy slot and 31ms with one to migrate; first contentful paint over 12 navigations was a median 404ms with the effect and 416ms without, inside a 396–424ms spread. No `requestIdleCallback` deferral is warranted | Temporary `performance.mark` instrumentation plus a throwaway Playwright spec, both removed after measuring |
+| 2026-07-27 | **Deviation:** the destructive residue control is removed entirely. `ResidueAction`, `residueAction()`, and the `retry-removal` branch are deleted; every residue notice binds one control to `handleRecheck`, labelled `Try removing it again` with no `Trash2`. Supersedes the row above, which split the control in two and kept a destructive branch | The split still decided from a render-time snapshot that `handleDelete` never re-verified. Reproduced end-to-end against the real IndexedDB vault: the panel settles honestly at `hasKey=false, residue="retained"`, the user saves a fresh key in a second tab, and clicking a control that speaks only about the clear-text slot destroys the new encrypted key. The pre-settle default was the same hole for ~26ms after mount, unbounded behind a cross-tab `blocked` upgrade. `deleteKey` bought nothing in that state either: a retirement marker already stands, so `hasKey` cannot re-import, and `migrateLegacyKey` runs `removeLegacyKey` unconditionally after the declined import — recheck-only measured `hasKey=false residue=null slot=null` once the browser allowed removal. Found by the PR reviewer and security lanes, independently, in round two |
+| 2026-07-27 | **Deviation:** the report `deleteKey`'s rejection used to carry is authored by the panel. `handleRecheck` re-reads residue and, if the provider still reads `"retained"`, surfaces it through the one-shot `message` | The retry is a re-read now, which resolves either way, so without this a browser that still refuses leaves an identical notice on screen and no evidence the click did anything. The adapter's "removed from encrypted storage" clause is deliberately dropped: a re-read removes nothing |
+| 2026-07-27 | **Deviation:** `keyStatus` gained a not-yet-checked state, `"unchecked"`, which is what `useState` now seeds; the status row reads `Checking key storage…` for it | `false` was doing double duty as "not asked yet" and "the encrypted record is known to be gone", and the row rendered the second reading — a false claim about storage — for the whole of every mount before `hasKey` answered |
+| 2026-07-27 | **Deviation:** the site-data instruction states what it costs. Both notices and both `deleteKey` `LEGACY_RETAINED` messages carry one shared `CLEARING_SITE_DATA_COST` sentence. The earlier note that the `deleteKey` messages are not changed is struck | The browser workspace keeps document bodies in IndexedDB with the manifest in `localStorage` (`src/lib/persistence/types.ts`, `workspace-storage.ts`), so following the instruction deletes the user's saved threat models. The plan named that cost when it rejected Option C and then shipped the instruction without it. `privacy-page.tsx` already states the same fact, in the same voice |
+| 2026-07-27 | **Deviation:** `busyProvider` became `busyProviders: Set<AiProvider>`, as `mutated` already was | With a notice per provider, two controls can have work in flight at once; the single slot let the first `finally` clear the flag while the second was still running, stopping its spinner and re-enabling its button mid-operation, and disabled `Remove API key` for either provider's work |
+| 2026-07-27 | **Rider recorded:** `withProviderLock` stores `pending.then(() => undefined, () => undefined)` rather than `pending.catch(() => undefined)`. Shipped unlogged in the first implementation; now carries a test | The stored queue link forwarded the operation's resolved value, which for `getKey` is the plaintext API key, leaving it in a module-scoped map until the provider's next call replaced it. Measured `map-stored resolves to "sk-ant-CANARY…"` before and `undefined` after, with identical microtask depth and FIFO ordering. Pinned by `does not park the plaintext key in the provider queue` |
+| 2026-07-27 | **Deviation:** the launch sequence reads the slot before it opens the vault. `AppLayout` probes `readLegacyResidue` for both providers, runs `hasKey` only if the probe found something, and commits the reading after that. Supersedes the unconditional `hasKey` in the row above; the ordering guarantee and its regression test are unchanged | `readLegacyResidue` is a `localStorage` read that never touches IndexedDB, while `hasKey` opens `threatforge-keychain` — so the unconditional version materialised that database at launch for every browser profile, including the majority that never touch AI, where previously it appeared only on first AI use. The probe's own answer is deliberately not committed, because `migrateLegacyKey` may be about to erase the slot it reported. Pinned by `does not open the key vault when there is no clear-text slot to migrate` and, at the adapter level, `does not open the key vault to answer` |
+| 2026-07-27 | **Deviation:** the retry reports for `unverified` too, not only `retained`. `retainedAfterRetryText` became `retryReportText(residue, vendor)`, and the AC5 paragraph now describes both readings | The row above authored the report for `retained` alone, which left the one state that never resolves — a blocked-storage profile reads `unverified` forever — with a control that produced no message, no state change and an identical notice. That is the exact failure that row exists to prevent. The `unverified` wording claims no removal and no absence: `migrateLegacyKey` returns before it touches the slot when the read is refused, so nothing is attempted. Found by the round-three review lanes |
+| 2026-07-27 | **Deviation:** the launch effect's `catch` logs through `console.warn`, matching `loadAdapter`. The plan and the code comment said the failure "is reported where the user can act on it, in the settings panel" | That holds only for a user who opens the panel, and the launch check exists precisely because they may never do so. A permanently broken adapter chunk now leaves a trace a bug report can carry. Pinned by `still reads the slot when the keychain adapter fails to load first` |
+| 2026-07-27 | **Deviation:** the retry report no longer repeats the remedy or its cost, and the notice control's label branches — `Try removing it again` for `retained`, `Check again` for `unverified` | The report is only ever set while residue is non-null, which is the same condition that renders the notice above it, so both surfaces were guaranteed co-rendered: the user read "clear this site's browser data" twice and the cost sentence twice, a few lines apart. On the primary `handleDelete` flow the adapter's `LEGACY_RETAINED` message made it three times. The report now says only what is new. The shared label had the same problem in miniature — on an `unverified` reading no removal has been attempted, so neither "removing" nor "again" was true, and the report had to walk the label back one line later with "Nothing was removed". Found by the round-three slop lane |
+| 2026-07-27 | **Copy correction:** the status-bar detail says `Open AI settings to deal with it`, not `to remove it`; the notice says `ThreatForge has not been able to delete it`, not `this browser will not delete it` | The indicator renders only on `retained`, which means the erase was already attempted and refused — so the panel it routes to offers a retry that may fail again and the site-data remedy, not removal. It is the first string a user meets, ahead of every careful hedge downstream. The notice's causal clause had the narrower version of the same fault: when `hasKey` rejects, `migrateLegacyKey` never reaches `removeLegacyKey`, so the browser refused nothing |
+| 2026-07-27 | **Test strengthened:** `leaves a standing warning alone when the check did not clear the slot` now seeds the residue store empty and puts `retained` only in the slot | As written it seeded the store with the value it asserted, so it passed with the `checkApiKey` refresh deleted — it pinned only a hypothetical implementation that clears residue unconditionally. Deleting the refresh now fails both chat-store cases rather than one. Found by the round-three slop lane |

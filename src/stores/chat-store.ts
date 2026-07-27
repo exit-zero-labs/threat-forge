@@ -14,6 +14,7 @@ import {
 } from "@/lib/ai/protocol/messages";
 import { getDefaultModelId } from "@/lib/ai-models";
 import { buildSystemPrompt } from "@/lib/ai-prompt";
+import { useKeyResidueStore } from "@/stores/key-residue-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
 	type ChatSession,
@@ -524,6 +525,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		} catch {
 			set({ hasApiKey: false });
 		}
+		// `hasKey` is also what migrates a pre-#133 clear-text key into the vault and erases the
+		// slot, so a slot that was there when the session started may be gone now. Re-read it
+		// rather than leaving a standing "clear-text API key" warning (#233) about storage this
+		// call just cleaned up. Never rejects, and never gates a request on the answer.
+		await useKeyResidueStore.getState().refreshResidue(provider);
 	},
 
 	clearError: () => set({ error: null }),
