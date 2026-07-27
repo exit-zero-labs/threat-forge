@@ -25,6 +25,8 @@ slop when they protect a real invariant. A review that manufactures findings is 
 - Defensive branches cover impossible states while realistic failure paths are unhandled.
 - APIs, CLI flags, status codes, environment behavior, or platform guarantees are guessed.
 - Logic is duplicated instead of using an established contract or helper.
+- A control's label and render condition are updated together while its handler keeps doing what
+  the old condition implied.
 - Dead scaffolding, placeholder values, fake adapters, or TODO behavior remains on a success
   path.
 - `any`, double casts, `as never`, non-null assertions, or unvalidated records bypass the type
@@ -47,6 +49,8 @@ slop when they protect a real invariant. A review that manufactures findings is 
 
 - Documentation restates code instead of linking to the canonical source.
 - Rationale or precision is invented after the fact.
+- A rule or comment is justified only by a mistake that never existed outside the change making
+  it, so nothing supporting it survives the branch.
 - A runbook claims a deployment, security, or signing control that is not configured.
 - One hosting, release, or project surface changes while DNS, workflows, privacy text, or
   repository policy remains stale.
@@ -124,3 +128,49 @@ makes a suite pass for a lane that then clears the change.
 require every lane that has a shell to open its report with the tree state it observed and to
 confirm — not assume — that it restored what it changed. A lane with no shell cannot read that
 state and is given its commit instead. See #264 and `.claude/skills/pr-preflight/SKILL.md`.
+
+### 2026-07-27 — A control was relabeled to match its new gate while its handler kept the old one
+
+**Tell:** the clear-text key notice's render condition widened from the selected provider to any
+provider holding residue, and its label was rewritten from a destructive phrasing to a re-read
+phrasing. The gate and the label agreed with each other. The handler still called `deleteKey`,
+which commits a permanent revocation marker — so an `unverified` reading rendered a red `Trash2`
+control labeled `Check again` that destroyed a key the user had asked it only to look at. Later
+in the same change, a control whose copy spoke only about the clear-text slot destroyed an
+encrypted key saved in a second tab. Two review lanes found that one independently in round two:
+it survives the author, and it survives every test that asserts the label.
+
+The general shape: **relabeling is the cheapest edit in a review cycle.** When a reviewer says
+the wording is wrong the fix is a string, and nothing about editing a string prompts anyone to
+re-derive whether the dispatch beneath it still follows from the new condition.
+
+**Fix:** when a control's label or render condition changes, re-derive its handler from the new
+condition, and pin the *dispatch* in a test rather than the label. See PR #266 (`fddaab3`) and the
+2026-07-27 deviation rows in `docs/plans/233-persistent-clear-text-key-warning.md`.
+
+### 2026-07-27 — A comment was justified by a mistake that only existed in its own draft
+
+**Tell:** comments drafted during #233 explained why an approach had been rejected, where the
+rejected approach had only ever existed in an earlier draft of the same diff. They read as
+hard-won and cited nothing a reader could reach. Nobody outside the branch could have made the
+mistake being warned about, and the warning would outlive every reader able to interpret it.
+
+This is not the neighboring pattern of inventing rationale. There the reasoning is fabricated;
+here it is sound and simply undurable — the evidence was discarded with the draft, so the rule it
+supports cannot be re-derived, re-tested, or retired when it stops applying. From the artifact
+alone the two look identical, because a justification with no trace in the record reads the same
+either way, and the artifact-level remedy is the same for both. The distinction is for the author,
+who is this document's primary reader during self-review and the one person who knows which they
+are doing.
+
+**Boundary, so this cannot be used to strip legitimate comments:** a self-review correction is
+good evidence for a comment describing *the code as shipped*. The launch-probe comment in
+`src/components/layout/app-layout.tsx` is the shape that holds up — it says why the probe exists
+and points at a dated measurement in that plan's replan log, so its support outlived the branch.
+The pattern is specifically about rules whose only support is a discarded alternative.
+
+**Fix:** ground a rule in something that outlived the branch — a committed plan row, an issue, or
+a test that fails without it — or state the fact about the shipped code and drop the story. This
+entry is held to that standard too: #233's own instances were caught in its review rounds and
+never merged, so no line of the diff records them. The contemporaneous filing is #267, made the
+same day the fix landed and describing them — a record of the observation, not of the hazard.
