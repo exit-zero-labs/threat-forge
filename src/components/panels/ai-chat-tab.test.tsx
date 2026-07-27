@@ -525,12 +525,28 @@ describe("AiChatTab key storage faults", () => {
 		});
 
 		// The heading is the settings panel's status text verbatim, so the two surfaces state
-		// one fact in one sentence, and the vault's authored remedy is what the user reads.
+		// one fact in one sentence, and whatever the keychain authored is what the user reads.
 		expect(screen.getByTestId("key-storage-fault")).toBeInTheDocument();
 		expect(screen.getByText("Key storage could not be read")).toBeInTheDocument();
 		expect(screen.getByText(VAULT_DAMAGED)).toBeInTheDocument();
 		expect(screen.queryByText("No API key configured")).toBeNull();
 		expect(screen.getByRole("button", { name: "Open AI settings" })).toBeInTheDocument();
+	});
+
+	it("shows the fault even when the rejection carries no message of its own", async () => {
+		// The fault branch tests `keyFault` for truthiness, so an empty message would fall
+		// through to the empty state and claim no key is configured over a vault that just
+		// faulted — this issue's own defect, arriving through the code added to prevent it.
+		keychain.rejection = new Error("");
+		openDocument();
+
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+
+		expect(screen.getByTestId("key-storage-fault")).toBeInTheDocument();
+		expect(screen.queryByText("No API key configured")).toBeNull();
+		expect(screen.getByText(/does not recognize/)).toBeInTheDocument();
 	});
 
 	it("still shows the empty state when storage answers that there is no key", async () => {

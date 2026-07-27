@@ -367,14 +367,18 @@ first if the implementer prefers a clean diff.
   `src/components/panels/ai-settings-content.tsx`.
 - **Implementation:**
   1. Move `ADAPTER_LOAD_ERROR` and `loadAdapter` (`ai-settings-content.tsx:17-33`) into
-     `get-keychain-adapter.ts` as `KEYCHAIN_LOAD_ERROR` and `loadKeychainAdapter()`, keeping
+     `load-keychain-adapter.ts` as `KEYCHAIN_LOAD_ERROR` and `loadKeychainAdapter()`, keeping
      the `console.warn` and the authored rethrow verbatim.
   2. Move `errorText` (`:106`) there as `keychainErrorText(error: unknown): string`, keeping
-     the `Error`-vs-string branch and its docblock — the Tauri adapter rejects with a string
-     from `invoke`, which is why the branch exists.
+     the `Error`-vs-string branches — the Tauri adapter rejects with a string from `invoke`,
+     which is why more than one exists. See the 2026-07-27 rows: the function gained a third
+     branch and an emptiness check during preflight, and its docblock was rewritten, because
+     the original attributed a safety guarantee to it that lives upstream.
   3. Point the panel at both. Delete the local copies.
-  4. Note in the docblock that these are the only two ways a keychain failure becomes text a
-     user reads, and that duplicating them is how the surfaces drift apart.
+  4. Note in the docblock that these are the paths by which a keychain failure becomes text on
+     the settings and chat-store surfaces, and that duplicating them is how the surfaces drift
+     apart. (`browser-chat-adapter`'s `no_api_key` re-raise is a third path, documented where
+     it lives rather than claimed here.)
 - **Targeted verification:** `npx vitest run src/components/panels/ai-settings-content.test.tsx`
   — the existing suite is the regression proof; every assertion about `ADAPTER_LOAD_ERROR` text
   and rendered failure messages (`:281`, `:303`) must pass unchanged.
@@ -597,7 +601,7 @@ Green CI cannot decide any of these.
 
 ## Follow-up issues to file (not sub-issues, not in scope)
 
-Both are new issues linked to `#234`, filed at handoff, not folded in.
+Filed at handoff as #281, #280, and #282 — linked to `#234`, not folded in.
 
 1. **`migrateLegacyKey` erases the clear-text slot on a declined import without proving the
    stored record is readable.** This is the hazard recorded in the second comment on `#234`.
@@ -619,7 +623,14 @@ Both are new issues linked to `#234`, filed at handoff, not folded in.
    wrapping key is lost"). The message therefore sends a user to destroy their saved threat
    models (`CLEARING_SITE_DATA_COST`) for something re-entry fixes. This plan deliberately does
    not touch it: AC 1 names that exact string as what must render, and changing safety copy
-   under a bug fix hides the change. File it as its own copy issue with the test as evidence.
+   under a bug fix hides the change. File it as its own copy issue with the test as evidence. **Filed as #280**, together with
+   `UNAVAILABLE_MESSAGE`, whose remedy is wrong for two of its three causes (reviewer consider
+   C4): an insecure origin has no Web Crypto and a sandboxed iframe throws on the property
+   read, and site-data permission addresses neither.
+3. **The unguarded `globalThis.indexedDB` read exists one module over.** `indexeddb.ts:87` has
+   the identical getter hazard the 2026-07-27 security row describes, with no equivalent remap.
+   Out of scope — workspace persistence, no credential — but the finding is not specific to the
+   key vault. **Filed as #282.**
 
 ## Specialist review
 
@@ -641,3 +652,7 @@ Append changes; do not rewrite prior decisions.
 | 2026-07-27 | `hasSecret`'s fault can no longer escape as a raw `DOMException`; `withVault` now opens inside its `try` | Security lane, #234 preflight. `openVault` guarded `factory.open()` and a null factory, but not the `globalThis.indexedDB` property read itself, which is a getter that throws `SecurityError` in a sandboxed iframe or storage-blocked profile — the hazard `readLegacySlot` already catches for `localStorage`. Awaited outside the `try`, that rejection bypassed the remap and would have rendered `The operation is insecure.` as the app's explanation, defeating the exact-text assertion in `ai-settings-damaged-vault.test.tsx`. Pre-existing, but this change adds a second verbatim-rendering surface reachable at mount without opening settings, so it is fixed here rather than filed |
 | 2026-07-27 | `keychainErrorText` fails closed on a rejection that is neither `Error` nor string; three comments stop crediting it with a guarantee it does not provide | Reviewer and slop lanes, independently. The function is a shape adapter — routing through it cannot establish authorship, and `String(error)` on an object renders `[object Object]` as the app's account of itself. The guarantee is real but lives upstream in `withVault`'s remap and in `key_refusal` on the Rust side; the comments now name that, because a maintainer reading "nothing unauthored can arrive" would not add a guard where one is needed |
 | 2026-07-27 | `KEY_STORAGE_UNREADABLE` exported from `keychain-adapter.ts`; both surfaces render the constant | Reviewer and slop lanes, independently. The sentence this issue exists to keep identical across two surfaces shipped as two literals coupled by nothing but a docblock claiming they matched — a copy edit to one would diverge them silently and every suite would still pass. That is #234's own defect one layer up, in copy instead of state |
+| 2026-07-27 | `keychainErrorText` also refuses an `Error` whose message is empty | Reviewer lane, round 2, and the sharpest finding on this issue. The fail-closed fix hardened the *shape* branch but not emptiness: `error.message` of `""` reaches `chat-store`'s `keyFault`, which `ai-chat-tab` tests for truthiness, so the tab falls through to `EmptyState` and claims "No API key configured" over a vault that had just faulted — this issue's exact defect, arriving through the code added to prevent it. Confirmed by reverting the guard: `shows the fault even when the rejection carries no message of its own` fails with `key-storage-fault` absent and `No API key configured` in the DOM |
+| 2026-07-27 | Discriminating tests added for the two preflight fixes above | Security and reviewer lanes, independently: both observed that reverting the `withVault` change left the whole suite green, so the security fix was unobservable to every test in the tree and invisible to a future refactor tidying it. `surfaces a user-safe message when the storage factory itself refuses to be read` installs a throwing `indexedDB` getter via `Object.defineProperty` — not `vi.spyOn(…, "get")`, which cannot spy the data property `fake-indexeddb/auto` installs — and fails with the raw `SecurityError` when the fix is reverted |
+| 2026-07-27 | `recognise` → `recognize` in `KEYCHAIN_UNKNOWN_ERROR`; `this app` → `ThreatForge` | Slop lane. The two lanes disagreed, which is what made it worth checking rather than deciding: the reviewer read `recognise` as house style, citing prose in `browser-key-vault.ts:88` and eight test names. Both are right about their own half — the repo writes British prose in comments and American copy in the UI (`Analyzing…`, `Run STRIDE analysis`, `analyze_stride`), and this string is the first to cross from one to the other. The self-reference is the reviewer's: the panel already names ThreatForge, and this renders beside it |
+| 2026-07-27 | Module header no longer claims to be the only path; step 2's body corrected to match its Files line | Reviewer lane, round 2. `browser-chat-adapter.ts:337` re-raises a `KeyVaultError` as a `no_api_key` protocol error, so a vault sentence can also reach the transcript by way of a request — the plan names this at its own `:80-82`, so the header contradicted the document it was implementing. The step-2 body still directed the extraction into `get-keychain-adapter.ts` two lines below the Files line correcting it, which is the destination the earlier replan row exists to rule out |

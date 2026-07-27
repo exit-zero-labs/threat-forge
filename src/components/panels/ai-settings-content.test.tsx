@@ -316,7 +316,7 @@ describe("key storage that cannot answer", () => {
 			render(<AiSettingsContent />);
 		});
 
-		expect(screen.getByText(/does not recognise/)).toBeInTheDocument();
+		expect(screen.getByText(/does not recognize/)).toBeInTheDocument();
 		expect(screen.queryByText(/object Object/)).not.toBeInTheDocument();
 		expect(screen.queryByText(/InvalidStateError/)).not.toBeInTheDocument();
 	});

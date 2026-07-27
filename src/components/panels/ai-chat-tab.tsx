@@ -156,8 +156,10 @@ export function AiChatTab() {
  * red belongs to a credential exposed in clear text, and this is a loss of function.
  *
  * `role="alert"` is assertive deliberately. This replaces the whole conversation surface after
- * a check the user did not initiate, so a screen-reader user who is told about it late has
- * already been typing into a panel that was never going to send.
+ * a check the user did not initiate — on a provider switch, or a re-check that newly fails
+ * while the transcript is on screen, a screen-reader user told about it late has already been
+ * typing into a panel that was never going to send. (On first mount there is no input yet, so
+ * that path is the one that earns the interruption.)
  */
 function KeyStorageFault({ message, onConfigure }: { message: string; onConfigure: () => void }) {
 	return (

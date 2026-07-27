@@ -386,6 +386,34 @@ describe("failing closed when encrypted storage is unavailable", () => {
 		expect((error as KeyVaultError).message).not.toContain("IDBFactory");
 	});
 
+	it("surfaces a user-safe message when the storage factory itself refuses to be read", async () => {
+		// `open()` throwing is the guarded case. Reading `globalThis.indexedDB` at all is not:
+		// it is a getter, and in a sandboxed iframe or a storage-blocked profile it throws
+		// before there is a factory to call. That rejection is why `withVault` opens inside its
+		// own `try` — awaited outside it, the raw `SecurityError` bypasses the remap and the app
+		// explains itself to the user with "The operation is insecure."
+		const real = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
+		// `defineProperty`, not `vi.spyOn(…, "get")`: `fake-indexeddb/auto` installs
+		// `indexedDB` as a data property, and an accessor spy over one throws.
+		Object.defineProperty(globalThis, "indexedDB", {
+			configurable: true,
+			get() {
+				throw new DOMException("The operation is insecure.", "SecurityError");
+			},
+		});
+
+		try {
+			const adapter = new BrowserKeychainAdapter();
+			const error = await adapter.hasKey("anthropic").catch((caught: unknown) => caught);
+
+			expect(error).toBeInstanceOf(KeyVaultError);
+			expect((error as KeyVaultError).reason).toBe("unavailable");
+			expect((error as KeyVaultError).message).not.toContain("insecure");
+		} finally {
+			if (real) Object.defineProperty(globalThis, "indexedDB", real);
+		}
+	});
+
 	it("redacts a failure raised after the database is open", async () => {
 		// `open()` succeeding is not the only way in. A vault database that already exists at
 		// the expected version but has no stores opens cleanly and then raises a real
