@@ -18,7 +18,20 @@ import type { AiProvider } from "@/stores/chat-store";
 export interface KeychainAdapter {
 	/** Store an API key for a provider. */
 	setKey(provider: AiProvider, key: string): Promise<void>;
-	/** Check if an API key exists for a provider. */
+	/**
+	 * Check if an API key exists for a provider.
+	 *
+	 * Rejecting is part of the contract on both platforms, and a rejection is not `false`. A
+	 * caller that collapses one into "no API key configured" makes a claim about storage that
+	 * never answered, and points the user at entering a key when entering a key is not the
+	 * remedy. Surface the rejection's message instead; both implementations author it.
+	 *
+	 * The browser reaches it when the vault holds records but cannot produce the material to
+	 * decrypt them, or where Web Crypto is unavailable. Desktop reaches it when the keychain
+	 * refuses to answer, since `KeyStorage` only exists at all once `keys.enc` has decrypted at
+	 * startup — so a desktop "record present, key unreadable" state is unreachable rather than
+	 * unchecked.
+	 */
 	hasKey(provider: AiProvider): Promise<boolean>;
 	/** Delete an API key for a provider. */
 	deleteKey(provider: AiProvider): Promise<void>;
@@ -59,6 +72,23 @@ export type LegacyResidue = "retained" | "unverified" | null;
  */
 export const CLEARING_SITE_DATA_COST =
 	"Clearing this site's browser data also removes the threat models saved in this browser, so export anything you need first.";
+
+/**
+ * What both surfaces call the state where storage answered, and the answer was "I can't" (#234).
+ *
+ * The AI settings panel and the AI chat tab describe the same fault, and the whole point of
+ * #234 is that they cannot disagree about a stored key. Shipping the sentence twice would put
+ * that agreement back in a human's hands: an edit to one copy diverges the surfaces in wording
+ * while they still agree in fact, which is a quieter version of the bug being fixed.
+ *
+ * Deliberately not "could not be checked". A check that never answered and a check that
+ * answered "this browser cannot read it" are different claims, and the second is the one the
+ * vault now makes.
+ *
+ * The tests assert this text as their own literals rather than importing it. An assertion that
+ * imports the string it is checking passes for any value of that string.
+ */
+export const KEY_STORAGE_UNREADABLE = "Key storage could not be read";
 
 /**
  * Reason code for a removal that succeeded but left a readable clear-text copy behind.

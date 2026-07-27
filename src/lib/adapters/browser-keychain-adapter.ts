@@ -193,6 +193,16 @@ export class BrowserKeychainAdapter implements KeychainAdapter {
 		});
 	}
 
+	/**
+	 * Report whether this provider has a stored key this browser could still read.
+	 *
+	 * Rejects rather than answering `false` when the vault holds a record but cannot produce
+	 * the material to decrypt any of it — a lost or damaged wrapping key, or an origin with no
+	 * Web Crypto. A caller must not collapse that rejection into "no API key configured": the
+	 * record is still stored, nothing has been deleted, and entering a key is not what fixes an
+	 * insecure origin. It never decrypts, so a record damaged under a healthy wrapping key
+	 * still answers `true` until {@link BrowserKeychainAdapter.getKey} reads it.
+	 */
 	async hasKey(provider: AiProvider): Promise<boolean> {
 		return withProviderLock(provider, async () => {
 			await migrateLegacyKey(provider);

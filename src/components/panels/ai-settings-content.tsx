@@ -1,36 +1,18 @@
 import { AlertTriangle, Eye, EyeOff, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getKeychainAdapter } from "@/lib/adapters/get-keychain-adapter";
 import {
 	CLEARING_SITE_DATA_COST,
+	KEY_STORAGE_UNREADABLE,
 	LEGACY_RETAINED,
 	type LegacyResidue,
 } from "@/lib/adapters/keychain-adapter";
+import { keychainErrorText, loadKeychainAdapter } from "@/lib/adapters/load-keychain-adapter";
 import { getDefaultModelId, getModelById, getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
 import { useKeyResidueStore } from "@/stores/key-residue-store";
 import { useSettingsStore } from "@/stores/settings-store";
-
-/** Authored so a bundler or network detail never reaches the user as an error message. */
-const ADAPTER_LOAD_ERROR = "Key storage could not be loaded. Reload the page and try again.";
-
-/**
- * Load the keychain adapter, replacing a module-load failure with an authored message.
- *
- * Adapters author their own user-safe messages; a failure to load one does not, and would
- * otherwise render a bundle URL and a hash as the explanation. The cause is logged rather
- * than dropped, so a real chunk-load regression is still diagnosable from a bug report.
- */
-async function loadAdapter(): Promise<Awaited<ReturnType<typeof getKeychainAdapter>>> {
-	try {
-		return await getKeychainAdapter();
-	} catch (err) {
-		console.warn("Key storage adapter failed to load:", err);
-		throw new Error(ADAPTER_LOAD_ERROR);
-	}
-}
 
 /**
  * The providers this panel offers, and the company each key belongs to.
@@ -48,11 +30,12 @@ const PROVIDERS: { value: AiProvider; label: string; vendor: string }[] = [
  * What the panel knows about a provider's stored key.
  *
  * Neither non-boolean member is the same as `false`. `"unknown"` is a `hasKey` that rejected —
- * an unreadable vault, a record that will not decrypt — which used to be collapsed into "no API
- * key configured", reassurance in exactly the wrong direction. `"unchecked"` is the seed value
- * before the mount check has answered at all, which used to be `false` for the same reason
- * `useState` needs something: it made the panel assert that the encrypted record was gone during
- * every mount, over a vault that may well hold a key.
+ * a check that could not answer, or one that answered that this browser cannot read storage at
+ * all (#234: a vault holding records whose wrapping key is gone) — which used to be collapsed
+ * into "no API key configured", reassurance in exactly the wrong direction. `"unchecked"` is the
+ * seed value before the mount check has answered at all, which used to be `false` for the same
+ * reason `useState` needs something: it made the panel assert that the encrypted record was gone
+ * during every mount, over a vault that may well hold a key.
  */
 type KeyStatus = boolean | "unknown" | "unchecked";
 
@@ -63,6 +46,12 @@ type KeyStatus = boolean | "unknown" | "unchecked";
  * is gone, but a usable credential is still in this browser. Neither a check that failed nor one
  * that has not answered yet is reported that way either — that sentence is a claim about storage
  * that answered.
+ *
+ * `"unknown"` covers both a check that could not run and one that ran and reported storage as
+ * unreadable. They share a tone because they share a remedy — nothing the user types into this
+ * panel fixes either — and amber rather than destructive red because a damaged vault is a loss
+ * of function, while red is owned by `"retained"`, a live credential exposed in clear text. That
+ * is why the exposure outranks it above.
  */
 type StatusTone = "configured" | "retained" | "unknown" | "checking" | "empty";
 
@@ -77,7 +66,7 @@ function statusToneOf(status: KeyStatus, residue: LegacyResidue): StatusTone {
 const STATUS_TEXT: Record<StatusTone, string> = {
 	configured: "API key configured",
 	retained: "Clear-text API key still in this browser",
-	unknown: "Key storage could not be checked",
+	unknown: KEY_STORAGE_UNREADABLE,
 	checking: "Checking key storage…",
 	empty: "No API key configured",
 };
@@ -97,15 +86,6 @@ const STATUS_TEXT_CLASS: Record<StatusTone, string> = {
 	checking: "text-muted-foreground",
 	empty: "text-muted-foreground",
 };
-
-/**
- * Render a keychain failure for display. Adapters throw different shapes — the browser vault
- * throws an `Error` carrying an authored, user-safe message, while the Tauri adapter rejects
- * with a string from `invoke` — so the message is preferred when there is one.
- */
-function errorText(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * Whether `error` reports a removal that succeeded but left a clear-text copy behind.
@@ -284,7 +264,7 @@ export function AiSettingsContent() {
 		let current = true;
 		async function checkStatus() {
 			try {
-				const adapter = await loadAdapter();
+				const adapter = await loadKeychainAdapter();
 				if (!current) return;
 				// Settled independently so one provider's failure does not erase the other's
 				// status. Unreadable storage rejects for both, and a vault too damaged to migrate
@@ -320,11 +300,11 @@ export function AiSettingsContent() {
 				});
 				const failure = fresh.find(([, answer]) => answer.status === "rejected")?.[1];
 				if (failure?.status === "rejected") {
-					setMessage({ type: "error", text: errorText(failure.reason) });
+					setMessage({ type: "error", text: keychainErrorText(failure.reason) });
 				}
 			} catch (err) {
 				// Only the adapter load rejects here; `allSettled` never does.
-				if (current) setMessage({ type: "error", text: errorText(err) });
+				if (current) setMessage({ type: "error", text: keychainErrorText(err) });
 			}
 		}
 		void checkStatus();
@@ -349,7 +329,7 @@ export function AiSettingsContent() {
 		setMessage(null);
 
 		try {
-			const adapter = await loadAdapter();
+			const adapter = await loadKeychainAdapter();
 			await adapter.setKey(provider, apiKey.trim());
 			// Recorded once the write has actually landed, so a save that fails does not leave
 			// the mount check discarded and the panel stuck reporting no key at all.
@@ -363,7 +343,7 @@ export function AiSettingsContent() {
 			setMessage({ type: "success", text: successText });
 			await checkApiKey(provider);
 		} catch (err) {
-			setMessage({ type: "error", text: errorText(err) });
+			setMessage({ type: "error", text: keychainErrorText(err) });
 		} finally {
 			setSaving(false);
 			// `setKey` attempts the clear-text erase and deliberately ignores the outcome, so a
@@ -389,7 +369,7 @@ export function AiSettingsContent() {
 		}
 
 		try {
-			const adapter = await loadAdapter();
+			const adapter = await loadKeychainAdapter();
 			await adapter.deleteKey(target);
 			recordRemoval();
 			const successText = isTauri() ? "API key removed." : "API key removed from this browser.";
@@ -404,7 +384,7 @@ export function AiSettingsContent() {
 				recordRemoval();
 				await syncTransport();
 			}
-			setMessage({ type: "error", text: errorText(err) });
+			setMessage({ type: "error", text: keychainErrorText(err) });
 		} finally {
 			setBusy(target, false);
 			// The state transition this issue is about. Covers the retained rejection, a clean
@@ -431,7 +411,7 @@ export function AiSettingsContent() {
 		setMessage(null);
 		let reported = false;
 		try {
-			const adapter = await loadAdapter();
+			const adapter = await loadKeychainAdapter();
 			const present = await adapter.hasKey(target);
 			// This answer is newer than any mount check still in flight, so it outranks it.
 			mutated.current.add(target);
@@ -439,7 +419,7 @@ export function AiSettingsContent() {
 			if (target === provider) await checkApiKey(provider);
 		} catch (err) {
 			setKeyStatus((prev) => ({ ...prev, [target]: "unknown" }));
-			setMessage({ type: "error", text: errorText(err) });
+			setMessage({ type: "error", text: keychainErrorText(err) });
 			reported = true;
 		} finally {
 			setBusy(target, false);

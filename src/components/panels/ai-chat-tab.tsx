@@ -1,5 +1,6 @@
 import {
 	AlertCircle,
+	AlertTriangle,
 	Bot,
 	Check,
 	ChevronDown,
@@ -17,6 +18,7 @@ import {
 	X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { KEY_STORAGE_UNREADABLE } from "@/lib/adapters/keychain-adapter";
 import {
 	extractLegacyActions,
 	extractLegacyThreats,
@@ -54,6 +56,7 @@ export function AiChatTab() {
 	const filePath = useModelStore((s) => s.filePath);
 	const activeDocumentId = useDocumentRegistry((s) => s.activeDocumentId);
 	const hasApiKey = useChatStore((s) => s.hasApiKey);
+	const keyFault = useChatStore((s) => s.keyFault);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
 	const migrateSessionKey = useChatStore((s) => s.migrateSessionKey);
@@ -118,7 +121,67 @@ export function AiChatTab() {
 				</button>
 			</div>
 
-			{!hasApiKey ? <EmptyState onConfigure={openAiSettings} /> : <ChatView />}
+			{/* The fault outranks the absence: it is the stronger and truer claim about the same
+			    storage, mirroring the documented precedence in the settings panel's
+			    `statusToneOf`. Reporting "no API key configured" over a vault nobody could read
+			    points the user at entering a key, which is the one thing that will not help. */}
+			{keyFault ? (
+				<KeyStorageFault message={keyFault} onConfigure={openAiSettings} />
+			) : !hasApiKey ? (
+				<EmptyState onConfigure={openAiSettings} />
+			) : (
+				<ChatView />
+			)}
+		</div>
+	);
+}
+
+/**
+ * What the chat surface shows when key storage could not be read at all (#234).
+ *
+ * The heading is {@link KEY_STORAGE_UNREADABLE}, the same constant the settings panel's status
+ * row renders, so a user who checks both surfaces reads one sentence rather than two accounts
+ * of one fault. Shared as a constant rather than as matching literals: this issue exists
+ * because two surfaces disagreed about one stored key, and a copy edit that reached only one
+ * of them would be the same defect in a quieter form.
+ *
+ * The remedy is the keychain's own authored message, rendered verbatim — no copy is invented
+ * here. What keeps an internal string out of it is upstream, not this component: every browser
+ * fault is remapped to an authored `KeyVaultError` by `withVault`, and the desktop adapter
+ * relays a sentence authored in Rust.
+ *
+ * The button promises exactly what it does. It opens settings; it does not promise a fix,
+ * because for an `unavailable` fault — an insecure origin with no Web Crypto — entering a key
+ * there changes nothing. Amber rather than destructive red for the reason the panel records:
+ * red belongs to a credential exposed in clear text, and this is a loss of function.
+ *
+ * `role="alert"` is assertive deliberately. This replaces the whole conversation surface after
+ * a check the user did not initiate — on a provider switch, or a re-check that newly fails
+ * while the transcript is on screen, a screen-reader user told about it late has already been
+ * typing into a panel that was never going to send. (On first mount there is no input yet, so
+ * that path is the one that earns the interruption.)
+ */
+function KeyStorageFault({ message, onConfigure }: { message: string; onConfigure: () => void }) {
+	return (
+		<div
+			role="alert"
+			data-testid="key-storage-fault"
+			className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center"
+		>
+			<AlertTriangle className="h-10 w-10 text-amber-600 dark:text-amber-400" />
+			<div>
+				<p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+					{KEY_STORAGE_UNREADABLE}
+				</p>
+				<p className="mt-1 text-[10px] text-muted-foreground/70">{message}</p>
+			</div>
+			<button
+				type="button"
+				onClick={onConfigure}
+				className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+			>
+				Open AI settings
+			</button>
 		</div>
 	);
 }

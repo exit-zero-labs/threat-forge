@@ -491,16 +491,24 @@ function installWrapKey(
  * Anything that is not already a {@link KeyVaultError} is remapped, so a raw `DOMException`
  * from `transaction()` or a Web Crypto rejection cannot reach the UI with internal detail
  * attached. Only messages authored in this module are ever surfaced.
+ *
+ * Opening is inside the `try` for that reason and not by accident. `openVault` guards the
+ * throws it anticipates, but reading `globalThis.indexedDB` is itself a getter that throws
+ * `SecurityError` in a sandboxed iframe or a storage-blocked profile — the same hazard
+ * `readLegacySlot` catches one layer up for `localStorage`. Awaited outside the `try`, that
+ * rejection would bypass the remap and render `The operation is insecure.` as the app's
+ * explanation of itself.
  */
 async function withVault<T>(operation: (db: IDBDatabase) => Promise<T>): Promise<T> {
-	const db = await openVault();
+	let db: IDBDatabase | undefined;
 	try {
+		db = await openVault();
 		return await operation(db);
 	} catch (error) {
 		if (error instanceof KeyVaultError) throw error;
 		throw unavailable();
 	} finally {
-		db.close();
+		db?.close();
 	}
 }
 
@@ -637,12 +645,42 @@ export async function getSecret(id: string): Promise<string | null> {
 	});
 }
 
-/** Report whether a secret is stored for `id` without decrypting it. */
+/**
+ * Report whether a secret is stored for `id` that this browser could still decrypt.
+ *
+ * `true` establishes two things: a record exists, and the vault holds the material needed to
+ * read one. It does **not** establish that this particular record decrypts — a truncated or
+ * tampered ciphertext under a healthy wrapping key still answers `true` here, and is only
+ * discovered by {@link getSecret}, which is the read the user asked for and the only place
+ * allowed to discard a record on that evidence. Claiming more would mean decrypting on a
+ * status path, and then deleting key material from one; see `docs/plans/234-vault-usable-status.md`.
+ *
+ * Nothing here decrypts, writes, or deletes. `readWrapKey` is an IndexedDB `get` plus a shape
+ * check on the returned handle, so a status check costs no cryptographic operation.
+ *
+ * The order is load-bearing. The count gates both later checks, so a provider with nothing
+ * stored still answers `false` on a damaged vault instead of inheriting a fault that belongs
+ * to another provider's record — "no key configured" is the truth for a provider that has
+ * nothing to be unable to read.
+ *
+ * The count and the wrap-key read are separate transactions, as {@link getSecret} also does.
+ * The only thing that split gives up is snapshot consistency against a concurrent tab minting
+ * or wiping a wrapping key between them, which can misreport a *status* and never licenses a
+ * destructive action; a re-check clears it.
+ *
+ * @throws KeyVaultError with reason `vault-corrupt` when a record is stored but the wrapping
+ * key is missing or unusable, or `unavailable` when Web Crypto is not usable here. A caller
+ * must not read either rejection as "no key is stored": the record is still there, and
+ * re-entering a key is not what fixes an insecure origin.
+ */
 export async function hasSecret(id: string): Promise<boolean> {
 	return withVault(async (db) => {
 		const store = db.transaction(STORE_SECRETS, "readonly").objectStore(STORE_SECRETS);
 		const count = await awaitRequest(store.count(id));
-		return count > 0;
+		if (count === 0) return false;
+		requireSubtle();
+		if (!(await readWrapKey(db))) throw vaultCorrupt();
+		return true;
 	});
 }
 
