@@ -90,7 +90,7 @@ export function PrivacyPage() {
 					<Section title="Contact">
 						<p>
 							For privacy concerns, contact us at{" "}
-							<a href="mailto:privacy@exitzerolabs.com" className="text-tf-signal hover:underline">
+							<a href="mailto:privacy@exitzerolabs.com" className="text-tf-signal-ink underline">
 								privacy@exitzerolabs.com
 							</a>
 							.

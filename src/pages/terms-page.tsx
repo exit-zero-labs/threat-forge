@@ -20,7 +20,7 @@ export function TermsPage() {
 								href="https://opensource.org/licenses/Apache-2.0"
 								target="_blank"
 								rel="noopener noreferrer"
-								className="text-tf-signal hover:underline"
+								className="text-tf-signal-ink underline"
 							>
 								Apache License 2.0
 							</a>

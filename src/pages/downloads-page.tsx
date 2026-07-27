@@ -34,7 +34,7 @@ export function DownloadsPage() {
 									href={release.releaseUrl}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="font-mono text-tf-signal hover:underline"
+									className="font-mono text-tf-signal-ink underline"
 								>
 									{release.version}
 								</a>
@@ -52,7 +52,7 @@ export function DownloadsPage() {
 									href={GITHUB_RELEASES_URL}
 									target="_blank"
 									rel="noopener noreferrer"
-									className="text-tf-signal hover:underline"
+									className="text-tf-signal-ink underline"
 								>
 									Download from GitHub
 								</a>
@@ -76,7 +76,7 @@ export function DownloadsPage() {
 					<div className="mt-16 text-center">
 						<p className="text-sm text-muted-foreground">
 							Or{" "}
-							<Link to="/app" className="text-tf-signal hover:underline">
+							<Link to="/app" className="text-tf-signal-ink underline">
 								try the web version
 							</Link>{" "}
 							— no download required.
@@ -153,7 +153,7 @@ function PlatformCard({
 				{icon}
 				<h3 className="font-semibold">{title}</h3>
 				{highlighted && (
-					<span className="ml-auto rounded-full bg-tf-signal/10 px-2.5 py-0.5 text-[10px] font-medium text-tf-signal">
+					<span className="ml-auto rounded-full bg-tf-signal/10 px-2.5 py-0.5 text-[10px] font-medium text-tf-signal-ink">
 						Recommended
 					</span>
 				)}

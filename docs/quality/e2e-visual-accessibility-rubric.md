@@ -11,6 +11,7 @@ not claim any of them replace human visual review.
 | Rubric item | Category | Mechanism |
 |---|---|---|
 | Contrast | Automated | `assertNoSeriousAccessibilityViolations` (axe `color-contrast` rule, once the known pre-existing exceptions — see "Known accessibility exceptions" below — are retired for a given surface) |
+| Marketing route coverage | Automated | `e2e/accessibility-marketing.spec.ts` scans all six public routes — `/`, `/downloads`, `/about`, `/privacy`, `/terms`, `/support` — at 1280×900 and 320×720, and again in dark theme. Navigation, the paint wait, and the scan are one inseparable helper, because axe reports an unpainted page as clean and so a scan that races the route's lazy chunk is a confident false pass; a dedicated test serves the pre-paint app shell and demonstrates that zero-violations result rather than asserting it (#292) |
 | Empty states | Automated | Existing `empty-states`-family specs plus `e2e/accessibility-audit.spec.ts`'s empty-canvas case |
 | Errors | Automated | `e2e/accessibility-audit.spec.ts`'s ephemeral-storage case (`seedEphemeralWorkspace`) exercises the visible "This session won't be saved" degraded/error state; malformed-file alerts are native transient dialogs and cannot be axe-scanned after dismissal |
 | Responsive behavior | Partially automated | At 900×700, `e2e/accessibility-audit.spec.ts` requires each key interactive surface to be visible and fully inside the viewport (`toBeInViewport({ ratio: 1 })`) with no body-level horizontal overflow; it does not prove the layout still *looks* good |
