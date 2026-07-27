@@ -11,5 +11,5 @@ Follow `AGENTS.md` and `CONTRIBUTING.md`; this file adds repository-operation ru
 - Preserve exact required-check names, CODEOWNERS coverage, and owner-validation boundaries.
 - Treat Project 2 fields and lifecycle values as canonical; discover live IDs instead of hard-coding
   mutable node or option IDs.
-- Keep reporter urgency distinct from maintainer-owned `Urgent`/`High`/`Medium`/`Low` priority.
+- Keep reporter urgency distinct from maintainer-owned `High`/`Medium`/`Low` priority.
 - Do not mutate GitHub state without explicit authorization and never use owner bypass.

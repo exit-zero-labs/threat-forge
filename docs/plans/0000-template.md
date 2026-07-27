@@ -10,7 +10,7 @@ State the measurable user or system outcome.
 - **Parent initiative:** `#N` or `N/A`
 - **Type:** `Task`, `Bug`, or `Feature`
 - **Effort:** `Medium` or `High`
-- **Priority:** `Urgent`, `High`, `Medium`, or `Low`
+- **Priority:** `High`, `Medium`, or `Low`
 - **Autonomy:** `AUTO` or `HITL`
 - **Dependencies:** linked issues, external prerequisites, or `None`
 - **Non-goals:** behavior explicitly excluded from this change
