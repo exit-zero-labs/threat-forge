@@ -31,11 +31,25 @@ export function TermsPage() {
 							<summary className="cursor-pointer font-medium text-foreground">
 								Open-source and third-party license notices
 							</summary>
-							<pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap text-xs">
-								{licenseRaw}
-								{"\n\n"}
-								{noticeRaw}
-							</pre>
+							{/*
+							 * A 4800px licence dump in a 384px box, and it scrolls horizontally too below
+							 * ~360px. Same treatment and same reason as the landing page's file sample
+							 * (#249): the `<section>` carries the label because `<pre>` is `generic` and
+							 * takes no accessible name, and the tab stop is what a Safari keyboard user
+							 * needs — Chromium focuses overflowing scrollers on its own and WebKit does not.
+							 */}
+							<section
+								aria-label="Open-source licence notices"
+								className="mt-4 max-h-96 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+								// biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable for keyboard access
+								tabIndex={0}
+							>
+								<pre className="whitespace-pre-wrap text-xs">
+									{licenseRaw}
+									{"\n\n"}
+									{noticeRaw}
+								</pre>
+							</section>
 						</details>
 					</Section>
 

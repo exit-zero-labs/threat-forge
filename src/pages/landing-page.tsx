@@ -175,16 +175,14 @@ function YamlShowcaseSection() {
 						<span className="font-mono text-xs text-muted-foreground">payment-service.thf</span>
 					</div>
 					{/*
-					 * Below roughly 400px this sample scrolls sideways — `white-space: pre` is the point
-					 * of showing a file, so it cannot reflow. A mouse user drags it; without a tab stop a
-					 * keyboard user simply cannot read the right-hand half (WCAG 2.1.1, #249).
+					 * Below about 440px this sample scrolls sideways — `white-space: pre` is the point of
+					 * showing a file, so it cannot reflow, and without a tab stop a keyboard user cannot
+					 * read the right-hand half of any line (WCAG 2.1.1, #249).
 					 *
 					 * The `<section>` exists to carry the label: `<pre>` maps to `generic`, which supports no
-					 * accessible name at all. Scrolling moves out to it and padding stays on the `<pre>`,
-					 * which also fixes the usual quirk where a scroller's own right padding vanishes once
-					 * you scroll to the end. `w-max` keeps the `<pre>` sized to its content rather than
-					 * shrinking to the scroller. The ring is inset because the card wrapping this is
-					 * `overflow-hidden` and would clip an outset one.
+					 * accessible name at all. `w-max` on the `<pre>` stops a block child from shrinking to
+					 * the scroller. The ring is inset because the card wrapping this is `overflow-hidden`
+					 * and would clip an outset one.
 					 *
 					 * No `onKeyDown` guard here, unlike the component palette this borrows from. That guard
 					 * exists to keep arrow keys away from the canvas shortcuts, and those mount in

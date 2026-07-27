@@ -14,6 +14,7 @@ not claim any of them replace human visual review.
 | Empty states | Automated | Existing `empty-states`-family specs plus `e2e/accessibility-audit.spec.ts`'s empty-canvas case |
 | Errors | Automated | `e2e/accessibility-audit.spec.ts`'s ephemeral-storage case (`seedEphemeralWorkspace`) exercises the visible "This session won't be saved" degraded/error state; malformed-file alerts are native transient dialogs and cannot be axe-scanned after dismissal |
 | Responsive behavior | Partially automated | At 900×700, `e2e/accessibility-audit.spec.ts` requires each key interactive surface to be visible and fully inside the viewport (`toBeInViewport({ ratio: 1 })`) with no body-level horizontal overflow; it does not prove the layout still *looks* good |
+| Keyboard operability of scroll regions | Automated | `e2e/accessibility-audit.spec.ts` covers every container measured to scroll and be otherwise unreachable: the component palette, and the `/` and `/terms` marketing scrollers at 320px. Each asserts the region takes focus by Tab, scrolls on an arrow key, and carries an explicit `tabindex` — the last because Chromium focuses overflowing scrollers on its own, so the traversal alone passes without it while WebKit skips such a container entirely |
 | Hierarchy | Owner-validated | Evidenced by retained/attached screenshots; no automated heuristic |
 | Alignment | Owner-validated | Same |
 | Overlap | Owner-validated | Same — deliberately **not** given a new geometry-diffing utility (would be speculative, unproven, and out of proportion to this issue's scope) |
