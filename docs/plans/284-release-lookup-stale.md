@@ -337,11 +337,18 @@ The honest list, with what closes each one:
    `…?fallback=last-known-good` could overwrite the 24-hour entry with an ordinary `max-age=300`
    response, quietly removing the fallback 300 seconds later. Added to owner-validation item 3.
 
-   The live `cf-cache-status: HIT` with a non-zero `age` looks like it settles this against the
-   documentation, and it does not: `cache.match` is documented to add `CF-Cache-Status: HIT` to
-   the response it returns, so the Worker's own `caches.default` hit produces that header by
-   itself. The observation is consistent with either answer. The `max-age=14400` rewrite above is
-   unaffected — that value is one this Worker never emits, and `#285` stands on it.
+   The live `cf-cache-status: HIT` with a non-zero `age` looks like it settles this, and it does
+   not settle it either way. `caches.default` is documented as "the same cache shared with
+   `fetch` requests", and the handler returns the object `cache.match` produced, so a header
+   stamped by that store would structurally reach the client. **This is reasoning, not a
+   citation:** the Cache API reference enumerates the headers `match` and `put` act on and
+   `CF-Cache-Status` is not among them, and the one Cloudflare sentence asserting the header is
+   written about `fetch` read-through. Pushing the other way, the round-1 measurement found the
+   `max-age=14400` rewrite on the `HIT` and the Worker's own `max-age=300` on a `MISS` — a
+   correlation the zone could not produce if it were never consulted. The honest position is
+   that the measurement is ambiguous and the dashboard is the only place it resolves. The
+   rewrite itself is not in doubt: `14400` is a value this Worker never emits, and `#285`
+   stands on it.
 6. **A user in a refused colo within 24h of a genuine release** sees release *N-1* with a working
    download, where today they see a link to release *N*. Deliberate, bounded, and the trade the
    owner validates.
@@ -436,9 +443,11 @@ is documentation. Do them in order — 4 cannot be verified without 1.
      `console.warn(UPSTREAM_UNAVAILABLE_LOG, { reason, ...(status ? { status } : {}) })` with
      `reason` one of `"fetch-failed" | "upstream-status" | "invalid-json" | "schema-rejected"`.
      *Correction from review:* the union shipped with two more — `"fallback-unreadable"` for a
-     stored copy that cannot be read back, and `"upstream-timeout"`, added in round 3 because a
-     timeout firing while the body streamed was otherwise reported as `"invalid-json"`, the one
-     token the runbook says to investigate immediately. See the replan log.
+     stored copy that cannot be read back, and `"upstream-timeout"`, added answering round-2
+     review because a timeout firing while the body streamed was otherwise reported as
+     `"invalid-json"`, the one token the runbook says to investigate immediately.
+     `"fallback-unreadable"` was not a review finding — it came with the original
+     implementation. See the replan log.
      Do not log `await upstream.text()`, the caught exception, or the raw payload: the module's
      guarantee (`:36-40`) is that upstream text never leaves the Worker, and a log is a place it
      could leave it.
@@ -727,15 +736,19 @@ Green CI decides none of these.
    this route's Browser Cache TTL to stop overriding the Worker's 300s, and residual risk 5 needs
    confirmation of whether the zone caches `/api/latest-release` in its own edge cache at all —
    the plan reasons it does not, and has not measured it. Do not take the live
-   `cf-cache-status: HIT` as the answer; `cache.match` sets that header itself, so it is
-   consistent with either. Cache Rules in the dashboard are the only place this is legible.
+   `cf-cache-status: HIT` as settling it in either direction — see residual risk 5 for why that
+   measurement is ambiguous rather than decisive. Cache Rules in the dashboard are the only
+   place this is legible.
 4. **Deploy, then verify live.** The Cache API documentation guarantees functional cache
    operations for custom-domain Workers and states that previews have none, so a dev or preview
    session is not evidence about production. Run the three step-5 commands after
    `npm run deploy:web`.
 5. **Watch one real refusal.** After a day or so of `wrangler tail` or Workers Logs, confirm the
    fallback is firing with `reason: "upstream-status"` and not with `reason: "schema-rejected"`.
-   The second would mean the widget is being kept alive over a broken payload contract.
+   The second would mean the widget is being kept alive over a broken payload contract. Capture
+   the **response headers** at the same time, not only the log line: a live stale serve is the
+   one chance to see whether `no-store` survives on a cacheable status, which residual risk 5
+   currently infers rather than measures.
 6. **Decide whether to file the authentication follow-up now.** The trigger to reopen option E is
    evidence that colos are being refused often enough that a `502` still reaches users — i.e. the
    fallback expiring or a cold colo — not the mere presence of `403`s in the logs.
@@ -787,13 +800,13 @@ Append changes; do not rewrite prior decisions.
 
 | Date | Answers | Change | Evidence and reason |
 |------|---------|--------|---------------------|
-| 2026-07-27 | Round 3 | Timeout classification made runtime-independent | Round-2 fix recognised the abort by `error.name === "TimeoutError"`. Security noted the test constructs that `DOMException` itself, so it proves the guard *handles* a timeout, not that workerd *produces* one — if the runtime named it otherwise the token would silently revert to `invalid-json`, the exact failure the token was added to remove. Slop built the obvious alternative (`signal.aborted` alone) and proved it fails the new test, because a mocked `fetch` never aborts a real signal. Both are right about different halves, so the signal is now hoisted and the check is `timeout.aborted || isUpstreamTimeout(error)`: `aborted` is authoritative at runtime whatever the rejection is named, `name` is the half a synthetic error can exercise. Each half proved load-bearing by deleting it alone |
+| 2026-07-27 | Round 3 | Timeout classification made runtime-independent | Round-2 fix recognised the abort by `error.name === "TimeoutError"`. Security noted the test constructs that `DOMException` itself, so it proves the guard *handles* a timeout, not that workerd *produces* one — if the runtime named it otherwise the token would silently revert to `invalid-json`, the exact failure the token was added to remove. Slop built the obvious alternative (`signal.aborted` alone) and proved it fails the new test, because a mocked `fetch` never aborts a real signal. Both are right about different halves, so the signal is now hoisted and the check is `timeout.aborted || isUpstreamTimeout(error)`: `aborted` is authoritative at runtime whatever the rejection is named, `name` is the half a synthetic error can exercise. Round 4 measured what round 3 had only inferred: deleting the `name` half alone fails a test, and deleting `aborted` alone failed nothing, because a mocked `fetch` never reaches a real signal. Closed rather than labelled — substituting an already-aborted signal and giving the rejection a name the `name` check cannot match reaches the half that carries the point, and each half now fails a test when deleted alone |
 | 2026-07-27 | Round 3 | `never a 502` removed from the timeout rationale — it was false | Reviewer and slop both caught it. On a colo holding nothing, an abort reaches `readLastKnownGood`, misses, and returns the sanitized 502 — the module's central invariant, stated correctly eleven lines above and pinned by an existing test. The sentence was new in round 2, added while correcting something else; the same paragraph also restated the one above it and quietly restored the unsourced 100-second figure that round had just removed. Whole paragraph deleted. **A correction can propagate in the wrong direction — this is the second instance this issue** |
 | 2026-07-27 | Round 3 | Cache-key origin test made bidirectional | Security: the round-2 assertion checks the constant names *a* deployed hostname, not that *every* deployed hostname shares its zone. Adding a second, unrelated zone would leave it green while requests arriving there wrote keys off their own zone — the same silent cache outage from the other side. A second case now requires every `custom_domain` pattern to be the pinned apex or a subdomain of it; proven by adding `threatforge.app` to the config |
 | 2026-07-27 | Round 3 | The fallback-key comment now states the real tradeoff | Reviewer: the docblock justified a query over a path with an argument that holds identically for a path. Both work; the query is chosen for the smaller surface, and a path is the remedy if a zone rule ever strips query strings. This is the comment at the centre of the round-2 regression, so leaving a non-reason in it was how that regression could recur |
 | 2026-07-27 | Round 3 | Runbook: token count corrected, rollback caveat added, `no-store` claim hedged | All three lanes found the off-by-one — "one of the four above" was not updated when the sixth token landed, in the fix for a documentation-accuracy finding, in the document read during an incident. Reviewer also established that `wrangler rollback` restores a *version* and these are script-level settings, so neither it nor reverting the commit restores preview URLs; and that "`no-store` is passed through unrewritten" was measured on a `502` and inferred for the stale `200`. Both now say so |
 | 2026-07-27 | Round 3 | `cf-cache-status: HIT` does not evidence a front-of-Worker cache | Reviewer: `cache.match` is documented to add `CF-Cache-Status: HIT` to what it returns, so the live `HIT` and non-zero `age` behind residual risk 5 are fully explained by the Worker's own `caches.default`. The `Cache-Control: max-age=14400` rewrite is unaffected and `#285` stands — but the one measurement that looked like evidence of an independent edge cache is not. Worth having in hand at the dashboard visit |
-| 2026-07-27 | Round 1 | Cache key normalized to a fixed origin; upstream fetch bounded at 5s; three documentation claims corrected | Preflight round 1, three independent lanes on frozen `08f935e`. **Security (MEDIUM, taken as must-fix):** `releaseCacheKey` built the key with `new URL(path, request.url)`, which retains scheme, host, and port. Measured live: `https://threatforge.dev:8443/api/latest-release` → 200, `:2053` → 200, `www.threatforge.dev` → 200, each its own cache entry with its own upstream fetch. A client cycling those namespaces multiplies our request rate against the 60/hour budget the fallback exists to survive, and fragments the fallback so it cannot carry the page either. The key is now derived from `CACHE_KEY_ORIGIN` and this route's own path constant; the request URL is not read at all, which also makes the function's existing "a caller cannot bypass the cache" docstring true rather than aspirational. **Reviewer:** the upstream `fetch` had no timeout, so a hung GitHub produced a 524 while a good fallback sat unread; `AbortSignal.timeout(5_000)` lands in the existing `catch` and therefore on the stale path. Both fixes carry tests proven to fail without them. **Slop:** the `FALLBACK_CACHE_QUERY` docblock claimed a distinct path "would be served as a 404 page" — false, `not_found_handling: "single-page-application"` returns `/index.html` at 200 and there is no 404 route; and irrelevant, since a cache key is never fetched. The handler docblock credited `no-store` for immediate recovery when the mechanism is never calling `cache.put`. Residual risks 4 and 5 and the client-visibility argument corrected |
+| 2026-07-27 | Round 1 | Cache key normalized to a fixed origin; upstream fetch bounded at 5s; three documentation claims corrected | Preflight round 1, three independent lanes on frozen `08f935e`. **Security (MEDIUM, taken as must-fix):** `releaseCacheKey` built the key with `new URL(path, request.url)`, which retains scheme, host, and port. Measured live: `https://threatforge.dev:8443/api/latest-release` → 200, `:2053` → 200, `www.threatforge.dev` → 200, each its own cache entry with its own upstream fetch. A client cycling those namespaces multiplies our request rate against the 60/hour budget the fallback exists to survive, and fragments the fallback so it cannot carry the page either. The key is now derived from `CACHE_KEY_ORIGIN` and this route's own path constant; the request URL is not read at all, which also makes the function's existing "a caller cannot bypass the cache" docstring true rather than aspirational. **Reviewer:** the upstream `fetch` had no timeout, so a hung GitHub produced a 524 (that ceiling is quoted from memory, not from a doc read) while a good fallback sat unread; `AbortSignal.timeout(5_000)` lands in the existing `catch` and therefore on the stale path. Both fixes carry tests proven to fail without them. **Slop:** the `FALLBACK_CACHE_QUERY` docblock claimed a distinct path "would be served as a 404 page" — false, `not_found_handling: "single-page-application"` returns `/index.html` at 200 and there is no 404 route; and irrelevant, since a cache key is never fetched. The handler docblock credited `no-store` for immediate recovery when the mechanism is never calling `cache.put`. Residual risks 4 and 5 and the client-visibility argument corrected |
 | 2026-07-27 | Round 2 | Collision remedy restored to a distinct path | **A regression I introduced.** Residual risk 4 and the runbook both define the hazard as a Cache Rule *that strips the query string*, and I had changed the remedy to "give the fallback a different query" — inert against exactly the configuration it names. It came from resolving round 1's finding in the wrong direction: the finding was that a *code comment's* rationale for rejecting a distinct path was false, and I kept the comment and changed the remedy instead of the reverse. Caught by slop as a must-fix |
 | 2026-07-27 | Round 2 | Timeout given its own reason token | **Two lanes independently.** A timeout firing while the body streams is caught at `await upstream.json()` and was logged `invalid-json` — the one token the runbook tells an operator to drop everything and investigate. Fixed at the source rather than footnoted in the runbook |
 | 2026-07-27 | Round 2 | `CACHE_KEY_ORIGIN` tied to `wrangler.jsonc`; preview URLs pinned off | **Two lanes independently** on the first: the constant duplicated the zone hostname with nothing tying them, and the drift fails silently toward 100% upstream traffic — the exact exhaustion this issue exists to fix, arriving with every response still looking correct. `worker/cache-key-origin.test.ts` now asserts the coupling. Security separately found `preview_urls` was never asserted by the repository, so every deploy inherited whatever the API last held, on a hostname where the Cache API is a documented no-op and this route degrades to an unthrottled proxy of `api.github.com`. Both subdomain keys are now stated |

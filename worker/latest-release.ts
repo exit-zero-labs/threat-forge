@@ -149,12 +149,18 @@ const UPSTREAM_TIMEOUT_MS = 5_000;
  * drop everything and investigate. Same behaviour either way; the point is that the
  * log says what actually happened.
  *
- * The signal itself is the authority — `aborted` is true whatever the runtime chose
- * to name the rejection, which is the half a test cannot reach, since a mocked
- * `fetch` never aborts a real signal. The `name` check is the half a test *can*
- * reach. Matching on `name` rather than `instanceof` because that is the part the
+ * Paired with `timeout.aborted` at both call sites, because workerd is not
+ * contractually bound to name an aborted fetch `TimeoutError` and this token would
+ * silently revert if it chose otherwise. Each half fails a test when deleted alone.
+ * Matching on `name` rather than `instanceof` because that is the part the
  * specification pins; `instanceof` is realm- and runtime-dependent and has no place
  * in a classification guard.
+ *
+ * `aborted` is read after the failure, not at it, so it answers "had the deadline
+ * passed" and not "did the deadline cause this". A body that was going to fail
+ * anyway, failing in the moments after the abort, is reported as a timeout. The
+ * abort errors the stream, so that window is roughly the length of one turn of the
+ * event loop, and the cost is the log token rather than the response.
  */
 function isUpstreamTimeout(error: unknown): boolean {
 	return (

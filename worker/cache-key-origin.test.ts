@@ -50,14 +50,19 @@ describe("CACHE_KEY_ORIGIN", () => {
 
 	it("is the zone every deployed hostname belongs to, not merely one of them", () => {
 		// The assertion above is one-directional: adding a second, unrelated zone would
-		// leave it passing while every request arriving there wrote a cache key off its
-		// own zone — the same silent outage, reached from the other side. If a genuinely
-		// separate zone is ever wanted, this fails and forces the real decision (a key
-		// derived per zone) instead of a cache that quietly stops working.
+		// leave it passing while requests arriving there were keyed off a hostname that no
+		// longer describes the deployment. What that then does to the cache is not
+		// established — nothing documents a zone constraint on `cache.put` — and the point
+		// is that nobody should find out in production. A pinned constant silently ceasing
+		// to describe where the Worker runs is the hazard; this fails and forces the
+		// decision instead.
 		const pinned = new URL(CACHE_KEY_ORIGIN).hostname;
+		const patterns = customDomainPatterns();
 
-		for (const pattern of customDomainPatterns()) {
-			expect(pattern === pinned || pattern.endsWith(`.${pinned}`)).toBe(true);
+		expect(patterns.length).toBeGreaterThan(0);
+
+		for (const pattern of patterns) {
+			expect(pattern === pinned || pattern.endsWith(`.${pinned}`), pattern).toBe(true);
 		}
 	});
 

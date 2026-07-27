@@ -428,6 +428,28 @@ describe("handleLatestRelease", () => {
 		}
 	});
 
+	it("trusts the signal when the runtime names the rejection something else", async () => {
+		// The half of the guard that carries the point: workerd is not contractually bound to
+		// name an aborted fetch `TimeoutError`, and if it picks another name the reason token
+		// silently reverts to the one the runbook escalates. A real signal cannot be made to
+		// abort here — a mocked `fetch` never reaches it — so the deadline is simulated by
+		// substituting an already-aborted signal, and the rejection is given a name the `name`
+		// check cannot match. What this pins is that the signal is consulted at all.
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(AbortSignal, "timeout").mockReturnValue(
+			AbortSignal.abort(new DOMException("aborted", "SomeNameWorkerdChose")),
+		);
+		vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("connection reset"));
+		const ctx = createCtx();
+
+		await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		expect(warnSpy).toHaveBeenCalledWith(expect.any(String), {
+			reason: "upstream-timeout",
+		});
+	});
+
 	it("records why a lookup failed without logging the upstream body", async () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			new Response("rate limited: token abc", { status: 403 }),

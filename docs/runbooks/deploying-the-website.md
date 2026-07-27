@@ -84,11 +84,14 @@ Wrangler serves the production build with the same SPA fallback behavior used at
   - `502` — this colo has never stored a good answer, or its copy aged out. This is the only
     case the downloads page's "Could not load releases" copy should still be reachable through.
   - `200` with `cf-cache-status: HIT`, a non-zero `age`, and `cache-control: public,
-    max-age=14400` — the zone is serving its own cached copy and has rewritten `Cache-Control`
-    to the 4-hour Browser Cache TTL. **This is the normal steady state**, measured on
-    2026-07-27, not a fault. It does mean the `max-age` a client sees is set by zone
-    configuration rather than by the Worker, so **do not read a stale-vs-fresh conclusion out of
-    the `max-age` number** unless `cf-cache-status` says the response came from the Worker.
+    max-age=14400` — `Cache-Control` has been rewritten to the 4-hour Browser Cache TTL.
+    **This is the normal steady state**, measured on 2026-07-27, not a fault. What produced the
+    `HIT` is not settled: `caches.default` is documented as the same cache `fetch` uses, so a
+    hit the Worker itself served may carry the header, and it is not established that a separate
+    zone cache sits in front of this route. Either way the `max-age` a client sees is set by
+    zone configuration rather than by the Worker, so **do not read a stale-vs-fresh conclusion
+    out of the `max-age` number**, and do not read a `HIT` as proof of where the response came
+    from.
     `no-store` is passed through unrewritten — observed on a live `502`, and inferred for the
     stale `200` on the documented rule that the override is a numeric comparison `no-store` does
     not participate in.
@@ -106,8 +109,10 @@ Wrangler serves the production build with the same SPA fallback behavior used at
     limiting this fallback exists for; the logged `status` says which.
   - `fetch-failed` — the request never completed. A network failure; not a timeout, which has
     its own token.
-  - `upstream-timeout` — our own 5-second bound fired on a hung GitHub, either before the
-    headers arrived or while the body was still streaming. Benign in isolation; sustained, it
+  - `upstream-timeout` — our own 5-second bound had passed when the request failed, either
+    before the headers arrived or while the body was still streaming. The signal is read after
+    the failure rather than at it, so a request that was failing anyway in the moments after the
+    deadline lands here too; treat a lone one as approximate. Benign in isolation; sustained, it
     means GitHub is slow rather than refusing us, which is a different conversation from
     `upstream-status`.
   - `invalid-json` — GitHub's body was not JSON.
@@ -138,10 +143,17 @@ npx wrangler rollback
 ```
 
 `rollback` restores a *version* of the script. `workers_dev` and `preview_urls` are script-level
-settings rather than versioned ones, so it does not restore them — and neither does reverting the
-commit that set them, because with the keys absent Wrangler omits them from the request and the
-API keeps its last value. Turning preview URLs back on means setting `preview_urls: true` and
-deploying.
+settings rather than versioned ones, so it does not restore either — and the two then behave
+differently, which is worth knowing before assuming a revert undid them:
+
+- `workers_dev` is recomputed on every deploy as `config.workers_dev ?? (routes.length === 0)`,
+  so with routes configured it is sent as `false` whether or not the key is present. Deleting the
+  key changes nothing; deleting the **routes** flips workers.dev back on with nobody having
+  touched the setting.
+- `preview_urls` has no default, so with the key absent Wrangler omits it from the request
+  entirely. What the API does with an omitted key is not established here — Wrangler carries a
+  branch for it changing — so a revert leaves preview URLs in an unasserted state. Set the value
+  explicitly and deploy rather than inferring it.
 
 ## Local Check Before Pushing
 
