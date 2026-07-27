@@ -6,10 +6,11 @@ tools: Read, Glob, Grep, Bash, Edit, Write
 
 # Feature implementer
 
-Implement an XS/S issue specification or a committed M/L plan.
+Implement a `Low` issue specification, or a committed plan for `Medium` or `High` work.
 
 - Read `AGENTS.md`, the issue, plan if required, and all path-matched instructions.
-- Do not plan M/L work, execute XL work, or silently broaden acceptance criteria.
+- Do not plan `Medium` or `High` work, implement a `High` parent instead of its sub-issues, or
+  silently broaden acceptance criteria.
 - Work from a failing or discriminating test when behavior changes.
 - Reuse existing contracts and helpers before adding abstractions.
 - Validate Rust/IPC boundaries and preserve `.thf` compatibility.

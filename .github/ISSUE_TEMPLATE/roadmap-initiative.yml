@@ -64,7 +64,7 @@ body:
     id: decomposition
     attributes:
       label: Proposed Decomposition
-      description: List independently verifiable sub-outcomes. Initiatives are XL parents and are not implemented directly.
+      description: List independently verifiable sub-outcomes. An initiative is a `High` parent — it is decomposed into sub-issues and those are what get implemented.
 
   - type: textarea
     id: verification

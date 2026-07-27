@@ -197,8 +197,8 @@ budget, not a free resource. A saturated machine is an outage for the owner.
 2. **Claim:** move the issue to `In progress` before doing anything else. Parallel agents rely
    on the board to avoid starting the same work twice, and a claim you have not recorded is not
    a claim. It stays there until merge.
-3. **Plan:** for M/L work, an independent planner writes the committed plan. XL work is
-   decomposed first.
+3. **Plan:** for `Medium` and `High` work, an independent planner writes the committed plan.
+   `High` work is decomposed into executable sub-issues, and those are what get implemented.
 4. **Implement:** execute settled criteria without silently rescoping. Add tests with the
    behavior.
 5. **Self-review:** run `anti-slop-review` and fix behavior-preserving findings.

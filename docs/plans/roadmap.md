@@ -1,7 +1,7 @@
 # ThreatForge Roadmap
 
 This document defines product direction, sequencing, and completion gates. Live status,
-priority, sizing, and ownership belong in the
+priority, effort, and ownership belong in the
 [Threat Forge GitHub Project](https://github.com/orgs/exit-zero-labs/projects/2).
 
 ## Product Direction

@@ -22,7 +22,7 @@ docs instead of copying mutable specifications.
 
 ## Implementation steps
 
-Each step should be independently executable and no larger than XS/S.
+Each step should be independently executable and `Low` on its own.
 
 ### 1. Step title
 

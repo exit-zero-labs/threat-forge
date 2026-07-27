@@ -7,7 +7,7 @@ Use this workflow for non-trivial ThreatForge features.
 1. Find or create the GitHub issue.
 2. Add it to the
    [Threat Forge project](https://github.com/orgs/exit-zero-labs/projects/2).
-3. Set `Status`, `Priority`, and `Size`.
+3. Set `Status`, `Priority`, and `Effort`.
 4. Link the parent initiative and any blocking issues.
 5. Write measurable acceptance criteria in the issue.
 6. Apply exactly one autonomy label:
@@ -16,11 +16,15 @@ Use this workflow for non-trivial ThreatForge features.
 
 GitHub is the only execution tracker. Do not create a second backlog in Markdown.
 
-Use the size as a capability contract:
+`Effort` is the reasoning class the work needs, not how long it takes, and it decides what you
+have to do before writing code:
 
-- XS/S: the issue body is executable.
-- M/L: run the issue planner and commit `docs/plans/<issue>-<slug>.md` before code.
-- XL: keep it as a parent initiative and decompose it into sub-issues.
+- `Low`: the issue body is executable.
+- `Medium`: run the issue planner and commit `docs/plans/<issue>-<slug>.md` before code.
+- `High`: the same plan, plus a decomposition into sub-issues that get implemented in its place.
+
+It is a floor. Cryptography, the IPC boundary, the `.thf` schema, and trust boundaries are
+`High` however small the diff looks.
 
 ## 2. Claim It and Create a Branch
 
@@ -50,12 +54,13 @@ Read the relevant knowledge docs and source before editing.
 | Rust models | `src-tauri/src/models/` |
 | Tauri config | `src-tauri/tauri.conf.json` |
 
-## 4. Plan M/L Work
+## 4. Plan Medium and High Work
 
 Use the `issue-planner` agent and `docs/plans/0000-template.md`. The planner may write only
 the plan. Implementation happens in a separate context after the plan is reviewable.
 
-Skip this step for settled XS/S issues. Never execute an XL issue directly.
+A `Low` issue skips this step; its body is the specification. A `High` issue needs the plan
+*and* the sub-issues that plan decomposes it into, and the sub-issues are what you implement.
 
 ## 5. Implement and Test
 
@@ -93,7 +98,7 @@ Fix must-fix and should-fix findings and rerun the same lanes until they converg
 ## 8. Open the Pull Request
 
 - Link it with `Closes #N`.
-- Link the M/L plan or state `N/A — XS/S`.
+- Link the plan, or state `N/A — Effort: Low`.
 - Separate verification evidence from owner validation steps.
 - Include before/after screenshots for UI changes.
 - Leave the project item where it is. It went to `In progress` back in *Claim It and Create a

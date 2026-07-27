@@ -32,7 +32,7 @@ When a new issue arrives:
 | `browser` | Browser workspace, persistence, or web-only behavior |
 | `e2e` | End-to-end, visual, or agent-driven quality coverage |
 
-After labeling, add the issue to Project 2 and set `Status`, `Priority`, and `Size`.
+After labeling, add the issue to Project 2 and set `Status`, `Priority`, and `Effort`.
 
 Apply exactly one autonomy label:
 
@@ -49,9 +49,12 @@ Final owner validation does not make an issue `HITL`.
 - Use `Backlog` for triaged work that is not executable or selected.
 - Move to `Ready` only when acceptance criteria, dependencies, ownership, and autonomy are
   settled.
-- XS/S issues carry their executable specification in the issue.
-- M/L issues require a committed plan before implementation.
-- XL issues are parents and must be decomposed.
+- A `Low` issue carries its executable specification in the issue body.
+- A `Medium` issue requires a committed plan before implementation.
+- A `High` issue requires the plan and the sub-issues it decomposes into; the sub-issues are
+  what get implemented.
+- Effort is a floor, not a ceiling. Cryptography, the IPC boundary, the `.thf` schema, and
+  trust boundaries are `High` however small the diff looks.
 - Persist a concise triage rationale for material field decisions.
 
 Use the `issue-triage` skill for one issue and `issues-clarify` for an explicit whole-board

@@ -215,7 +215,7 @@ Existing transitional exceptions are named below. This is the anti-duplication r
 
 | Fact class | Single canonical source | Owner |
 |------------|-------------------------|-------|
-| Live task status, priority, size, ownership, dependencies | GitHub Project 2 (never in docs) | Maintainers |
+| Live task status, priority, effort, ownership, dependencies | GitHub Project 2 (never in docs) | Maintainers |
 | Product direction and sequencing | `docs/plans/roadmap.md` | Maintainers |
 | Architecture contract | `docs/knowledge/architecture.md` | Maintainers |
 | `.thf` schema and format contract | `docs/knowledge/file-format.md` | Maintainers |

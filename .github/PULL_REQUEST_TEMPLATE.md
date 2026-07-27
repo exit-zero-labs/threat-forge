@@ -6,7 +6,7 @@
 
 - Closes #
 - Parent initiative:
-- Plan: <!-- docs/plans/<issue>-<slug>.md or N/A — XS/S -->
+- Plan: <!-- docs/plans/<issue>-<slug>.md or N/A — Effort: Low -->
 
 ## Acceptance Criteria
 
