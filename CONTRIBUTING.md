@@ -129,7 +129,7 @@ Examples:
    [docs/runbooks/running-agent-e2e-scenarios.md](docs/runbooks/running-agent-e2e-scenarios.md)
    (`npm run test:e2e:agent -- <scenario>`) and inspect its evidence before handoff.
 4. Run the author anti-slop pass and independent PR preflight.
-5. Link the issue with `Closes #N` and the M/L plan when required.
+5. Link the issue with `Closes #N`, and the plan when one is required.
 6. Include before/after screenshots or traces for visible UI changes.
 7. List owner validation steps separately from automated verification.
 

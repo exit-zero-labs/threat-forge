@@ -6,7 +6,7 @@ argument-hint: "[issue-number]"
 
 # Issue triage
 
-Triage one issue. Do not plan M/L work or edit production code.
+Triage one issue. Do not plan `Medium` or `High` work, and do not edit production code.
 
 1. Read `AGENTS.md`, the full issue/comments, related issues/PRs, roadmap context, and relevant
    repository evidence.
@@ -22,7 +22,9 @@ Triage one issue. Do not plan M/L work or edit production code.
    - relevant domain labels
    - `Priority`: `Urgent`/`High`/`Medium`/`Low`, answering how soon *within* the milestone.
      `Urgent` and `High` require a comment naming what specifically goes wrong if this waits.
-   - `Effort`: High/Medium/Low, with the matching `model/opus|sonnet|haiku` label
+   - `Effort`: the reasoning class the work needs, not how long it takes — `High`/`Medium`/`Low`
+     with the matching `model/opus|sonnet|haiku` label. It is a floor: cryptography, the IPC
+     boundary, the `.thf` schema, and trust boundaries are `High` however small the diff looks.
    - exactly one autonomy label: `AUTO` or `HITL`
    - parent, dependencies, and acceptance criteria
    - `Ready` only when executable; otherwise `Backlog`

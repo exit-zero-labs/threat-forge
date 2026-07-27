@@ -19,4 +19,5 @@ Produce a read-only, reproducible briefing. Do not mutate GitHub or repository f
 6. Use asymmetric depth: more detail for high-impact or ambiguous items, less for settled work.
 7. Save any long artifact outside the repository or in a gitignored session artifact directory.
 
-Never infer readiness from labels alone; confirm criteria, dependencies, size, and plan state.
+Never infer readiness from labels alone; confirm criteria, dependencies, `Effort`, and plan
+state.

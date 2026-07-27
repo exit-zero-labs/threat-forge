@@ -13,4 +13,4 @@ Follow `../implement-issue/SKILL.md` with bug-specific emphasis:
 - fix the root cause with the smallest complete change
 - avoid unrelated refactoring
 
-The same size, plan, anti-slop, verification, and authorization boundaries apply.
+The same effort, plan, anti-slop, verification, and authorization boundaries apply.
