@@ -101,4 +101,54 @@ test.describe("Chat scroll containment", () => {
 		const inputBoxAfter = await input.boundingBox();
 		expect(inputBoxAfter?.y).toBeCloseTo(inputBoxBefore?.y ?? -1, 0);
 	});
+
+	/**
+	 * #293's fix stopped one script from exploiting the panel's overflow. This pins the overflow
+	 * itself, because `scrollIntoView` was never the only caller that walks scrollable ancestors.
+	 *
+	 * The escaping node is the `sr-only` live region in `tool-call-card.tsx`: `position: absolute`
+	 * with no offsets, so it sat at its static position deep in the message flow while being laid
+	 * out against the layout's right `<aside>`, the nearest positioned ancestor — and therefore
+	 * outside this scroller's clipping. Removing `relative` from `chat-messages` restores it.
+	 *
+	 * The forced scroll at the end pins the property rather than one caller: the row cannot be
+	 * scrolled at all, which holds for `scrollIntoView`, `focus()`, and any future script alike.
+	 */
+	test("the right panel's content never exceeds its box", async ({ page }) => {
+		await routeAnthropic(page, [addElementResponse(), longTextResponse()]);
+		await openAiPanelWithModel(page);
+
+		await send(page, "add a cache");
+		await page.getByRole("button", { name: "Approve" }).click();
+		await expect(page.getByTestId("right-panel")).toContainText("Here is what changed.");
+
+		const box = await page.evaluate(() => {
+			const scroller = document.querySelector<HTMLElement>("[data-testid='chat-messages']");
+			const aside = scroller?.closest("aside");
+			const row = aside?.parentElement ?? null;
+			// The middle row is `overflow: hidden`: a script may scroll it and the user may not.
+			if (row) row.scrollTop = 9999;
+			return {
+				messageScroll: scroller ? scroller.scrollHeight : 0,
+				messageBox: scroller ? scroller.clientHeight : 0,
+				asideScroll: aside ? aside.scrollHeight : -1,
+				asideBox: aside ? aside.clientHeight : -2,
+				rowScroll: row ? row.scrollHeight : -1,
+				rowBox: row ? row.clientHeight : -2,
+				rowTopAfterForcedScroll: row ? row.scrollTop : -1,
+			};
+		});
+
+		// The turn must overflow the message list, or the containment below proves nothing.
+		expect(
+			box.messageScroll,
+			"the answer must overflow the message list for this test to discriminate",
+		).toBeGreaterThan(box.messageBox * 2);
+
+		// The message list absorbs all of it. Nothing escapes into the panel or the layout row,
+		// so there is no range for an ancestor scroll to act on.
+		expect(box.asideScroll).toBe(box.asideBox);
+		expect(box.rowScroll).toBe(box.rowBox);
+		expect(box.rowTopAfterForcedScroll).toBe(0);
+	});
 });

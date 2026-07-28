@@ -386,11 +386,13 @@ function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStr
 		);
 	}
 
+	// `relative` mirrors `TurnConversation` for parity. This list renders bubbles only, so
+	// nothing absolutely positioned escapes it today (#295).
 	return (
 		<div
 			ref={messagesRef}
 			data-testid="chat-messages"
-			className="flex flex-1 flex-col gap-2 overflow-y-auto"
+			className="relative flex flex-1 flex-col gap-2 overflow-y-auto"
 		>
 			{messages.map((msg, i) => (
 				<MessageBubble
@@ -438,11 +440,19 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 
 	const messagesRef = useScrollPinnedToBottom(turn);
 
+	// `relative` below is load-bearing (#295). This scroller renders `ToolCallBatch`, whose
+	// `sr-only` live region is `position: absolute` with no offsets: it renders at its static
+	// position — far down a long turn — while being laid out against its nearest positioned
+	// ancestor. That ancestor used to be the layout's right `<aside>`, and an absolutely
+	// positioned element whose containing block sits outside a scroller is not clipped by
+	// that scroller, so this one node escaped and stretched the aside's scroll range past
+	// anything the user could scroll back. Anchoring the containing block here clips it with
+	// the rest of the turn. `e2e/chat-scroll-containment.spec.ts` pins the property.
 	return (
 		<div
 			ref={messagesRef}
 			data-testid="chat-messages"
-			className="flex flex-1 flex-col gap-2 overflow-y-auto"
+			className="relative flex flex-1 flex-col gap-2 overflow-y-auto"
 		>
 			{bubbles.map((message, i) => (
 				<MessageBubble
