@@ -94,13 +94,14 @@ function errorResponse(status: number): Response {
 	);
 }
 
-/** Why a lookup could not produce a validated release. Fixed tokens, never free text. */
+/** Why a candidate source could not produce a validated release. Fixed tokens, never free text. */
 type UnavailableReason =
 	| "fetch-failed"
 	| "upstream-timeout"
 	| "upstream-status"
 	| "invalid-json"
 	| "schema-rejected"
+	| "freshness-unreadable"
 	| "fallback-unreadable";
 
 /**
@@ -213,6 +214,24 @@ async function fetchUpstreamRelease(): Promise<GithubRelease | null> {
 }
 
 /**
+ * Does a stored response still hold something this contract accepts?
+ *
+ * Re-parsed for the same reason `readLastKnownGood` re-parses what it reads, and with
+ * more force: this is the path nearly every request takes. Validating only the rare path
+ * left the schema running where the traffic is not.
+ *
+ * The body is read from a clone so the original stays unconsumed and the caller can
+ * return it intact.
+ */
+async function storedReleaseIsValid(stored: Response): Promise<boolean> {
+	try {
+		return parseGithubRelease(await stored.clone().json()) !== null;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Read back the last known good release, or `null` if this colo has none it can
  * still use.
  *
@@ -272,6 +291,9 @@ function releaseCacheKey(query?: string): Request {
  * entry as a miss, so a fallback stored with the freshness copy's own
  * `Cache-Control` would expire at the same instant and could never once be read.
  *
+ * Both stored copies are re-validated when they are read. A hit that no longer
+ * satisfies the contract is treated as a miss and the request goes upstream.
+ *
  * When GitHub will not answer, the fallback copy is served as a 200 marked
  * `no-store` and is never written back, so recovery is immediate. A 502 means this
  * colo has never stored a good answer, or the one it had has aged out.
@@ -289,7 +311,16 @@ export async function handleLatestRelease(
 	const fallbackKey = releaseCacheKey(FALLBACK_CACHE_QUERY);
 	const cached = await cache.match(cacheKey);
 	if (cached) {
-		return cached;
+		if (await storedReleaseIsValid(cached)) {
+			// Returned unchanged rather than re-serialized. The entry carries the
+			// `max-age` it was stored with and whatever `Age` the runtime attached, and
+			// those together are what tell the browser how much of the 300 seconds is
+			// left; rebuilding the response would emit a fresh `max-age` measured from
+			// this hit and quietly extend client-side freshness. The validated bytes and
+			// the returned bytes are the same — the check reads a clone.
+			return cached;
+		}
+		logUnavailable("freshness-unreadable");
 	}
 
 	const release = await fetchUpstreamRelease();

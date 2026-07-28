@@ -41,8 +41,8 @@ function storedMaxAgeSeconds(response: Response): number | null {
  *
  * One deliberate divergence: an entry stored without `Cache-Control` never
  * expires here, where Cloudflare would apply its 120-minute default Edge TTL for
- * a 200. No production path stores one — only the hand-seeded cache-hit fixture
- * below does — so the divergence is unreachable from the code under test.
+ * a 200. No production path stores one — only the hand-seeded cache-hit fixtures
+ * below do — so the divergence is unreachable from the code under test.
  */
 function createCache() {
 	const store = new Map<string, Response>();
@@ -253,7 +253,7 @@ describe("handleLatestRelease", () => {
 	it("serves the cached response without a second upstream fetch on a cache hit", async () => {
 		cache.store.set(
 			RELEASE_URL,
-			new Response(JSON.stringify({ tag_name: "cached" }), {
+			new Response(JSON.stringify(NARROWED_RELEASE), {
 				status: 200,
 				headers: { "X-From-Cache": "yes" },
 			}),
@@ -264,7 +264,59 @@ describe("handleLatestRelease", () => {
 		const response = await handleLatestRelease(new Request(RELEASE_URL), ctx);
 
 		expect(fetchSpy).not.toHaveBeenCalled();
+		// The stored response itself, not one rebuilt from the parsed body — which is
+		// what keeps the entry's own freshness headers intact.
 		expect(response.headers.get("X-From-Cache")).toBe("yes");
+		expect(await response.json()).toEqual(NARROWED_RELEASE);
+	});
+
+	it("goes upstream instead of serving a freshness entry that no longer validates", async () => {
+		// `caches.default` is shared, zone-scoped, evictable storage addressed by URL.
+		// The fallback path has always re-parsed what it reads; this is the path almost
+		// every request takes, and it used to hand the stored bytes straight out.
+		cache.store.set(
+			RELEASE_URL,
+			new Response(
+				JSON.stringify({
+					...NARROWED_RELEASE,
+					assets: [
+						{
+							name: "Threat.Forge_0.2.0_aarch64.dmg",
+							browser_download_url:
+								"https://github.com/someone-else/anything/releases/download/v1/evil.dmg",
+							size: 10_000_000,
+						},
+					],
+				}),
+				{ status: 200, headers: { "Cache-Control": `public, max-age=${FRESHNESS_TTL_SECONDS}` } },
+			),
+		);
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }));
+		const ctx = createCtx();
+
+		const response = await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		expect(fetchSpy).toHaveBeenCalledOnce();
+		expect(await response.json()).toEqual(NARROWED_RELEASE);
+	});
+
+	it("names a rejected freshness entry apart from a rejected fallback", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		cache.store.set(RELEASE_URL, new Response("not json at all", { status: 200 }));
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			new Response(JSON.stringify(FULL_GITHUB_RESPONSE), { status: 200 }),
+		);
+		const ctx = createCtx();
+
+		await handleLatestRelease(new Request(RELEASE_URL), ctx);
+		await ctx.settle();
+
+		// `fallback-unreadable` here would tell an operator the 24-hour copy broke while
+		// the request was in fact served normally from upstream.
+		expect(warnSpy).toHaveBeenCalledWith(expect.any(String), { reason: "freshness-unreadable" });
 	});
 
 	it("normalizes query strings to one cache key", async () => {
