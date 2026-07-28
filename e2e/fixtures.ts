@@ -33,6 +33,104 @@ export async function createModel(page: Page) {
 	await waitForCanvasReady(page);
 }
 
+/** How long the canvas geometry must hold still before this helper calls it settled. */
+const CANVAS_QUIET_MS = 100;
+
+/**
+ * Wait until the canvas has finished laying itself out, for specs that compare pixels.
+ *
+ * `toHaveScreenshot` mostly covers itself: playwright-core compares the first shot against the
+ * committed baseline, and only if that fails does it re-shoot until two consecutive shots agree
+ * ("Failed to take two consecutive stable screenshots") before comparing again. So a sleep in
+ * front of it buys nothing it does not already do. What it cannot do is tell a *settled* canvas
+ * from one that is merely *holding still*, and those come apart here: @xyflow/react renders a
+ * node it has not measured as `visibility: hasDimensions ? 'visible' : 'hidden'` and applies
+ * `fitView` only once measurement lands. A screenshot taken in between is stable, wrong, and
+ * indistinguishable from a good one to anything comparing consecutive frames.
+ *
+ * `addPaletteItem` deliberately does not cover this: it waits on node *count*, which increments
+ * at the React commit, before measurement. That is the right gate for behavioural specs, which
+ * only need the node to exist, and the wrong one for a spec that photographs it.
+ *
+ * The visibility clause is worth less than it looks, and that is worth knowing before trusting
+ * it. `nodeHasDimensions` reads `node.measured?.width ?? node.width ?? node.initialWidth`, and
+ * `canvas-store-factory.ts` sets `width`/`height` as top-level props on trust boundaries — so a
+ * boundary is `visible` on its first render, one frame before `fitView` moves it. For the
+ * trust-boundary specs the quiet-period check below is the only thing standing between the
+ * screenshot and a pre-`fitView` canvas.
+ *
+ * Hence a duration and not just a frame pair. Requiring geometry to hold for `CANVAS_QUIET_MS`
+ * is not the sleep this replaces: a sleep asserts "ready by now" and can pass early, whereas a
+ * quiet period can only ever hold the gate *longer* than the frame comparison alone. The
+ * pre-`fitView` window measured 1 frame, including under 20x and 50x browser CPU throttling, so
+ * 100ms is margin over a measured window rather than a fitted constant — and if a future xyflow
+ * defers `fitView` past it, the failure is a visibly wrong screenshot, not a silent pass.
+ *
+ * The comparison carries its previous reading on `window` rather than awaiting a
+ * `requestAnimationFrame` chain inside the predicate, because `waitForFunction` does **not**
+ * await a promise the predicate returns — measured on `@playwright/test` 1.61.1, a predicate
+ * returning `new Promise((r) => setTimeout(() => r(false), 20))` resolves the wait in 50ms
+ * instead of timing out. A predicate that returns a promise therefore always succeeds, whatever
+ * it would have resolved to. `waitForFunction` polls on `raf` by default, so successive polls
+ * already *are* successive frames; comparing across them is both synchronous and honest.
+ *
+ * Measured on an idle machine, 2026-07-27 (#255, PR #306): immediately after `addPaletteItem`
+ * returns, the viewport transform is already final and the first screenshot of `.react-flow` is
+ * byte-identical to the committed baseline (0 of 456,320 pixels differing). On an idle machine
+ * the 500ms sleeps this replaces were therefore already unnecessary; under load they were a bet
+ * on machine speed, which is the bet #255 reports losing under nine-worker load.
+ */
+export async function waitForCanvasSettled(
+	page: Page,
+	expectedNodes: number,
+	options: { timeout?: number } = {},
+) {
+	const timeout = options.timeout ?? 15000;
+	const deadline = Date.now() + timeout;
+	await expect(page.locator(".react-flow__node")).toHaveCount(expectedNodes, { timeout });
+	// Start from no prior reading. A previous call that timed out leaves its last reading behind,
+	// and this call would otherwise match it on its first poll and return after a single frame.
+	await page.evaluate(() => {
+		(window as unknown as { __tfCanvasGeometry?: unknown }).__tfCanvasGeometry = undefined;
+	});
+	await page.waitForFunction(
+		([count, quietMs]) => {
+			const carrier = window as unknown as {
+				__tfCanvasGeometry?: { geometry: string; since: number };
+			};
+			const viewport = document.querySelector<HTMLElement>(".react-flow__viewport");
+			if (viewport === null) {
+				carrier.__tfCanvasGeometry = undefined;
+				return false;
+			}
+			const nodes = Array.from(document.querySelectorAll<HTMLElement>(".react-flow__node"));
+			// The count is re-checked here, not just in the assertion above, so that a node
+			// unmounting after that assertion resolved restarts the quiet period instead of
+			// being photographed mid-removal with stable geometry.
+			const measured =
+				nodes.length === count && nodes.every((node) => node.style.visibility === "visible");
+			if (!measured) {
+				carrier.__tfCanvasGeometry = undefined;
+				return false;
+			}
+			const geometry = `${viewport.style.transform}|${nodes
+				.map((node) => {
+					const box = node.getBoundingClientRect();
+					return `${box.x},${box.y},${box.width},${box.height}`;
+				})
+				.join(";")}`;
+			const previous = carrier.__tfCanvasGeometry;
+			if (previous === undefined || previous.geometry !== geometry) {
+				carrier.__tfCanvasGeometry = { geometry, since: performance.now() };
+				return false;
+			}
+			return performance.now() - previous.since >= quietMs;
+		},
+		[expectedNodes, CANVAS_QUIET_MS] as const,
+		{ timeout: Math.max(0, deadline - Date.now()) },
+	);
+}
+
 /** Double-click a palette item to add it to the canvas and wait for the node count to increase */
 export async function addPaletteItem(page: Page, testId: string) {
 	// Defense in depth: any caller reaching here without going through createModel is still safe.

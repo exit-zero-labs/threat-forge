@@ -1,5 +1,12 @@
 import type { Page } from "@playwright/test";
-import { addPaletteItem, createModel, expect, test, waitForCanvasReady } from "./fixtures";
+import {
+	addPaletteItem,
+	createModel,
+	expect,
+	test,
+	waitForCanvasReady,
+	waitForCanvasSettled,
+} from "./fixtures";
 
 /** Add a trust boundary from the palette (doesn't use node-* testid like elements) */
 async function addTrustBoundary(page: Page) {
@@ -65,9 +72,7 @@ test.describe("Canvas Visual Regression", () => {
 
 	test("canvas with single element matches baseline", async ({ page }) => {
 		await addPaletteItem(page, "palette-item-web-server");
-
-		// Wait for ReactFlow to settle (animation frames, layout)
-		await page.waitForTimeout(500);
+		await waitForCanvasSettled(page, 1);
 
 		const canvas = page.locator(".react-flow");
 		await expect(canvas).toHaveScreenshot("canvas-single-element.png", {
@@ -79,9 +84,7 @@ test.describe("Canvas Visual Regression", () => {
 		await addPaletteItem(page, "palette-item-web-server");
 		await addPaletteItem(page, "palette-item-sql-database");
 		await addPaletteItem(page, "palette-item-generic");
-
-		// Wait for ReactFlow to settle
-		await page.waitForTimeout(500);
+		await waitForCanvasSettled(page, 3);
 
 		const canvas = page.locator(".react-flow");
 		await expect(canvas).toHaveScreenshot("canvas-multiple-elements.png", {
@@ -91,9 +94,7 @@ test.describe("Canvas Visual Regression", () => {
 
 	test("canvas with trust boundary matches baseline", async ({ page }) => {
 		await addTrustBoundary(page);
-
-		// Wait for ReactFlow to settle
-		await page.waitForTimeout(500);
+		await waitForCanvasSettled(page, 1);
 
 		const canvas = page.locator(".react-flow");
 		await expect(canvas).toHaveScreenshot("canvas-trust-boundary.png", {
@@ -105,9 +106,7 @@ test.describe("Canvas Visual Regression", () => {
 		await addTrustBoundary(page);
 		await addPaletteItem(page, "palette-item-web-server");
 		await addPaletteItem(page, "palette-item-sql-database");
-
-		// Wait for ReactFlow to settle
-		await page.waitForTimeout(500);
+		await waitForCanvasSettled(page, 3);
 
 		const canvas = page.locator(".react-flow");
 		await expect(canvas).toHaveScreenshot("canvas-elements-with-boundary.png", {
@@ -122,9 +121,10 @@ test.describe("Canvas Visual Regression", () => {
 		// Select the first node
 		const firstNode = page.locator("[data-testid^='node-']").first();
 		await firstNode.click();
-
-		// Wait for selection styling to apply
-		await page.waitForTimeout(300);
+		// ReactFlow puts the `selected` class on the node *wrapper*, not on the app's inner
+		// `node-*` element, so the state this spec photographs is observable there.
+		await expect(page.locator(".react-flow__node.selected")).toHaveCount(1);
+		await waitForCanvasSettled(page, 2);
 
 		const canvas = page.locator(".react-flow");
 		await expect(canvas).toHaveScreenshot("canvas-selected-element.png", {
