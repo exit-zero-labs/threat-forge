@@ -116,20 +116,27 @@ Wrangler serves the production build with the same SPA fallback behavior used at
     `upstream-status`.
   - `invalid-json` — GitHub's body was not JSON.
   - `schema-rejected` — valid JSON that failed `parseGithubRelease`. **Investigate this one.** It
-    means GitHub's payload contract broke, or a release shipped an asset link pointing somewhere
-    other than `github.com`, and the widget is alive only because of a stale copy that expires in
-    24 hours.
+    means GitHub's payload contract broke, or a release shipped a `html_url` or asset link
+    pointing outside this repository's release paths, and the widget is alive only because of a
+    stale copy that expires in 24 hours.
   - `fallback-unreadable` — the stale path ran and this colo's stored copy was itself unusable.
     Always follows one of the five above, and means the visitor got a `502`.
+  - `freshness-unreadable` — this colo's 5-minute copy was there but no longer satisfied the
+    schema, so it was discarded and the request went upstream as if it had missed. This one is
+    not a refusal by GitHub and does not by itself mean the visitor saw anything wrong. It should
+    not happen at all: nothing outside this Worker can write the zone's cache. A steady stream of
+    it means either a deploy tightened the schema while colos still hold entries written under
+    the old one — expected for one freshness window after such a deploy, and self-clearing — or
+    something else is writing this key space, which is worth stopping everything for.
 
-  A logged refusal does **not** by itself tell you what the visitor saw: the first five lines are
-  written identically whether the fallback then carried the page as a `200` or nothing was stored
-  and a `502` went out. `--format pretty` will not disambiguate them — it prints an *outcome*
-  (`Ok`, `Exception Thrown`, …), and a sanitized `502` is a perfectly `Ok` invocation. Use
-  `npx wrangler tail --format json` and read `event.response.status`, or open Workers Logs, which
-  `wrangler.jsonc` already enables with `persist: true`. The fallback entry is not externally
-  addressable — the handler normalizes every request onto the bare path — so logs are the only
-  view of it.
+  A logged refusal does **not** by itself tell you what the visitor saw: the five upstream tokens
+  are written identically whether the fallback then carried the page as a `200` or nothing was
+  stored and a `502` went out. `--format pretty` will not disambiguate them — it prints an
+  *outcome* (`Ok`, `Exception Thrown`, …), and a sanitized `502` is a perfectly `Ok` invocation.
+  Use `npx wrangler tail --format json` and read `event.response.status`, or open Workers Logs,
+  which `wrangler.jsonc` already enables with `persist: true`. The fallback entry is not
+  externally addressable — the handler normalizes every request onto the bare path — so logs are
+  the only view of it.
 - Run these against a real deploy, not a preview. Cloudflare guarantees functional cache
   operations for Workers on custom domains and states that dashboard-editor and Playground
   previews have none, so a local or preview session is not evidence about production.
