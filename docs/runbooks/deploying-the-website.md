@@ -76,24 +76,34 @@ Wrangler serves the production build with the same SPA fallback behavior used at
   and `curl -sI https://threatforge.dev | grep -i set-cookie`. Both must return no match.
 - Load the site in a real browser and confirm the console is clean. A CSP violation here means
   the edge is injecting a script the policy blocks — safe, but visible to every visitor.
-- Check the release lookup, which serves the downloads widget:
-  `curl -sS -D- -o /dev/null https://threatforge.dev/api/latest-release`.
-  - `200` with `cache-control: public, max-age=300` — a fresh answer the Worker just built.
+- Check the release lookup, which serves the downloads widget. Keep the status line in the
+  output — every reading below is a status **and** a header, and on this route the header alone
+  will mislead you:
+  `curl -sS -D- -o /dev/null https://threatforge.dev/api/latest-release | grep -iE '^HTTP|cache-control|cf-cache-status|^age'`.
+  - `200` with `cache-control: public, max-age=300` — a fresh answer the Worker just built, and
+    one the zone rewrite below did not touch on the way out.
   - `200` with `cache-control: no-store` — GitHub is refusing us and this colo is serving its
     last known good copy. The page is intact; the version may be up to a day behind.
   - `502` — this colo has never stored a good answer, or its copy aged out. This is the only
     case the downloads page's "Could not load releases" copy should still be reachable through.
+  - `405` with `cache-control: no-store` — **you sent `HEAD`, not `GET`, and measured nothing.**
+    `curl -I` and `curl -X HEAD` both land here, because the handler rejects every method but
+    `GET` (`#263`). Note what it returns: the same `no-store` the stale-fallback `200` above
+    carries. Drop the status line and this reads as a healthy-but-stale route, so the reflex
+    command for reading headers hands back a documented, plausible, wrong answer. It cost a
+    `wrangler tail` session during the `#286` deploy check. Re-run with `-D- -o /dev/null`.
   - `200` with `cf-cache-status: HIT`, a non-zero `age`, and `cache-control: public,
     max-age=14400` — `Cache-Control` has been rewritten to the 4-hour Browser Cache TTL.
-    **This is the normal steady state**, measured on 2026-07-27, not a fault. The `HIT` is the
-    Worker's own `caches.default`, not a cache in front of it: ten requests with ten distinct
-    query strings all returned `HIT`, and `wrangler tail` showed the Worker running for nine of
-    them (the tenth was still in flight). So every request does reach the handler. The `max-age`
-    a client sees is still set by zone configuration rather than by the Worker, so **do not read
-    a stale-vs-fresh conclusion out of the `max-age` number** — that is `#285`.
-    `no-store` is passed through unrewritten — observed on a live `502`, and inferred for the
-    stale `200` on the documented rule that the override is a numeric comparison `no-store` does
-    not participate in.
+    **This is the normal steady state**, measured on 2026-07-27 and again on 2026-07-28 against
+    Worker version `c057de1d`, not a fault. The `HIT` is the Worker's own `caches.default`, not
+    a cache in front of it: ten requests with ten distinct query strings all returned `HIT`, and
+    `wrangler tail` showed the Worker running for nine of them (the tenth was still in flight).
+    So every request does reach the handler. The `max-age` a client sees is still set by zone
+    configuration rather than by the Worker, so **do not read a stale-vs-fresh conclusion out of
+    the `max-age` number** — that is `#285`.
+    `no-store` is passed through unrewritten — observed on a live `502` and on a live `405`, and
+    inferred for the stale `200` on the documented rule that the override is a numeric
+    comparison `no-store` does not participate in.
   - Because the zone rewrites `Cache-Control` on cached hits, `curl` **cannot** detect the one
     failure this route's two-entry cache design is exposed to: a zone cache key that strips the
     query string would collapse the 5-minute freshness entry and the 24-hour fallback entry onto
