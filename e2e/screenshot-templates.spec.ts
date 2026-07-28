@@ -47,7 +47,9 @@ for (const templateId of TEMPLATES) {
 		await page.waitForSelector('[data-testid="canvas-area"]', { timeout: 10000 });
 		await page.waitForSelector(".react-flow__node", { timeout: 10000 });
 
-		// Give ReactFlow a moment to settle layout
+		// Give ReactFlow a moment to settle layout. Deliberately not `waitForCanvasSettled`: these
+		// screenshots are attached for a human to look at, nothing asserts on their pixels, and
+		// the helper needs an expected node count this loop does not know per template.
 		await page.waitForTimeout(1000);
 
 		const screenshotPath = testInfo.outputPath(`template-${templateId}.png`);
