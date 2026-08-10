@@ -51,7 +51,7 @@ jobs:
             libdbus-1-dev \
             libssl-dev
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-02-13
         with:
           toolchain: stable
           components: clippy, rustfmt
@@ -117,7 +117,7 @@ jobs:
 
       - run: npm ci
 
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-02-13
         with:
           toolchain: stable
           targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -179,7 +179,7 @@ jobs:
           }
           echo "DLIB_PATH=$dlib" >> $env:GITHUB_ENV
 
-      - uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Azure Trusted Signing (Windows)
