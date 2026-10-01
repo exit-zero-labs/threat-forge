@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createToolRegistry } from "@/lib/ai/loop/tool-runtime";
 import { LEGACY_ACTION_TOOLS } from "@/lib/ai/schemas/actions";
+import { useCanvasStore } from "@/stores/canvas-store";
 import { useModelStore } from "@/stores/model-store";
 import type { ThreatModel } from "@/types/threat-model";
 import { GRAPH_ACTION_TOOLS } from "./graph-action-tools";
@@ -83,6 +84,7 @@ const ctx = () => ({
 beforeEach(() => {
 	useModelStore.getState().clearModel();
 	useModelStore.getState().setModel(model, null);
+	useCanvasStore.getState().syncFromModel();
 });
 
 describe("the graph action registry", () => {
@@ -108,6 +110,55 @@ describe("the graph action registry", () => {
 });
 
 describe("running a tool computes without committing", () => {
+	it.each([
+		["add_element", "elements"],
+		["add_data_flow", "data_flows"],
+		["add_trust_boundary", "trust_boundaries"],
+		["add_threat", "threats"],
+	] as const)("%s returns the created entity ID for follow-up calls", async (name, section) => {
+		const prepared = createGraphToolRegistry().get(name)?.prepare(VALID_INPUT[name]);
+		expect(prepared?.ok).toBe(true);
+		if (!prepared?.ok) throw new Error("Valid tool input was rejected");
+		const outcome = await prepared.call.run(ctx());
+		if (outcome.status !== "ok" || !outcome.document) throw new Error("Creation failed");
+		const result = JSON.parse(outcome.result);
+		expect(result).toEqual({
+			action: name,
+			id: outcome.document[section][model[section].length].id,
+		});
+		expect(model[section].some((entity) => entity.id === result.id)).toBe(false);
+	});
+
+	it("connects two newly created elements using only their returned IDs", async () => {
+		const registry = createGraphToolRegistry();
+		let document = structuredClone(model);
+		const ids: string[] = [];
+		for (const name of ["Client", "Service"]) {
+			const prepared = registry.get("add_element")?.prepare({
+				action: "add_element",
+				element: { type: "process", name },
+			});
+			if (!prepared?.ok) throw new Error("Valid element input was rejected");
+			const outcome = await prepared.call.run({ ...ctx(), document });
+			if (outcome.status !== "ok" || !outcome.document) throw new Error("Creation failed");
+			ids.push(JSON.parse(outcome.result).id);
+			document = outcome.document;
+		}
+		const prepared = registry.get("add_data_flow")?.prepare({
+			action: "add_data_flow",
+			data_flow: { from: ids[0], to: ids[1], protocol: "HTTPS" },
+		});
+		if (!prepared?.ok) throw new Error("Returned IDs could not prepare a flow");
+		const outcome = await prepared.call.run({ ...ctx(), document });
+		expect(outcome.status).toBe("ok");
+		if (outcome.status !== "ok") throw new Error("Flow creation failed");
+		expect(outcome.document?.data_flows[model.data_flows.length]).toMatchObject({
+			from: ids[0],
+			to: ids[1],
+			protocol: "HTTPS",
+		});
+	});
+
 	it("leaves the model store untouched for every one of the twelve tools", async () => {
 		const before = useModelStore.getState().model;
 		for (const tool of GRAPH_ACTION_TOOLS) {

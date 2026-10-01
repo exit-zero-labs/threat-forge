@@ -19,6 +19,7 @@ import { canonicalJson } from "@/lib/ai/loop/tool-runtime";
 import { LEGACY_ACTION_TOOLS } from "@/lib/ai/schemas/actions";
 import { applyAction } from "@/lib/ai-action-executor";
 import { type AiAction, describeAction } from "@/lib/ai-actions";
+import type { ThreatModel } from "@/types/threat-model";
 
 /** The four actions that destroy information, and so are never batch-approved. */
 const DESTRUCTIVE_ACTIONS = new Set<string>([
@@ -27,6 +28,28 @@ const DESTRUCTIVE_ACTIONS = new Set<string>([
 	"delete_trust_boundary",
 	"delete_threat",
 ]);
+
+/** Result contract v1: creation returns the new entity's ID for dependent calls. */
+function actionResult(action: AiAction, next: ThreatModel): string {
+	let id: string;
+	switch (action.action) {
+		case "add_element":
+			id = next.elements[next.elements.length - 1].id;
+			break;
+		case "add_data_flow":
+			id = next.data_flows[next.data_flows.length - 1].id;
+			break;
+		case "add_trust_boundary":
+			id = next.trust_boundaries[next.trust_boundaries.length - 1].id;
+			break;
+		case "add_threat":
+			id = next.threats[next.threats.length - 1].id;
+			break;
+		default:
+			return describeAction(action);
+	}
+	return canonicalJson({ action: action.action, id });
+}
 
 /**
  * A one-line, input-free explanation of why `applyAction` returned `null`, so the
@@ -72,8 +95,7 @@ export const GRAPH_ACTION_TOOLS: readonly RegisteredTool[] = LEGACY_ACTION_TOOLS
 					run: async (ctx) => {
 						const next = applyAction(ctx.document, action);
 						if (next === null) return { status: "error", result: unresolvedMessage(action) };
-						// State what changed in one line; never echo the model's full input back.
-						return { status: "ok", result: describeAction(action), document: next };
+						return { status: "ok", result: actionResult(action, next), document: next };
 					},
 				},
 			};

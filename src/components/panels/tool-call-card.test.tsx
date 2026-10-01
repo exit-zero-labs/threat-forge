@@ -42,6 +42,30 @@ describe("ToolCallCard untrusted text rendering", () => {
 });
 
 describe("ToolCallCard statuses", () => {
+	it.each(["succeeded", "undone"] as const)(
+		"keeps creation feedback readable when %s",
+		(status) => {
+			const result = '{"action":"add_element","id":"comp-1"}';
+			render(
+				<ToolCallCard call={mk({ id: "c1", status, result })} onApprove={noop} onDeny={noop} />,
+			);
+			expect(screen.getByText("Add element: Cache (data_store)")).toBeVisible();
+			expect(screen.getByText(status === "succeeded" ? "Applied" : "Undone")).toBeVisible();
+			expect(screen.queryByText(result)).toBeNull();
+		},
+	);
+
+	it("still shows a creation failure's corrective feedback", () => {
+		render(
+			<ToolCallCard
+				call={mk({ id: "c1", status: "failed", isError: true, result: "The document changed." })}
+				onApprove={noop}
+				onDeny={noop}
+			/>,
+		);
+		expect(screen.getByText("The document changed.")).toBeVisible();
+	});
+
 	it("shows Approve and Deny for a pending call and fires the callbacks", () => {
 		const onApprove = vi.fn();
 		const onDeny = vi.fn();

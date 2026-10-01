@@ -21,7 +21,7 @@ import { expect, test } from "./fixtures";
 const nodes = (page: Page) => page.locator("[data-testid^='node-']");
 
 test.describe("AI tool loop", () => {
-	test("approving a tool call adds the element to the canvas", async ({ page }) => {
+	test("approving a tool call adds the element to the canvas", async ({ page }, testInfo) => {
 		await routeAnthropic(page, [addElementResponse(), textResponse("Done.")]);
 		await openAiPanelWithModel(page);
 		await expect(nodes(page)).toHaveCount(0);
@@ -32,10 +32,23 @@ test.describe("AI tool loop", () => {
 		const approve = page.getByRole("button", { name: "Approve" });
 		await expect(approve).toBeVisible();
 		await expect(nodes(page)).toHaveCount(0);
+		const pendingScreenshot = testInfo.outputPath("proposal-awaiting-approval.png");
+		await page.screenshot({ path: pendingScreenshot, fullPage: true });
+		await testInfo.attach("Proposal awaiting approval", {
+			path: pendingScreenshot,
+			contentType: "image/png",
+		});
 
 		await approve.click();
 		// Once approved, the element appears on the canvas.
 		await expect(nodes(page)).toHaveCount(1);
+		await expect(page.getByText("Done.", { exact: true })).toBeVisible();
+		const appliedScreenshot = testInfo.outputPath("proposal-applied.png");
+		await page.screenshot({ path: appliedScreenshot, fullPage: true });
+		await testInfo.attach("Applied proposal and tool result", {
+			path: appliedScreenshot,
+			contentType: "image/png",
+		});
 	});
 
 	test("stopping while a call is pending leaves the canvas unchanged", async ({ page }) => {
