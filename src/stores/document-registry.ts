@@ -2,9 +2,25 @@ import { create } from "zustand";
 import { createDocumentId } from "@/lib/document-id";
 import type { DocumentId, DocumentSession } from "@/types/document";
 import type { DiagramLayout, FileSettings, ThreatModel } from "@/types/threat-model";
+import { registerChatStorageOwner } from "./ai-turn-bridge";
 import { useCanvasInstanceStore } from "./canvas-instance-store";
-import { useChatStore } from "./chat-store";
+import { getChatStorageKey, useChatStore } from "./chat-store";
 import { createDocumentStores, type DocumentStores, setActiveStores } from "./document-stores";
+import { useWorkspaceStore } from "./workspace-store";
+
+const chatPathSubscriptions = new WeakMap<DocumentStores, () => void>();
+
+/** Save As must preserve chat association even while the AI panel is unmounted. */
+function trackChatPath(id: DocumentId, stores: DocumentStores): void {
+	chatPathSubscriptions.set(
+		stores,
+		stores.model.subscribe((state, previous) => {
+			if (state.filePath !== previous.filePath && useChatStore.getState().documentId === id) {
+				useChatStore.getState().bindDocument(id, state.filePath);
+			}
+		}),
+	);
+}
 
 /** Everything needed to seed a new document's bundle at creation time. */
 export interface CreateDocumentInput {
@@ -162,6 +178,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		// document's selection and dirty flag; the pending layout is consumed on first sync.
 		stores.model.getState().setModel(model, filePath);
 		stores.canvas.setState({ pendingLayout });
+		trackChatPath(id, stores);
 
 		const session: DocumentSession = {
 			id,
@@ -196,6 +213,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		// from a freshly opened one apart from keeping its persisted identity and creation time.
 		stores.model.getState().setModel(model, filePath);
 		stores.canvas.setState({ pendingLayout });
+		trackChatPath(id, stores);
 
 		const session: DocumentSession = {
 			id,
@@ -230,6 +248,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		const state = get();
 		const session = state.documents[id];
 		if (!session) return;
+		if (state.activeDocumentId === id) return;
 
 		const prevActiveId = state.activeDocumentId;
 		// A switch moves away from a live document. Since `#54` opens New/Open/Import/template in a
@@ -280,6 +299,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 
 		// Restore the incoming document's last AI session when it still exists. switchSession
 		// no-ops for an unknown id, so this fails safe when that session was deleted.
+		chat.bindDocument(id, session.stores.model.getState().filePath);
 		if (session.activeChatSessionId) {
 			chat.switchSession(session.activeChatSessionId);
 		}
@@ -287,7 +307,10 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 
 	closeDocument: (id) => {
 		const state = get();
-		if (!state.documents[id]) return;
+		const session = state.documents[id];
+		if (!session) return;
+		chatPathSubscriptions.get(session.stores)?.();
+		chatPathSubscriptions.delete(session.stores);
 
 		const remainingIds = state.openDocumentIds.filter((docId) => docId !== id);
 		const nextDocuments = { ...state.documents };
@@ -295,6 +318,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		// state to garbage collection so closed-document content is not retained behind an
 		// inactive pointer.
 		delete nextDocuments[id];
+		useChatStore.getState().forgetDocument(id);
 
 		const wasActive = state.activeDocumentId === id;
 		set({
@@ -371,3 +395,22 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 export function useDocumentStores(id: DocumentId): DocumentStores | null {
 	return useDocumentRegistry((state) => state.documents[id]?.stores ?? null);
 }
+
+registerChatStorageOwner((key, exceptDocumentId) => {
+	const { documents } = useDocumentRegistry.getState();
+	return (
+		Object.values(documents).some(
+			(document) =>
+				document.id !== exceptDocumentId &&
+				getChatStorageKey(document.stores.model.getState().filePath, document.id) === key,
+		) ||
+		useWorkspaceStore.getState().documents.some(
+			// Browser restore keeps inactive tabs as descriptors. A hydrated tab's
+			// live path wins over its manifest entry, which may lag behind Save As.
+			(entry) =>
+				entry.id !== exceptDocumentId &&
+				!documents[entry.id] &&
+				getChatStorageKey(entry.filePath, entry.id) === key,
+		)
+	);
+});

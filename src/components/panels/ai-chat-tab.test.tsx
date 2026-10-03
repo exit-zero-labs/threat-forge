@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
@@ -67,6 +67,13 @@ function makeModel(title: string): ThreatModel {
 	};
 }
 
+const textTurn =
+	(text: string) => async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+		handlers.onEvent({ type: "message_start", model: "m" });
+		handlers.onEvent({ type: "text_delta", text });
+		handlers.onEvent({ type: "message_stop", stopReason: "end_turn" });
+	};
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	localStorage.clear();
@@ -107,6 +114,66 @@ beforeEach(() => {
 });
 
 describe("AiChatTab session binding", () => {
+	it("keeps IME confirmation and Shift+Enter in the composer without submitting", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const input = screen.getByRole("textbox", { name: "Message AI assistant" });
+		fireEvent.change(input, { target: { value: "A multiline question" } });
+		fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 });
+		fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+		expect(streamConversationMock).not.toHaveBeenCalled();
+		expect(input).toHaveValue("A multiline question");
+		streamConversationMock.mockImplementation(textTurn("Answer"));
+		await act(async () => {
+			fireEvent.keyDown(input, { key: "Enter" });
+			await flush();
+		});
+		expect(streamConversationMock).toHaveBeenCalledTimes(1);
+		expect(input).toHaveValue("");
+	});
+
+	it("keeps a draft editable while waiting for approval and refuses duplicate submits", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		streamConversationMock.mockImplementation(
+			async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+				handlers.onEvent({ type: "message_start", model: "m" });
+				handlers.onEvent({
+					type: "tool_call_complete",
+					id: "c1",
+					name: "add_element",
+					input: { action: "add_element", element: { type: "process", name: "Cache" } },
+				});
+				handlers.onEvent({ type: "message_stop", stopReason: "tool_use" });
+			},
+		);
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const input = screen.getByRole("textbox", { name: "Message AI assistant" });
+		await act(async () => {
+			fireEvent.change(input, { target: { value: "Add cache" } });
+			fireEvent.keyDown(input, { key: "Enter" });
+			await flush();
+		});
+		expect(screen.getByRole("button", { name: "Stop response" })).toBeInTheDocument();
+		fireEvent.change(input, { target: { value: "Next question draft" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+		expect(input).toHaveValue("Next question draft");
+		expect(streamConversationMock).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			fireEvent.keyDown(input, { key: "Escape" });
+		});
+		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
+		expect(input).toHaveValue("Next question draft");
+	});
 	it("re-binds chat sessions on a switch between two unsaved documents", async () => {
 		const registry = useDocumentRegistry.getState();
 		const a = registry.createDocument({
@@ -121,23 +188,21 @@ describe("AiChatTab session binding", () => {
 		});
 		registry.activateDocument(a);
 
-		// Spy on the session loader while keeping its real behavior.
-		const realLoad = useChatStore.getState().loadSessionsForFile;
-		const loadSpy = vi.fn(realLoad);
-		useChatStore.setState({ loadSessionsForFile: loadSpy });
-
+		const aKey = useChatStore.getState().sessionKey;
+		const aSession = useChatStore.getState().activeSessionId;
 		await act(async () => {
 			render(<AiChatTab />);
 		});
-		const initialCalls = loadSpy.mock.calls.length;
-		expect(initialCalls).toBeGreaterThan(0);
-
-		// Both documents are unsaved (filePath === null), so only the activeDocumentId dependency
-		// can re-run the binding effect. A build that keys the effect on filePath alone fails here.
+		expect(useChatStore.getState().activeSessionId).toBe(aSession);
 		await act(async () => {
 			registry.activateDocument(b);
 		});
-		expect(loadSpy.mock.calls.length).toBeGreaterThan(initialCalls);
+		expect(useChatStore.getState().sessionKey).not.toBe(aKey);
+		expect(useChatStore.getState().activeSessionId).not.toBe(aSession);
+		await act(async () => {
+			registry.activateDocument(a);
+		});
+		expect(useChatStore.getState().activeSessionId).toBe(aSession);
 	});
 });
 
@@ -236,10 +301,11 @@ describe("AiChatTab fenced action rendering", () => {
 		].join("\n");
 
 		await act(async () => {
-			useChatStore.setState({
-				messages: [{ role: "assistant", content: [{ type: "text", text: fenced }] }],
-				isStreaming: false,
-			});
+			useSettingsStore.setState((state) => ({
+				settings: { ...state.settings, aiModelAnthropic: "unknown-text-model" },
+			}));
+			streamConversationMock.mockImplementation(textTurn(fenced));
+			await useAiTurnStore.getState().submitTurn("suggest a change", makeModel("A"));
 		});
 
 		// The fenced block is parsed through the legacy boundary and rendered as an
@@ -325,7 +391,7 @@ describe("AiChatTab tool-loop turn", () => {
 		expect(scrollCalls.length).toBeGreaterThan(0);
 		for (const { target, options } of scrollCalls) {
 			expect(target).toBe(screen.getByTestId("chat-messages"));
-			expect(options).toEqual({ top: expect.any(Number), behavior: "smooth" });
+			expect(options).toEqual({ top: expect.any(Number), behavior: "instant" });
 		}
 	});
 
@@ -359,23 +425,20 @@ describe("AiChatTab tool-loop turn", () => {
 		expect(useAiTurnStore.getState().turn?.phase).toBe("awaiting_approval");
 
 		// A document switch cancels the in-flight turn through the preserved
-		// stopGenerating contract — document-registry.ts is unchanged.
+		// stopGenerating contract, retaining the canceled transcript in its owner.
 		await act(async () => {
 			registry.activateDocument(otherId);
 			await flush();
+		});
+		expect(useAiTurnStore.getState().turn).toBeNull();
+		await act(async () => {
+			registry.activateDocument(registry.openDocumentIds[0]);
 		});
 		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
 	});
 });
 
 describe("AiChatTab conversation isolation", () => {
-	const textTurn =
-		(text: string) => async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
-			handlers.onEvent({ type: "message_start", model: "m" });
-			handlers.onEvent({ type: "text_delta", text });
-			handlers.onEvent({ type: "message_stop", stopReason: "end_turn" });
-		};
-
 	it("does not carry a settled turn or its history from one document to another", async () => {
 		keychain.hasKey = true;
 		const registry = useDocumentRegistry.getState();
@@ -401,8 +464,7 @@ describe("AiChatTab conversation isolation", () => {
 		});
 		expect(screen.getByText("Doc A analysis")).toBeInTheDocument();
 
-		// Switching documents clears the turn through the panel's activeDocumentId
-		// effect — document-registry.ts is unchanged.
+		// The registry binds the incoming document; the turn store restores only its chat.
 		await act(async () => {
 			registry.activateDocument(b);
 			await flush();
@@ -587,4 +649,109 @@ describe("AiChatTab key storage faults", () => {
 		expect(screen.getByRole("button", { name: "Configure API Key" })).toBeInTheDocument();
 		expect(screen.queryByTestId("key-storage-fault")).toBeNull();
 	});
+});
+
+describe("chat picker accessibility", () => {
+	it("keeps keyboard focus through delete confirmation, cancellation, and deletion", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry.getState().createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Choose chat" }));
+		const deleteButton = screen.getByRole("button", { name: "Delete chat: New Chat" });
+		deleteButton.focus();
+		fireEvent.click(deleteButton);
+		expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+		fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+		expect(screen.queryByRole("button", { name: "Delete chat" })).not.toBeInTheDocument();
+		expect(screen.getByRole("textbox", { name: "Search chats" })).toHaveFocus();
+		fireEvent.click(screen.getByRole("button", { name: "Delete chat: New Chat" }));
+		fireEvent.click(screen.getByRole("button", { name: "Delete chat" }));
+		expect(screen.getByRole("textbox", { name: "Search chats" })).toHaveFocus();
+		expect(screen.getByRole("button", { name: "Open chat: New Chat" })).toBeInTheDocument();
+	});
+
+	it("opens a single chat, supports Escape dismissal, and returns focus", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const trigger = screen.getByRole("button", { name: "Choose chat" });
+		fireEvent.click(trigger);
+		expect(screen.getByRole("dialog", { name: "Chats" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Open chat: New Chat" })).toBeInTheDocument();
+		expect(screen.getByRole("textbox", { name: "Search chats" })).toHaveFocus();
+		fireEvent.keyDown(screen.getByRole("textbox", { name: "Search chats" }), { key: "Escape" });
+		expect(screen.queryByRole("dialog", { name: "Chats" })).not.toBeInTheDocument();
+		expect(trigger).toHaveFocus();
+	});
+});
+
+describe("historical tool outcomes", () => {
+	it.each(["Applied", "Declined", "Not run", "Failed", "Undone"])(
+		"preserves %s after a follow-up and panel remount",
+		async (outcome) => {
+			keychain.hasKey = true;
+			const registry = useDocumentRegistry.getState();
+			registry.createDocument({
+				model: makeModel("A"),
+				filePath: "/history.thf",
+				pendingLayout: null,
+			});
+			streamConversationMock
+				.mockImplementationOnce(
+					async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+						handlers.onEvent({ type: "message_start", model: "m" });
+						handlers.onEvent({
+							type: "tool_call_complete",
+							id: "historic",
+							name: outcome === "Failed" ? "unknown_tool" : "add_element",
+							input: { action: "add_element", element: { type: "process", name: "Cache" } },
+						});
+						handlers.onEvent({ type: "message_stop", stopReason: "tool_use" });
+					},
+				)
+				.mockImplementation(textTurn("Review complete"));
+			let view: ReturnType<typeof render>;
+			await act(async () => {
+				view = render(<AiChatTab />);
+			});
+			await act(async () => {
+				await useAiTurnStore.getState().submitTurn("Add Cache", makeModel("A"));
+			});
+			await act(async () => {
+				if (outcome === "Applied" || outcome === "Undone")
+					useAiTurnStore.getState().approveCall("historic");
+				if (outcome === "Declined") useAiTurnStore.getState().denyCall("historic");
+				if (outcome === "Not run") useAiTurnStore.getState().cancelActiveTurn();
+				await flush();
+				if (outcome === "Undone") useAiTurnStore.getState().undoTurn();
+			});
+			const summary = useAiTurnStore.getState().turn?.calls[0].summary;
+			expect(summary).toBeTruthy();
+			await act(async () => {
+				await useAiTurnStore.getState().submitTurn("Continue reviewing", makeModel("A"));
+			});
+			const card = screen.getByTestId("tool-call-historic");
+			expect(card).toHaveTextContent(outcome);
+			expect(card).toHaveTextContent(summary ?? "missing summary");
+			expect(within(card).queryByRole("button", { name: /^Approve$/ })).not.toBeInTheDocument();
+			await act(async () => {
+				view.unmount();
+				render(<AiChatTab />);
+			});
+			expect(screen.getByTestId("tool-call-historic")).toHaveTextContent(outcome);
+			const stored = localStorage.getItem("threatforge-chat-sessions:/history.thf");
+			expect(stored).not.toContain("prepared");
+			expect(stored).not.toContain("inputDigest");
+		},
+	);
 });

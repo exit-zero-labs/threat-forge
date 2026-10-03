@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationRequest, StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import type { StreamEvent } from "@/lib/ai/protocol/events";
 import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
+import { useDocumentRegistry } from "@/stores/document-registry";
+import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -71,11 +73,20 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
 	vi.clearAllMocks();
 	useAiTurnStore.getState().resetTurn();
+	useDocumentRegistry.setState({ documents: {}, openDocumentIds: [], activeDocumentId: null });
+	setActiveStores(createDocumentStores());
 	useModelStore.getState().clearModel();
 	useHistoryStore.getState().clear();
 	useModelStore.getState().setModel(structuredClone(model), null);
 	useHistoryStore.getState().clear();
-	useChatStore.setState({ provider: "anthropic" });
+	useChatStore.setState({
+		provider: "anthropic",
+		documentId: null,
+		activeSessionId: null,
+		sessionKey: null,
+		sessions: [],
+		messages: [],
+	});
 	useSettingsStore.setState((state) => ({
 		settings: { ...state.settings, aiModelAnthropic: DEFAULT_ANTHROPIC_MODEL },
 	}));
@@ -308,4 +319,210 @@ describe("undoAvailability", () => {
 	it("is already_undone before any turn has run", () => {
 		expect(useAiTurnStore.getState().undoAvailability()).toBe("already_undone");
 	});
+});
+
+describe("native session ownership", () => {
+	const reply = (text: string): StreamEvent[] => [
+		{ type: "message_start", model: "m" },
+		{ type: "text_delta", text },
+		{ type: "message_stop", stopReason: "end_turn" },
+	];
+	it("never lets a restored chat undo another chat's equal-baseline history entry", async () => {
+		useChatStore.getState().loadSessionsForFile("/models/undo.thf");
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		const add = (name: string): StreamEvent[] => [
+			{ type: "message_start", model: "m" },
+			{
+				type: "tool_call_complete",
+				id: name,
+				name: "add_element",
+				input: { action: "add_element", element: { type: "process", name } },
+			},
+			{ type: "message_stop", stopReason: "tool_use" },
+		];
+		script(add("Cache"), reply("Cache added"), add("Database"), reply("Database added"));
+		await useAiTurnStore.getState().submitTurn("Add cache", model);
+		useAiTurnStore.getState().approveCall("Cache");
+		await flush();
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("undoable");
+		useChatStore.getState().newSession();
+		const current = useModelStore.getState().model;
+		if (!current) throw new Error("A model must exist");
+		const restored = useHistoryStore.getState().undo(current);
+		if (!restored) throw new Error("The keyboard Undo path must return a snapshot");
+		useModelStore.getState().restoreSnapshot(restored);
+		await useAiTurnStore.getState().submitTurn("Add database", restored);
+		useAiTurnStore.getState().approveCall("Database");
+		await flush();
+		const secondChatModel = useModelStore.getState().model;
+		useChatStore.getState().switchSession(first);
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("superseded");
+		useAiTurnStore.getState().undoTurn();
+		expect(useModelStore.getState().model).toBe(secondChatModel);
+		expect(secondChatModel?.elements.map((element) => element.name)).toContain("Database");
+	});
+
+	it("restores native messages and tool pairing as context only for their selected session", async () => {
+		localStorage.clear();
+		useChatStore.getState().loadSessionsForFile("/models/a.thf");
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		script(
+			[
+				{ type: "message_start", model: "m" },
+				{
+					type: "tool_call_complete",
+					id: "c1",
+					name: "add_element",
+					input: { action: "add_element", element: { type: "process", name: "Cache" } },
+				},
+				{ type: "message_stop", stopReason: "tool_use" },
+			],
+			reply("Cache added"),
+			reply("Separate database review"),
+			reply("Continuing cache review"),
+		);
+		await useAiTurnStore.getState().submitTurn("Review the cache", model);
+		useAiTurnStore.getState().approveCall("c1");
+		await flush();
+		expect(useChatStore.getState().sessions[0].title).toBe("Review the cache");
+		expect(
+			useChatStore.getState().messages.some((m) => m.content.some((b) => b.type === "tool_result")),
+		).toBe(true);
+		useChatStore.getState().newSession();
+		expect(useAiTurnStore.getState().turn).toBeNull();
+		await useAiTurnStore.getState().submitTurn("Review database", model);
+		useChatStore.getState().switchSession(first);
+		expect(useAiTurnStore.getState().turn?.messages).toEqual(useChatStore.getState().messages);
+		await useAiTurnStore.getState().submitTurn("Continue", model);
+		const request: ConversationRequest = streamConversationMock.mock.calls[3][0];
+		expect(JSON.stringify(request.messages)).toContain("Cache added");
+		expect(JSON.stringify(request.messages)).not.toContain("Separate database review");
+		const blocks = request.messages.flatMap((m) => m.content);
+		expect(blocks.filter((b) => b.type === "tool_call")).toHaveLength(1);
+		expect(blocks.filter((b) => b.type === "tool_result")).toHaveLength(1);
+	});
+
+	it("switching a pending approval settles it without allowing a mutation in the new chat", async () => {
+		localStorage.clear();
+		useChatStore.getState().loadSessionsForFile("/models/b.thf");
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		script([
+			{ type: "message_start", model: "m" },
+			{
+				type: "tool_call_complete",
+				id: "c1",
+				name: "add_element",
+				input: { action: "add_element", element: { type: "process", name: "Cache" } },
+			},
+			{ type: "message_stop", stopReason: "tool_use" },
+		]);
+		await useAiTurnStore.getState().submitTurn("Add cache", model);
+		useChatStore.getState().newSession();
+		useAiTurnStore.getState().approveCall("c1");
+		await flush();
+		expect(useModelStore.getState().model?.elements).toHaveLength(1);
+		useChatStore.getState().switchSession(first);
+		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
+		expect(useAiTurnStore.getState().turn?.calls[0].status).toBe("denied");
+	});
+
+	it("ignores delayed outgoing stream events after a session switch and new response", async () => {
+		localStorage.clear();
+		useChatStore.getState().loadSessionsForFile("/models/late.thf");
+		let oldHandlers: StreamConversationHandlers | undefined;
+		let finishOld: (() => void) | undefined;
+		streamConversationMock
+			.mockImplementationOnce(async (_r, _t, handlers: StreamConversationHandlers) => {
+				oldHandlers = handlers;
+				handlers.onEvent({ type: "message_start", model: "m" });
+				handlers.onEvent({ type: "text_delta", text: "Retained partial answer" });
+				await new Promise<void>((resolve) => {
+					finishOld = resolve;
+				});
+			})
+			.mockImplementationOnce(async (_r, _t, handlers: StreamConversationHandlers) => {
+				for (const event of reply("New session answer")) handlers.onEvent(event);
+			});
+		const pending = useAiTurnStore.getState().submitTurn("Old question", model);
+		await flush();
+		const oldId = useChatStore.getState().activeSessionId;
+		useChatStore.getState().newSession();
+		await useAiTurnStore.getState().submitTurn("New question", model);
+		oldHandlers?.onEvent({ type: "text_delta", text: "LATE OUTGOING TEXT" });
+		finishOld?.();
+		await pending;
+		expect(JSON.stringify(useChatStore.getState().messages)).toContain("New session answer");
+		expect(JSON.stringify(useChatStore.getState().messages)).not.toContain("LATE OUTGOING TEXT");
+		if (!oldId) throw new Error("A chat must exist");
+		useChatStore.getState().switchSession(oldId);
+		expect(JSON.stringify(useChatStore.getState().messages)).toContain("Retained partial answer");
+		expect(JSON.stringify(useChatStore.getState().messages)).not.toContain("LATE OUTGOING TEXT");
+	});
+});
+
+it("retains separate tool status and Undo for tabs sharing a persisted session id", async () => {
+	localStorage.clear();
+	const registry = useDocumentRegistry.getState();
+	const a = registry.createDocument({
+		model: structuredClone(model),
+		filePath: "/shared.thf",
+		pendingLayout: null,
+	});
+	const session = useChatStore.getState().activeSessionId;
+	if (!session) throw new Error("A chat must exist");
+	useChatStore
+		.getState()
+		.recordTurn(
+			session,
+			[{ role: "user", content: [{ type: "text", text: "Shared introduction" }] }],
+			true,
+		);
+	const b = registry.createDocument({
+		model: structuredClone(model),
+		filePath: "/shared.thf",
+		pendingLayout: null,
+	});
+	expect(useChatStore.getState().activeSessionId).toBe(session);
+	registry.activateDocument(a);
+	script(
+		[
+			{ type: "message_start", model: "m" },
+			{
+				type: "tool_call_complete",
+				id: "cache",
+				name: "add_element",
+				input: { action: "add_element", element: { type: "process", name: "Cache" } },
+			},
+			{ type: "message_stop", stopReason: "tool_use" },
+		],
+		[
+			{ type: "message_start", model: "m" },
+			{ type: "text_delta", text: "Added Cache" },
+			{ type: "message_stop", stopReason: "end_turn" },
+		],
+		[
+			{ type: "message_start", model: "m" },
+			{ type: "text_delta", text: "B's independent answer" },
+			{ type: "message_stop", stopReason: "end_turn" },
+		],
+	);
+	await useAiTurnStore.getState().submitTurn("Add Cache", model);
+	useAiTurnStore.getState().approveCall("cache");
+	await flush();
+	const aTurn = useAiTurnStore.getState().turn;
+	expect(aTurn?.calls[0].status).toBe("succeeded");
+	registry.activateDocument(b);
+	await useAiTurnStore.getState().submitTurn("Review B", model);
+	registry.activateDocument(a);
+	expect(useAiTurnStore.getState().turn).toBe(aTurn);
+	expect(useAiTurnStore.getState().undoAvailability()).toBe("undoable");
+	registry.closeDocument(b);
+	expect(useAiTurnStore.getState().turn).toBe(aTurn);
+	useAiTurnStore.getState().undoTurn();
+	expect(useModelStore.getState().model?.elements.some((element) => element.name === "Cache")).toBe(
+		false,
+	);
 });

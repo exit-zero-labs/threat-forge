@@ -9,6 +9,7 @@ import {
 	WorkspaceStorageError,
 } from "@/lib/persistence/types";
 import { serializeThreatModelYaml } from "@/lib/thf-yaml";
+import { useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
 import { createDocumentStores, setActiveStores } from "@/stores/document-stores";
 import { useModelStore } from "@/stores/model-store";
@@ -119,6 +120,53 @@ async function restore(until: () => void): Promise<void> {
 }
 
 describe("boot restore", () => {
+	it.each([false, true])(
+		"Save As respects lazy sibling ownership and hydrated paths (sibling hydrated: %s)",
+		async (hydrated) => {
+			const a = await seedPersistedDocument("A", 0);
+			const b = await seedPersistedDocument("B", 1);
+			for (const entry of useWorkspaceStore.getState().documents) {
+				useWorkspaceStore.getState().upsertManifestEntry({ ...entry, filePath: "/shared.thf" });
+			}
+			useWorkspaceStore.getState().setActiveDocumentId(a);
+			useChatStore.getState().loadSessionsForFile("/shared.thf", a);
+			const session = useChatStore.getState().activeSessionId;
+			if (!session) throw new Error("A chat must exist");
+			useChatStore
+				.getState()
+				.recordTurn(
+					session,
+					[{ role: "user", content: [{ type: "text", text: "Shared saved history" }] }],
+					true,
+				);
+			useChatStore.getState().forgetDocument(a);
+			await restore(() => expect(useDocumentRegistry.getState().activeDocumentId).toBe(a));
+			expect(useDocumentRegistry.getState().documents[b]).toBeUndefined();
+			if (hydrated) {
+				await hydrateDocumentById(b, { activate: true });
+				useModelStore.setState({ filePath: "/b-new.thf" });
+				useDocumentRegistry.getState().activateDocument(a);
+				// The manifest still says /shared.thf; B's live path takes precedence.
+				expect(
+					useWorkspaceStore.getState().documents.find((entry) => entry.id === b)?.filePath,
+				).toBe("/shared.thf");
+			}
+			useModelStore.setState({ filePath: "/a-copy.thf" });
+			if (hydrated) {
+				expect(localStorage.getItem("threatforge-chat-sessions:/shared.thf")).toBeNull();
+			} else {
+				expect(localStorage.getItem("threatforge-chat-sessions:/shared.thf")).toContain(
+					"Shared saved history",
+				);
+				await hydrateDocumentById(b, { activate: true });
+				expect(JSON.stringify(useChatStore.getState().messages)).toContain("Shared saved history");
+			}
+			expect(localStorage.getItem("threatforge-chat-sessions:/a-copy.thf")).toContain(
+				"Shared saved history",
+			);
+		},
+	);
+
 	it("hydrates the persisted active document with its content and layout", async () => {
 		const id = await seedPersistedDocument("Payment flows", 0);
 		useWorkspaceStore.getState().setActiveDocumentId(id);

@@ -397,3 +397,53 @@ describe("chat store key storage faults", () => {
 		expect(useKeyResidueStore.getState().residue.anthropic).toBe("retained");
 	});
 });
+
+describe("document-owned chats", () => {
+	it("migrates Save As within one document without migrating another saved document's history", () => {
+		const chat = useChatStore.getState();
+		chat.bindDocument("doc-save-a", "/a.thf");
+		chat.recordTurn(
+			useChatStore.getState().activeSessionId ?? "",
+			[{ role: "user", content: [{ type: "text", text: "A question" }] }],
+			true,
+		);
+		const aKey = useChatStore.getState().sessionKey;
+		chat.bindDocument("doc-save-b", "/b.thf");
+		expect(useChatStore.getState().messages).toHaveLength(0);
+		expect(localStorage.getItem(aKey ?? "")).toContain("A question");
+		chat.bindDocument("doc-save-a", "/a.thf");
+		expect(flattenText(useChatStore.getState().messages[0])).toBe("A question");
+		chat.bindDocument("doc-save-a", "/renamed.thf");
+		expect(localStorage.getItem("threatforge-chat-sessions:/renamed.thf")).toContain("A question");
+		expect(localStorage.getItem(aKey ?? "")).toBeNull();
+		chat.forgetDocument("doc-save-a");
+		chat.forgetDocument("doc-save-b");
+	});
+
+	it("keeps drafts in runtime memory while explicitly persisting text-only history", () => {
+		const chat = useChatStore.getState();
+		chat.bindDocument("doc-draft-a", null);
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		chat.setDraft("A local draft");
+		chat.recordTurn(
+			first,
+			[{ role: "user", content: [{ type: "text", text: "Submitted question" }] }],
+			true,
+		);
+		chat.newSession();
+		chat.setDraft("A different draft");
+		chat.switchSession(first);
+		expect(useChatStore.getState().sessions.find((s) => s.id === first)?.draft).toBe(
+			"A local draft",
+		);
+		const persisted = JSON.parse(
+			localStorage.getItem(useChatStore.getState().sessionKey ?? "") ?? "[]",
+		);
+		expect(JSON.stringify(persisted)).not.toContain("local draft");
+		expect(persisted.find((s: { id: string }) => s.id === first).messages).toEqual([
+			{ role: "user", content: "Submitted question" },
+		]);
+		chat.forgetDocument("doc-draft-a");
+	});
+});

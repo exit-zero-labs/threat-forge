@@ -55,6 +55,7 @@ the command actually runs without both being caught by
 
 | Scenario | Outcome prompt (what to try) | Spec file(s) |
 |---|---|---|
+| `ai-chat-experience` | Exercise a hundred native exchanges, switch and restore follow-up context, and inspect long markdown visible stop controls, drafts, reading position, errors, and light/dark narrow panels using fake keys and canned SSE. | `e2e/ai-chat-experience.spec.ts`, `e2e/ai-chat-interactions.spec.ts`, `e2e/chat-scroll-containment.spec.ts` |
 | `document-creation` | Create a new, empty document from the empty-state button, and again from the toolbar button; confirm the canvas, palette, and right panel are all usable afterward. | `e2e/new-model.spec.ts` |
 | `multi-tab-restore` | Open several documents, edit one, reload the page, and confirm every tab returns in its persisted order with the correct tab active and content intact — not reset. | `e2e/browser-restore.spec.ts` |
 | `import-export` | Open a large committed `.thf` file and a deliberately malformed one through the real Open-file dialog, then create a document, add and connect elements, rename one, confirm `.thf` and HTML downloads are emitted, and reload to confirm browser workspace autosave restores the model. This does not reopen the downloaded `.thf`. | `e2e/workspace-fixtures.spec.ts` (`seedLargeWorkspace`, `seedMalformedWorkspace`, and the combined interaction-helpers test only) |

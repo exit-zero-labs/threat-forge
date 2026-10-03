@@ -22,7 +22,7 @@ import {
 	MAX_SESSIONS_PER_FILE,
 } from "@/types/chat-session";
 import type { ThreatModel } from "@/types/threat-model";
-import { cancelActiveTurn } from "./ai-turn-bridge";
+import { cancelActiveTurn, disposeDocumentTurns, hasOtherChatStorageOwner } from "./ai-turn-bridge";
 
 // `AiProvider` now belongs to the protocol module; re-exported so the eight
 // existing importers keep their import path while the AI stack is rebuilt.
@@ -55,10 +55,10 @@ let currentAbortController: AbortController | null = null;
  * The string-content shape sessions are persisted in.
  *
  * Block content is flattened to a string on save and read back through
- * `upgradeLegacyMessage` on load, so the on-disk format is byte-identical to the
+ * `upgradeLegacyMessage` on load, so the persisted shape remains compatible with the
  * pre-protocol one and older sessions keep opening. Tool-call blocks do not
- * survive this round trip, which is harmless while the tool list is empty; `#63`
- * replaces `localStorage` with a store that preserves them.
+ * survive this round trip. Reload restores readable text while runtime sessions
+ * retain protocol blocks; `#63` replaces `localStorage` with a store that preserves them.
  */
 interface PersistedChatMessage {
 	role: ProtocolRole;
@@ -83,8 +83,8 @@ function generateSessionTitle(firstMessage: string): string {
 	return `${trimmed.slice(0, 57)}...`;
 }
 
-function getStorageKey(filePath: string | null): string {
-	if (!filePath) return "threatforge-chat-sessions:unsaved";
+export function getChatStorageKey(filePath: string | null, documentId?: string | null): string {
+	if (!filePath) return `threatforge-chat-sessions:unsaved${documentId ? `:${documentId}` : ""}`;
 	return `threatforge-chat-sessions:${filePath}`;
 }
 
@@ -113,11 +113,16 @@ function saveSessionsToStorage(key: string, sessions: ChatSession[]): void {
 		// Flatten block content to the persisted string shape so the on-disk format
 		// is unchanged and stays readable by older builds and by `#63`.
 		const persisted: PersistedChatSession[] = sessions.map((session) => ({
-			...session,
-			messages: session.messages.map((message) => ({
-				role: message.role,
-				content: flattenText(message),
-			})),
+			id: session.id,
+			title: session.title,
+			createdAt: session.createdAt,
+			updatedAt: session.updatedAt,
+			messages: session.messages
+				.map((message) => ({
+					role: message.role,
+					content: flattenText(message),
+				}))
+				.filter((message) => message.content.length > 0),
 		}));
 		localStorage.setItem(key, JSON.stringify(persisted));
 	} catch {
@@ -175,7 +180,16 @@ function isEmptyAssistantTurn(message: ChatMessage): boolean {
 	);
 }
 
+interface DocumentChats {
+	sessions: ChatSession[];
+	activeSessionId: string | null;
+	sessionKey: string | null;
+}
+
+const documentChats = new Map<string, DocumentChats>();
+
 interface ChatState {
+	documentId: string | null;
 	/** All sessions for the current file */
 	sessions: ChatSession[];
 	/** Active session ID */
@@ -205,7 +219,12 @@ interface ChatState {
 	error: string | null;
 
 	// Session actions
-	loadSessionsForFile: (filePath: string | null) => void;
+	loadSessionsForFile: (filePath: string | null, documentId?: string | null) => void;
+	bindDocument: (documentId: string, filePath: string | null) => void;
+	forgetDocument: (documentId: string) => void;
+	renameSession: (id: string, title: string) => void;
+	setDraft: (text: string) => void;
+	recordTurn: (sessionId: string, messages: readonly ProtocolMessage[], settled: boolean) => void;
 	newSession: () => void;
 	switchSession: (id: string) => void;
 	deleteSession: (id: string) => void;
@@ -220,6 +239,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
+	documentId: null,
 	sessions: [],
 	activeSessionId: null,
 	sessionKey: null,
@@ -230,8 +250,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	keyFault: null,
 	error: null,
 
-	loadSessionsForFile: (filePath) => {
-		const key = getStorageKey(filePath);
+	bindDocument: (documentId, filePath) => {
+		const current = get();
+		const key = getChatStorageKey(filePath, documentId);
+		if (current.documentId === documentId) {
+			if (current.sessionKey !== key && filePath) current.migrateSessionKey(filePath);
+			return;
+		}
+		current.stopGenerating();
+		if (current.documentId) {
+			documentChats.set(current.documentId, {
+				sessions: get().sessions,
+				activeSessionId: get().activeSessionId,
+				sessionKey: get().sessionKey,
+			});
+		}
+		const cached = documentChats.get(documentId);
+		if (cached) {
+			documentChats.delete(documentId);
+			set({
+				...cached,
+				documentId,
+				messages: cached.sessions.find((s) => s.id === cached.activeSessionId)?.messages ?? [],
+				error: null,
+			});
+			if (cached.sessionKey !== key && filePath) get().migrateSessionKey(filePath);
+		} else {
+			get().loadSessionsForFile(filePath, documentId);
+		}
+	},
+
+	forgetDocument: (documentId) => {
+		if (get().documentId === documentId) {
+			get().stopGenerating();
+			set({
+				documentId: null,
+				sessions: [],
+				activeSessionId: null,
+				sessionKey: null,
+				messages: [],
+				error: null,
+			});
+		}
+		documentChats.delete(documentId);
+		disposeDocumentTurns(documentId);
+	},
+
+	loadSessionsForFile: (filePath, documentId = null) => {
+		get().stopGenerating();
+		const key = getChatStorageKey(filePath, documentId);
 		const sessions = loadSessionsFromStorage(key);
 
 		if (sessions.length > 0) {
@@ -241,6 +308,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			);
 			const active = sorted[0];
 			set({
+				documentId,
 				sessions,
 				activeSessionId: active.id,
 				sessionKey: key,
@@ -259,6 +327,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			const newSessions = [newSession];
 			saveSessionsToStorage(key, newSessions);
 			set({
+				documentId,
 				sessions: newSessions,
 				activeSessionId: newSession.id,
 				sessionKey: key,
@@ -269,8 +338,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	newSession: () => {
+		get().stopGenerating();
 		const { sessions, sessionKey } = get();
 		if (!sessionKey) return;
+		const empty = sessions.find((s) => s.messages.length === 0 && !s.draft);
+		if (empty) {
+			get().switchSession(empty.id);
+			return;
+		}
 
 		const newSession: ChatSession = {
 			id: generateSessionId(),
@@ -280,7 +355,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			updatedAt: new Date().toISOString(),
 		};
 
-		let updatedSessions = [newSession, ...sessions];
+		let updatedSessions = [newSession, ...sessions].sort((a, b) =>
+			b.updatedAt.localeCompare(a.updatedAt),
+		);
 		// Enforce max sessions limit
 		if (updatedSessions.length > MAX_SESSIONS_PER_FILE) {
 			updatedSessions = updatedSessions.slice(0, MAX_SESSIONS_PER_FILE);
@@ -296,9 +373,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	switchSession: (id) => {
+		if (get().activeSessionId === id) return;
 		const { sessions } = get();
 		const session = sessions.find((s) => s.id === id);
 		if (!session) return;
+		get().stopGenerating();
 
 		set({
 			activeSessionId: id,
@@ -308,6 +387,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	deleteSession: (id) => {
+		if (get().activeSessionId === id) get().stopGenerating();
 		const { sessions, activeSessionId, sessionKey } = get();
 		if (!sessionKey) return;
 
@@ -349,26 +429,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		}
 	},
 
-	migrateSessionKey: (newFilePath) => {
+	renameSession: (id, title) => {
+		const trimmed = title.trim().slice(0, 60);
 		const { sessions, sessionKey } = get();
+		if (!trimmed || !sessionKey) return;
+		const updated = sessions.map((s) => (s.id === id ? { ...s, title: trimmed } : s));
+		saveSessionsToStorage(sessionKey, updated);
+		set({ sessions: updated });
+	},
+
+	setDraft: (draft) => {
+		set((state) => ({
+			sessions: state.sessions.map((s) => (s.id === state.activeSessionId ? { ...s, draft } : s)),
+		}));
+	},
+
+	recordTurn: (sessionId, messages, settled) => {
+		const current = get();
+		const bounded = settled
+			? capMessageHistory([...messages], MAX_MESSAGES_PER_SESSION)
+			: [...messages];
+		const sessions = current.sessions.map((session) => {
+			if (session.id !== sessionId) return session;
+			const firstUser = messages.find((m) => m.role === "user");
+			return {
+				...session,
+				messages: bounded,
+				title:
+					session.title === "New Chat" && firstUser
+						? generateSessionTitle(flattenText(firstUser))
+						: session.title,
+				updatedAt: settled ? new Date().toISOString() : session.updatedAt,
+			};
+		});
+		if (settled && current.sessionKey) saveSessionsToStorage(current.sessionKey, sessions);
+		set({ sessions, ...(current.activeSessionId === sessionId ? { messages: bounded } : {}) });
+	},
+
+	migrateSessionKey: (newFilePath) => {
+		const { sessions, sessionKey, documentId } = get();
 		if (!sessionKey) return;
 
-		const newKey = getStorageKey(newFilePath);
+		const newKey = getChatStorageKey(newFilePath);
 		if (newKey === sessionKey) return;
 
 		// Save sessions under new key
 		saveSessionsToStorage(newKey, sessions);
-		// Remove old key
-		try {
-			localStorage.removeItem(sessionKey);
-		} catch {
-			// Ignore
+		// Another open tab may still use the saved file, including a restored tab
+		// that has not loaded its chats yet. Save As must leave that history intact.
+		const cachedOwner = [...documentChats.values()].some((chat) => chat.sessionKey === sessionKey);
+		if (!cachedOwner && !hasOtherChatStorageOwner(sessionKey, documentId)) {
+			try {
+				localStorage.removeItem(sessionKey);
+			} catch {
+				// Storage may be unavailable.
+			}
 		}
 		set({ sessionKey: newKey });
 	},
 
 	sendMessage: async (content, model) => {
-		const { provider, messages, isStreaming, activeSessionId, sessionKey } = get();
+		const { provider, messages, isStreaming, activeSessionId, sessionKey, documentId } = get();
 		if (isStreaming || !activeSessionId || !sessionKey) return;
 
 		const userMessage: ChatMessage = { role: "user", content: [{ type: "text", text: content }] };
@@ -391,8 +512,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		const settings = useSettingsStore.getState().settings;
 		const modelId = provider === "anthropic" ? settings.aiModelAnthropic : settings.aiModelOpenai;
 		const resolvedModelId = modelId || getDefaultModelId(provider);
-		// No native tools yet (issue #64); the empty list keeps the model on the
-		// fenced ` ```actions ` path this build still understands.
+		// This legacy text stream offers no tools. Native turns use ai-turn-store.
 		const systemPrompt = buildSystemPrompt(model, { tools: [] });
 
 		/** Fold one stream event into store state. */
@@ -462,55 +582,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
 				set({ error: "The AI request failed unexpectedly. Please try again." });
 			}
 		} finally {
-			currentAbortController = null;
-			const wasAborted = abortController.signal.aborted;
-			set({ isStreaming: false });
+			if (
+				get().documentId === documentId &&
+				get().activeSessionId === activeSessionId &&
+				(!currentAbortController || currentAbortController === abortController)
+			) {
+				currentAbortController = null;
+				const wasAborted = abortController.signal.aborted;
+				set({ isStreaming: false });
 
-			// An error that produced no output leaves a blank assistant bubble; drop
-			// it. A cancellation keeps whatever text arrived, and a mid-stream error
-			// keeps its partial text.
-			if (!wasAborted && get().error !== null) {
-				set((state) => {
-					const msgs = [...state.messages];
-					const last = msgs[msgs.length - 1];
-					if (last && last.role === "assistant" && isEmptyAssistantTurn(last)) {
-						msgs.pop();
-					}
-					return { messages: msgs };
-				});
+				// An error that produced no output leaves a blank assistant bubble; drop
+				// it. A cancellation keeps whatever text arrived, and a mid-stream error
+				// keeps its partial text.
+				if (!wasAborted && get().error !== null) {
+					set((state) => {
+						const msgs = [...state.messages];
+						const last = msgs[msgs.length - 1];
+						if (last && last.role === "assistant" && isEmptyAssistantTurn(last)) {
+							msgs.pop();
+						}
+						return { messages: msgs };
+					});
+				}
+
+				get().recordTurn(activeSessionId, get().messages, true);
 			}
-
-			// Persist messages to session, capped at tool-group granularity so a saved
-			// session can never split a tool_call from the tool_result answering it.
-			const finalState = get();
-			const cappedMessages: ChatMessage[] = capMessageHistory(
-				finalState.messages,
-				MAX_MESSAGES_PER_SESSION,
-			);
-
-			// Update session title from first user message if still default
-			const updatedSessions = finalState.sessions.map((s) => {
-				if (s.id !== activeSessionId) return s;
-				const firstUser = cappedMessages.find((m) => m.role === "user");
-				const title =
-					s.title === "New Chat" && cappedMessages.length > 0
-						? generateSessionTitle(firstUser ? flattenText(firstUser) : "New Chat")
-						: s.title;
-				return {
-					...s,
-					title,
-					messages: cappedMessages,
-					updatedAt: new Date().toISOString(),
-				};
-			});
-
-			saveSessionsToStorage(sessionKey, updatedSessions);
-			set({ sessions: updatedSessions, messages: cappedMessages });
 		}
 	},
 
 	stopGenerating: () => {
 		if (currentAbortController) {
+			const { activeSessionId, messages } = get();
+			if (activeSessionId) get().recordTurn(activeSessionId, messages, true);
 			currentAbortController.abort();
 			currentAbortController = null;
 		}

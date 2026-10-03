@@ -16,6 +16,22 @@ The core security property:
 
 Implementation: `src/lib/ai/loop/`. Adversarial proof: `injection.test.ts`.
 
+Chat sessions belong to a document identity. Native turns update the selected session's
+protocol history and title; switching chats or documents first cancels the outgoing turn.
+Returning to an open document retains its chats, drafts, tool pairing, and latest terminal
+runner in memory. Late outgoing callbacks cannot update the newly selected chat. A panel-tab
+change does not reset the conversation.
+
+History is capped at 200 messages using the protocol's tool-group boundary; each document
+retains at most 50 chats. The existing localStorage payload remains text-only. Reload restores
+readable text, without grants, tool results, or Undo ledgers; drafts are runtime-only.
+Earlier tool outcomes remain read-only display receipts during the app session. They
+retain summaries and terminal statuses without prepared actions or approval grants.
+Runner ownership includes both document and chat identity, even when two tabs load
+the same saved file and persisted chat ID. Save As preserves the source chat storage
+while another open document still uses that path. Durable protocol storage remains #63. Historical messages do not expose fenced mutation controls;
+the current text-only fallback turn keeps its existing review flow.
+
 ## The turn is a pure reducer
 
 `reduceTurn(state, input)` (`turn-machine.ts`) is total, pure, and the only writer
@@ -141,8 +157,8 @@ undoing writes, and a failing tool commits nothing because it returned nothing.
 
 `undoTurn` reverts the whole turn in one step, and `turnUndoAvailability` reports
 `undoable` only while the turn's snapshot is still the top of the history stack
-(a deep-equality check defeats the 20-entry trim aliasing an old index to a newer
-entry). See ADR-011.
+(history-entry identity prevents the 20-entry trim or an equal-baseline replacement
+from aliasing another turn's snapshot). See ADR-011.
 
 ## The `#64` boundary
 

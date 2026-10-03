@@ -1,24 +1,13 @@
-/**
- * The single live tool-loop turn.
- *
- * This store owns the one turn that can be in flight at a time, driving the
- * bounded loop through a {@link TurnRunner}. It reads the provider and model from
- * the chat store and settings, decides the tool set by capability (a
- * tool-incapable or unknown model runs a text-only turn on the fenced path, which
- * is today's behavior rather than a refusal), builds the system prompt, and
- * exposes the review commands the panel binds to.
- *
- * Conversation history accumulates in memory across turns so a multi-turn loop
- * has context; durable persistence is issue #63's job. `stopGenerating` settles
- * the live turn through the bridge, so `document-registry` needs no change.
- */
+/** Native turns belong to the selected document and chat. Protocol history lives
+ * in chat-store; terminal runners retain review status and Undo during this app
+ * session. Durable tool history remains #63's scope. */
 
 import { create } from "zustand";
 import { getChatTransport } from "@/lib/adapters/get-chat-transport";
 import { DEFAULT_TURN_LIMITS } from "@/lib/ai/loop/limits";
 import { createToolRegistry } from "@/lib/ai/loop/tool-runtime";
 import type { UndoAvailability } from "@/lib/ai/loop/transaction";
-import type { TurnState } from "@/lib/ai/loop/turn-machine";
+import { isTerminalStatus, type TurnState } from "@/lib/ai/loop/turn-machine";
 import { createTurnRunner, type TurnRunner } from "@/lib/ai/loop/turn-runner";
 import { streamConversation } from "@/lib/ai/protocol/client";
 import type { ProtocolMessage } from "@/lib/ai/protocol/messages";
@@ -28,13 +17,16 @@ import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { useChatStore } from "@/stores/chat-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import type { ToolCallPresentation } from "@/types/chat-session";
 import type { ThreatModel } from "@/types/threat-model";
-import { registerActiveTurnCanceller } from "./ai-turn-bridge";
+import { registerActiveTurnCanceller, registerDocumentTurnDisposer } from "./ai-turn-bridge";
 
 /** The live turn plus its in-memory conversation history. */
 interface AiTurnState {
 	/** The current turn, or `null` before the first one. */
 	turn: TurnState | null;
+	turnStartIndex: number;
+	getToolCallPresentation: (message: ProtocolMessage) => readonly ToolCallPresentation[];
 	submitTurn: (text: string, model: ThreatModel) => Promise<void>;
 	approveCall: (id: string) => void;
 	approveBatch: (ids: readonly string[]) => void;
@@ -48,19 +40,59 @@ interface AiTurnState {
 	 * subscribes to history depth to re-evaluate it as the user edits.
 	 */
 	undoAvailability: () => UndoAvailability;
-	/**
-	 * Clear the live turn and its in-memory history. Called by the panel when the
-	 * active document changes (so one document's conversation never bleeds into
-	 * another) and when the user starts or switches a chat session.
-	 */
+	/** Explicitly clear runtime runners and standalone history; session selection preserves them. */
 	resetTurn: () => void;
 }
 
 /** The single active runner, module-scoped so the bridge canceller can reach it. */
 let activeRunner: TurnRunner | null = null;
 
-/** Conversation carried across turns, so a follow-up turn has prior context. */
+/** Context for standalone callers that have not bound a chat session. */
 let conversationHistory: ProtocolMessage[] = [];
+
+interface SessionRunner {
+	documentId: string | null;
+	sessionId: string;
+	runner: TurnRunner;
+	startIndex: number;
+}
+
+const sessionRunners = new Map<string, SessionRunner>();
+let toolPresentations = new WeakMap<ProtocolMessage, readonly ToolCallPresentation[]>();
+
+function runnerKey(documentId: string | null, sessionId: string): string {
+	return JSON.stringify([documentId, sessionId]);
+}
+
+function retainToolPresentation(turn: TurnState, startIndex: number): void {
+	for (const message of turn.messages.slice(startIndex)) {
+		const ids = message.content.flatMap((block) => (block.type === "tool_call" ? [block.id] : []));
+		const calls = turn.calls.filter(
+			(call) => ids.includes(call.id) && isTerminalStatus(call.status),
+		);
+		if (calls.length === 0) continue;
+		toolPresentations.set(
+			message,
+			calls.map(
+				({ id, toolName, summary, status, result, isError, denialReason, destructive }) => ({
+					id,
+					toolName,
+					summary,
+					status,
+					result,
+					isError,
+					denialReason,
+					destructive,
+				}),
+			),
+		);
+	}
+}
+
+function ownsActiveSession(entry: SessionRunner): boolean {
+	const chat = useChatStore.getState();
+	return chat.documentId === entry.documentId && chat.activeSessionId === entry.sessionId;
+}
 
 /** A phase that still accepts a cancel. */
 function isLive(phase: TurnState["phase"] | undefined): boolean {
@@ -79,12 +111,16 @@ registerActiveTurnCanceller(() => {
 
 export const useAiTurnStore = create<AiTurnState>((set) => ({
 	turn: null,
+	turnStartIndex: 0,
+	getToolCallPresentation: (message) => toolPresentations.get(message) ?? [],
 
 	submitTurn: async (text, model) => {
 		// One turn at a time: refuse a submit while a turn is still live.
 		if (isLive(activeRunner?.getState().phase)) return;
 
 		const provider = useChatStore.getState().provider;
+		const { documentId, activeSessionId, messages } = useChatStore.getState();
+		const baseMessages = activeSessionId ? messages : conversationHistory;
 		const settings = useSettingsStore.getState().settings;
 		const configuredModel =
 			provider === "anthropic" ? settings.aiModelAnthropic : settings.aiModelOpenai;
@@ -104,17 +140,36 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 			},
 			getDocument: () => useModelStore.getState().model,
 			onState: (turn) => {
-				set({ turn });
+				if (activeRunner !== runner) return;
+				if (
+					activeSessionId &&
+					(useChatStore.getState().documentId !== documentId ||
+						useChatStore.getState().activeSessionId !== activeSessionId)
+				)
+					return;
+				if (turn.phase === "settled") retainToolPresentation(turn, baseMessages.length);
+				set({ turn, turnStartIndex: baseMessages.length });
+				if (activeSessionId)
+					useChatStore
+						.getState()
+						.recordTurn(activeSessionId, turn.messages, turn.phase === "settled");
 				// When the turn settles, fold its messages into the running history so
 				// the next turn continues the conversation.
 				if (turn.phase === "settled") conversationHistory = [...turn.messages];
 			},
 		});
 		activeRunner = runner;
+		if (activeSessionId)
+			sessionRunners.set(runnerKey(documentId, activeSessionId), {
+				documentId,
+				sessionId: activeSessionId,
+				runner,
+				startIndex: baseMessages.length,
+			});
 
 		await runner.submit({
 			text,
-			baseMessages: conversationHistory,
+			baseMessages,
 			provider,
 			modelId,
 			system,
@@ -148,6 +203,38 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 		if (isLive(activeRunner?.getState().phase)) activeRunner?.cancel();
 		activeRunner = null;
 		conversationHistory = [];
-		set({ turn: null });
+		sessionRunners.clear();
+		toolPresentations = new WeakMap();
+		set({ turn: null, turnStartIndex: 0 });
 	},
 }));
+
+// Chat selection is shared by the panel and document activation. Bind here so
+// changing panels cannot erase history and a hidden panel still cancels correctly.
+useChatStore.subscribe((chat, previous) => {
+	for (const [id, entry] of sessionRunners) {
+		if (
+			entry.documentId === chat.documentId &&
+			!chat.sessions.some((s) => s.id === entry.sessionId)
+		)
+			sessionRunners.delete(id);
+	}
+	if (chat.documentId === previous.documentId && chat.activeSessionId === previous.activeSessionId)
+		return;
+	if (isLive(activeRunner?.getState().phase)) activeRunner?.cancel();
+	const entry = chat.activeSessionId
+		? sessionRunners.get(runnerKey(chat.documentId, chat.activeSessionId))
+		: undefined;
+	activeRunner = entry && ownsActiveSession(entry) ? entry.runner : null;
+	conversationHistory = [];
+	useAiTurnStore.setState({
+		turn: activeRunner?.getState() ?? null,
+		turnStartIndex: entry?.startIndex ?? 0,
+	});
+});
+
+registerDocumentTurnDisposer((documentId) => {
+	for (const [id, entry] of sessionRunners) {
+		if (entry.documentId === documentId) sessionRunners.delete(id);
+	}
+});

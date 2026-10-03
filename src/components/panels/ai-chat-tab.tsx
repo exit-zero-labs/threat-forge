@@ -1,23 +1,19 @@
 import {
 	AlertCircle,
 	AlertTriangle,
+	ArrowUp,
 	Bot,
 	Check,
-	ChevronDown,
 	Info,
 	Loader2,
 	Play,
-	Plus,
-	Send,
 	Settings,
 	Sparkles,
 	Square,
-	Trash2,
 	Undo2,
-	User,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { KEY_STORAGE_UNREADABLE } from "@/lib/adapters/keychain-adapter";
 import {
 	extractLegacyActions,
@@ -38,8 +34,10 @@ import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
+import { ChatSessionPicker } from "./chat-session-picker";
+import { ChatViewport } from "./chat-viewport";
 import { MarkdownContent } from "./markdown-content";
-import { ToolCallBatch } from "./tool-call-card";
+import { ToolCallBatch, ToolCallCard } from "./tool-call-card";
 
 /** Turn phases in which a request or execution is in flight and can be stopped. */
 function isTurnLive(phase: TurnState["phase"] | undefined): boolean {
@@ -59,41 +57,18 @@ export function AiChatTab() {
 	const keyFault = useChatStore((s) => s.keyFault);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
-	const migrateSessionKey = useChatStore((s) => s.migrateSessionKey);
 	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
-	const resetTurn = useAiTurnStore((s) => s.resetTurn);
-	const prevFilePathRef = useRef<string | null | undefined>(undefined);
 
 	// Check API key on mount
 	useEffect(() => {
 		void checkApiKey();
 	}, [checkApiKey]);
 
-	// The tool-loop turn is process-global and holds its conversation in memory
-	// (durable, per-document retention is #63). Reset it whenever the active
-	// document changes — and on mount — so the prior document's turn is never
-	// shown here and its transcript is never sent as `baseMessages` to the new
-	// document's provider request. Keyed on `activeDocumentId` only, so a Save As
-	// (a `filePath` change on the same document) does not discard a live turn.
-	// This runs entirely in the panel; `document-registry.ts` is unchanged.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on document switch, not on resetTurn identity
+	// The registry owns document binding and Save As. Standalone callers without
+	// a registered document retain the text-only chat path.
 	useEffect(() => {
-		resetTurn();
-	}, [activeDocumentId]);
-
-	// Load sessions when the active document changes; migrate on Save As. `activeDocumentId` is
-	// a dependency so a switch between two unsaved documents (both `filePath === null`) still
-	// re-binds the panel instead of leaving it on the previous document's sessions.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: activeDocumentId re-binds sessions on document switch
-	useEffect(() => {
-		const prev = prevFilePathRef.current;
-		// Migrate sessions when transitioning from unsaved/old path to a new path
-		if (prev !== undefined && filePath && prev !== filePath) {
-			migrateSessionKey(filePath);
-		}
-		loadSessionsForFile(filePath);
-		prevFilePathRef.current = filePath;
-	}, [activeDocumentId, filePath, loadSessionsForFile, migrateSessionKey]);
+		if (!activeDocumentId && !useChatStore.getState().sessionKey) loadSessionsForFile(filePath);
+	}, [activeDocumentId, filePath, loadSessionsForFile]);
 
 	if (!model) {
 		return (
@@ -104,12 +79,12 @@ export function AiChatTab() {
 	const openAiSettings = () => openSettingsDialogAtTab("ai");
 
 	return (
-		<div className="flex h-full flex-col">
+		<div className="flex h-full min-h-0 min-w-0 flex-col">
 			{/* Header with settings */}
-			<div className="mb-2 flex items-center justify-between">
+			<div className="mb-3 flex shrink-0 items-center justify-between">
 				<div className="flex items-center gap-1.5">
 					<Sparkles className="h-3.5 w-3.5 text-primary" />
-					<span className="text-xs font-medium">AI Assistant</span>
+					<span className="text-sm font-semibold">AI Assistant</span>
 				</div>
 				<button
 					type="button"
@@ -215,22 +190,28 @@ function ChatView() {
 	// The live tool-loop turn (issue #62) owns the conversation once one starts;
 	// before that, the pre-loop transcript renders as it always has.
 	const turn = useAiTurnStore((s) => s.turn);
+	const activeSessionId = useChatStore((s) => s.activeSessionId);
 
 	return (
-		<div className="flex flex-1 flex-col gap-2 overflow-hidden">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
 			{/* Session bar */}
-			<SessionBar />
+			<ChatSessionPicker />
 
 			{/* Messages area */}
 			{turn ? (
-				<TurnConversation turn={turn} />
+				<TurnConversation key={activeSessionId} turn={turn} />
 			) : (
-				<MessageList messages={messages} isStreaming={isStreaming} />
+				<MessageList
+					key={activeSessionId}
+					messages={messages}
+					isStreaming={isStreaming}
+					fencedEnabled={false}
+				/>
 			)}
 
 			{/* Error display */}
 			{error && (
-				<div className="flex items-start gap-1.5 rounded bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+				<div className="flex items-start gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-foreground">
 					<AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
 					<div className="flex-1">{error}</div>
 					<button type="button" onClick={clearError} className="shrink-0 text-[10px] underline">
@@ -245,165 +226,48 @@ function ChatView() {
 	);
 }
 
-function SessionBar() {
-	const sessions = useChatStore((s) => s.sessions);
-	const activeSessionId = useChatStore((s) => s.activeSessionId);
-	const newSession = useChatStore((s) => s.newSession);
-	const switchSession = useChatStore((s) => s.switchSession);
-	const deleteSession = useChatStore((s) => s.deleteSession);
-	const isStreaming = useChatStore((s) => s.isStreaming);
-	const resetTurn = useAiTurnStore((s) => s.resetTurn);
-	const [dropdownOpen, setDropdownOpen] = useState(false);
-
-	const activeSession = sessions.find((s) => s.id === activeSessionId);
-	const dropdownRef = useRef<HTMLDivElement>(null);
-
-	// A session change is a conversation-context change, so it clears the live
-	// turn: "New chat" starts fresh, and switching sessions shows that session's
-	// transcript instead of the previous turn.
-	const startNewSession = () => {
-		resetTurn();
-		newSession();
-	};
-	const goToSession = (id: string) => {
-		resetTurn();
-		switchSession(id);
-	};
-	const removeSession = (id: string) => {
-		resetTurn();
-		deleteSession(id);
-	};
-
-	// Close dropdown on click outside
-	useEffect(() => {
-		if (!dropdownOpen) return;
-		function handleClick(e: MouseEvent) {
-			if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-				setDropdownOpen(false);
-			}
-		}
-		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
-	}, [dropdownOpen]);
-
-	return (
-		<div className="flex items-center gap-1" ref={dropdownRef}>
-			<button
-				type="button"
-				onClick={startNewSession}
-				disabled={isStreaming}
-				className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50"
-				title="New chat session"
-			>
-				<Plus className="h-3 w-3" />
-			</button>
-
-			<div className="relative flex-1">
-				<button
-					type="button"
-					onClick={() => setDropdownOpen(!dropdownOpen)}
-					className="flex w-full items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-border transition-colors"
-				>
-					<span className="flex-1 truncate text-left">{activeSession?.title ?? "New Chat"}</span>
-					<ChevronDown className="h-2.5 w-2.5 shrink-0" />
-				</button>
-
-				{dropdownOpen && sessions.length > 1 && (
-					<div className="absolute left-0 top-full z-50 mt-0.5 max-h-48 w-full overflow-y-auto rounded border border-border bg-popover shadow-md">
-						{sessions.map((session) => (
-							<button
-								key={session.id}
-								type="button"
-								onClick={() => {
-									goToSession(session.id);
-									setDropdownOpen(false);
-								}}
-								className={cn(
-									"flex w-full items-center px-1.5 py-1 text-[10px] transition-colors hover:bg-accent",
-									session.id === activeSessionId && "bg-accent/50 font-medium",
-								)}
-							>
-								<span className="flex-1 truncate text-left">{session.title}</span>
-							</button>
-						))}
-					</div>
-				)}
-			</div>
-
-			{activeSession && sessions.length > 0 && (
-				<button
-					type="button"
-					onClick={() => removeSession(activeSession.id)}
-					disabled={isStreaming}
-					className="shrink-0 rounded p-1 text-muted-foreground/50 hover:text-destructive transition-colors disabled:opacity-50"
-					title="Delete this session"
-				>
-					<Trash2 className="h-2.5 w-2.5" />
-				</button>
-			)}
-		</div>
-	);
-}
-
-/**
- * Keep a scroll container pinned to its own bottom as content arrives.
- *
- * Deliberately not `scrollIntoView`. That does not scroll one container — it walks every
- * scrollable ancestor up to the document and scrolls each so the anchor sits at its start.
- * `styles.css` sets `html, body { overflow: hidden }` for the desktop-app feel, which stops the
- * *user* scrolling but not a script, so an ancestor driven that way cannot be dragged back
- * (#293). `scrollTo` on the container itself moves that one element and nothing above it.
- *
- * The container is measured on each run rather than captured, because the streaming turn
- * replaces its children between frames.
- */
-function useScrollPinnedToBottom(dependency: unknown) {
-	const containerRef = useRef<HTMLDivElement>(null);
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the dependency signals that new content arrived rather than supplying a value the effect reads
-	useEffect(() => {
-		const container = containerRef.current;
-		if (!container) {
-			return;
-		}
-		container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
-	}, [dependency]);
-
-	return containerRef;
-}
-
-function MessageList({ messages, isStreaming }: { messages: ChatMessage[]; isStreaming: boolean }) {
-	const messagesRef = useScrollPinnedToBottom(messages);
-
+function MessageList({
+	messages,
+	isStreaming,
+	fencedEnabled,
+}: {
+	messages: ChatMessage[];
+	isStreaming: boolean;
+	fencedEnabled: boolean;
+}) {
+	const visibleMessages = messages.filter(hasVisibleText);
 	if (messages.length === 0) {
 		return (
 			<div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-				<Bot className="h-8 w-8 text-muted-foreground/20" />
-				<p className="text-[10px] text-muted-foreground/70">
-					Ask about threats, mitigations, or your architecture.
+				<div className="mb-2 rounded-2xl border border-border bg-secondary/40 p-3">
+					<Sparkles className="size-6 text-muted-foreground" />
+				</div>
+				<p className="text-sm font-medium">Explore your threat model</p>
+				<p className="max-w-64 px-2 text-xs leading-relaxed text-muted-foreground">
+					Ask about your architecture, find threats, or work through a mitigation.
 				</p>
 			</div>
 		);
 	}
 
-	// `relative` mirrors `TurnConversation` for parity. This list renders bubbles only, so
-	// nothing absolutely positioned escapes it today (#295).
 	return (
-		<div
-			ref={messagesRef}
-			data-testid="chat-messages"
-			className="relative flex flex-1 flex-col gap-2 overflow-y-auto"
-		>
-			{messages.map((msg, i) => (
+		<ChatViewport activity={messages}>
+			{visibleMessages.map((msg, i) => (
 				<MessageBubble
 					// biome-ignore lint/suspicious/noArrayIndexKey: messages are append-only
 					key={i}
 					message={msg}
-					isLast={i === messages.length - 1}
-					isStreaming={isStreaming && i === messages.length - 1 && msg.role === "assistant"}
+					fencedEnabled={fencedEnabled}
+					isLast={i === visibleMessages.length - 1}
+					isStreaming={isStreaming && i === visibleMessages.length - 1 && msg.role === "assistant"}
 				/>
 			))}
-		</div>
+			{isStreaming && (
+				<div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+					<Loader2 className="size-3.5 animate-spin" /> Thinking…
+				</div>
+			)}
+		</ChatViewport>
 	);
 }
 
@@ -417,6 +281,8 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	const approveCall = useAiTurnStore((s) => s.approveCall);
 	const approveBatch = useAiTurnStore((s) => s.approveBatch);
 	const denyCall = useAiTurnStore((s) => s.denyCall);
+	const turnStartIndex = useAiTurnStore((s) => s.turnStartIndex);
+	const getToolCallPresentation = useAiTurnStore((s) => s.getToolCallPresentation);
 	const undoTurn = useAiTurnStore((s) => s.undoTurn);
 	const undoAvailability = useAiTurnStore((s) => s.undoAvailability);
 	// Undo availability lives in the runner's ledger and depends on the history
@@ -438,43 +304,56 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	void historyStackDepth;
 	const availability = hasApplied ? undoAvailability() : "already_undone";
 
-	const messagesRef = useScrollPinnedToBottom(turn);
-
-	// `relative` below is load-bearing (#295). This scroller renders `ToolCallBatch`, whose
-	// `sr-only` live region is `position: absolute` with no offsets: it renders at its static
-	// position — far down a long turn — while being laid out against its nearest positioned
-	// ancestor. That ancestor used to be the layout's right `<aside>`, and an absolutely
-	// positioned element whose containing block sits outside a scroller is not clipped by
-	// that scroller, so this one node escaped and stretched the aside's scroll range past
-	// anything the user could scroll back. Anchoring the containing block here clips it with
-	// the rest of the turn. `e2e/chat-scroll-containment.spec.ts` pins the property.
 	return (
-		<div
-			ref={messagesRef}
-			data-testid="chat-messages"
-			className="relative flex flex-1 flex-col gap-2 overflow-y-auto"
-		>
-			{bubbles.map((message, i) => (
-				<MessageBubble
-					// biome-ignore lint/suspicious/noArrayIndexKey: turn messages are append-only
-					key={i}
-					message={message}
-					isLast={i === bubbles.length - 1}
-					isStreaming={isStreaming && i === bubbles.length - 1 && message.role === "assistant"}
-					fencedEnabled={fencedEnabled}
-				/>
-			))}
+		<ChatViewport activity={turn} runId={turn.budget.startedAtMs}>
+			{turn.messages.map((message, i) => {
+				const toolIds = message.content.flatMap((b) => (b.type === "tool_call" ? [b.id] : []));
+				const calls = i >= turnStartIndex ? turn.calls.filter((c) => toolIds.includes(c.id)) : [];
+				const previousCalls = i < turnStartIndex ? getToolCallPresentation(message) : [];
+				const last = message === bubbles[bubbles.length - 1];
+				return (
+					// biome-ignore lint/suspicious/noArrayIndexKey: transcript messages retain their order during a turn
+					<Fragment key={i}>
+						{hasVisibleText(message) && (
+							<MessageBubble
+								message={message}
+								isLast={last}
+								isStreaming={isStreaming && last && message.role === "assistant"}
+								fencedEnabled={i >= turnStartIndex && fencedEnabled}
+							/>
+						)}
+						{calls.length > 0 && (
+							<ToolCallBatch
+								calls={calls}
+								onApprove={approveCall}
+								onApproveBatch={approveBatch}
+								onDeny={denyCall}
+							/>
+						)}
+						{previousCalls.length > 0 && (
+							<div className="space-y-2">
+								{previousCalls.map((call) => (
+									<ToolCallCard key={call.id} call={call} />
+								))}
+							</div>
+						)}
+						{i < turnStartIndex && toolIds.length > 0 && previousCalls.length === 0 && (
+							<p className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+								{message.content
+									.flatMap((b) => (b.type === "tool_call" ? [b.name.replace(/_/g, " ")] : []))
+									.join(", ")}{" "}
+								· Previous turn
+							</p>
+						)}
+					</Fragment>
+				);
+			})}
 
-			{turn.calls.length > 0 && (
-				<ToolCallBatch
-					calls={[...turn.calls]}
-					onApprove={approveCall}
-					onApproveBatch={approveBatch}
-					onDeny={denyCall}
-				/>
+			{isStreaming && (
+				<div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+					<Loader2 className="size-3.5 animate-spin" /> Thinking…
+				</div>
 			)}
-
-			{isStreaming && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
 
 			{turn.notice && (
 				<div
@@ -487,7 +366,10 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 			)}
 
 			{turn.error && (
-				<div className="flex items-start gap-1.5 rounded bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+				<div
+					role="alert"
+					className="flex items-start gap-1.5 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-foreground"
+				>
 					<AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
 					<span className="flex-1">{turn.error.message}</span>
 				</div>
@@ -510,11 +392,11 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 					<Undo2 className="h-2.5 w-2.5" /> Undo this turn
 				</button>
 			)}
-		</div>
+		</ChatViewport>
 	);
 }
 
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
 	message,
 	isLast,
 	isStreaming,
@@ -533,23 +415,13 @@ function MessageBubble({
 	const displayText = flattenText(message);
 
 	return (
-		<div className={cn("flex gap-2", isUser ? "flex-row-reverse" : "flex-row")}>
+		<div className={cn("min-w-0", isUser ? "flex justify-end" : "w-full")}>
 			<div
 				className={cn(
-					"flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
-					isUser ? "bg-primary/10" : "bg-secondary",
-				)}
-			>
-				{isUser ? (
-					<User className="h-3 w-3 text-primary" />
-				) : (
-					<Bot className="h-3 w-3 text-secondary-foreground" />
-				)}
-			</div>
-			<div
-				className={cn(
-					"max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs",
-					isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground",
+					"min-w-0 text-[13px] leading-relaxed [overflow-wrap:anywhere]",
+					isUser
+						? "max-w-[90%] rounded-2xl rounded-br-md bg-secondary px-3.5 py-2.5 text-secondary-foreground"
+						: "w-full px-1 text-foreground",
 				)}
 			>
 				{isUser ? (
@@ -565,7 +437,7 @@ function MessageBubble({
 			</div>
 		</div>
 	);
-}
+});
 
 /** Extract user-facing text from AI response. Uses <response> tags if present, falls back to block stripping. */
 export function extractDisplayContent(content: string): string {
@@ -829,8 +701,26 @@ function ChatInput() {
 	const chatIsStreaming = useChatStore((s) => s.isStreaming);
 	const stopGenerating = useChatStore((s) => s.stopGenerating);
 	const model = useModelStore((s) => s.model);
-	const [input, setInput] = useState("");
+	const activeSessionId = useChatStore((s) => s.activeSessionId);
+	const input = useChatStore(
+		(s) => s.sessions.find((session) => session.id === s.activeSessionId)?.draft ?? "",
+	);
+	const setInput = useChatStore((s) => s.setDraft);
+	const provider = useChatStore((s) => s.provider);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: resize after the controlled textarea value changes
+	useLayoutEffect(() => {
+		const el = inputRef.current;
+		if (!el) return;
+		el.style.height = "0px";
+		el.style.height = `${Math.min(160, Math.max(44, el.scrollHeight))}px`;
+	}, [input]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: focus the composer on chat selection
+	useLayoutEffect(() => {
+		inputRef.current?.focus();
+	}, [activeSessionId]);
 
 	// Busy while a tool-loop turn is live or the legacy text stream is running.
 	const isBusy = isTurnLive(turnPhase) || chatIsStreaming;
@@ -863,49 +753,60 @@ function ChatInput() {
 	}
 
 	function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-		if (e.key === "Enter" && !e.shiftKey) {
+		if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
 			e.preventDefault();
 			handleSubmit();
 		}
 	}
 
 	return (
-		<div className="flex gap-1.5">
+		<div className="shrink-0 rounded-xl border border-border bg-background px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-ring">
 			<textarea
 				ref={inputRef}
 				value={input}
 				onChange={(e) => setInput(e.target.value)}
 				onKeyDown={handleKeyDown}
 				placeholder="Ask about threats..."
+				aria-label="Message AI assistant"
 				rows={2}
-				disabled={isBusy}
-				className="flex-1 resize-none rounded border border-border bg-background px-2 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none disabled:opacity-50"
+				className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent text-[13px] leading-relaxed placeholder:text-muted-foreground focus:outline-none"
 			/>
-			{isBusy ? (
-				<button
-					type="button"
-					onClick={stopGenerating}
-					className="self-end rounded bg-destructive p-1.5 text-destructive-foreground transition-colors hover:bg-destructive/90"
-					title="Stop generating (Esc)"
-				>
-					<Square className="h-3.5 w-3.5" />
-				</button>
-			) : (
-				<button
-					type="button"
-					onClick={handleSubmit}
-					disabled={!input.trim()}
-					className={cn(
-						"self-end rounded p-1.5 transition-colors",
-						input.trim()
-							? "bg-primary text-primary-foreground hover:bg-primary/90"
-							: "cursor-not-allowed bg-muted text-muted-foreground",
-					)}
-					title="Send (Enter)"
-				>
-					<Send className="h-3.5 w-3.5" />
-				</button>
-			)}
+			<div className="mt-2 flex items-center justify-between gap-2">
+				<span className="truncate text-[11px] text-muted-foreground">
+					{turnPhase === "awaiting_approval"
+						? "Review suggested changes"
+						: isBusy
+							? "Generating…"
+							: `${provider === "anthropic" ? "Anthropic" : "OpenAI"} · Enter to send`}
+				</span>
+				{isBusy ? (
+					<button
+						type="button"
+						onClick={stopGenerating}
+						className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring"
+						title="Stop generating (Esc)"
+						aria-label="Stop response"
+					>
+						<Square className="size-3 fill-current" />
+					</button>
+				) : (
+					<button
+						type="button"
+						onClick={handleSubmit}
+						disabled={!input.trim()}
+						className={cn(
+							"flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+							input.trim()
+								? "bg-primary text-primary-foreground hover:bg-primary/90"
+								: "cursor-not-allowed bg-muted text-muted-foreground",
+						)}
+						title="Send (Enter)"
+						aria-label="Send message"
+					>
+						<ArrowUp className="size-4" />
+					</button>
+				)}
+			</div>
 		</div>
 	);
 }
