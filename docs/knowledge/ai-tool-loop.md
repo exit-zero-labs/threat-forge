@@ -16,6 +16,18 @@ The core security property:
 
 Implementation: `src/lib/ai/loop/`. Adversarial proof: `injection.test.ts`.
 
+Chat sessions belong to a document identity. Native turns update the selected session's
+protocol history and title; switching chats or documents first cancels the outgoing turn.
+Returning to an open document retains its chats, drafts, tool pairing, and latest terminal
+runner in memory. Late outgoing callbacks cannot update the newly selected chat. A panel-tab
+change does not reset the conversation.
+
+History is capped at 200 messages using the protocol's tool-group boundary; each document
+retains at most 50 chats. The existing localStorage payload remains text-only. Reload restores
+readable text, without grants, tool results, or Undo ledgers; drafts are runtime-only. Durable
+protocol storage remains #63. Historical messages do not expose fenced mutation controls;
+the current text-only fallback turn keeps its existing review flow.
+
 ## The turn is a pure reducer
 
 `reduceTurn(state, input)` (`turn-machine.ts`) is total, pure, and the only writer

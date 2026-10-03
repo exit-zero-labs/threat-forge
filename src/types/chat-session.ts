@@ -7,6 +7,8 @@ export interface ChatSession {
 	messages: ChatMessage[];
 	createdAt: string;
 	updatedAt: string;
+	/** Local draft; never included in persisted chat history. */
+	draft?: string;
 }
 
 /** Maximum number of sessions per file. */

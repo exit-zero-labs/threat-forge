@@ -11,6 +11,15 @@
  */
 
 let canceller: () => void = () => {};
+let documentDisposer: (id: string) => void = () => {};
+
+export function registerDocumentTurnDisposer(fn: (id: string) => void): void {
+	documentDisposer = fn;
+}
+
+export function disposeDocumentTurns(id: string): void {
+	documentDisposer(id);
+}
 
 /** Registered once by `ai-turn-store` so the chat store can reach the live runner. */
 export function registerActiveTurnCanceller(fn: () => void): void {

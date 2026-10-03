@@ -230,6 +230,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		const state = get();
 		const session = state.documents[id];
 		if (!session) return;
+		if (state.activeDocumentId === id) return;
 
 		const prevActiveId = state.activeDocumentId;
 		// A switch moves away from a live document. Since `#54` opens New/Open/Import/template in a
@@ -280,6 +281,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 
 		// Restore the incoming document's last AI session when it still exists. switchSession
 		// no-ops for an unknown id, so this fails safe when that session was deleted.
+		chat.bindDocument(id, session.stores.model.getState().filePath);
 		if (session.activeChatSessionId) {
 			chat.switchSession(session.activeChatSessionId);
 		}
@@ -295,6 +297,7 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 		// state to garbage collection so closed-document content is not retained behind an
 		// inactive pointer.
 		delete nextDocuments[id];
+		useChatStore.getState().forgetDocument(id);
 
 		const wasActive = state.activeDocumentId === id;
 		set({

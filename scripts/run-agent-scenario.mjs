@@ -41,6 +41,26 @@ const PLAYWRIGHT_CLI = path.join(REPO_ROOT, "node_modules", "@playwright", "test
  * @type {Record<string, Scenario>}
  */
 export const SCENARIOS = {
+	"ai-chat-experience": {
+		description:
+			"Exercise long native conversations, session restoration, readable markdown and composer controls with fake keys and scripted responses.",
+		files: [
+			"e2e/ai-chat-experience.spec.ts",
+			"e2e/ai-chat-interactions.spec.ts",
+			"e2e/chat-scroll-containment.spec.ts",
+		],
+		titles: [
+			"a hundred exchanges survive switching chats with follow-up context",
+			"long markdown stays bounded and the stop control stays visible",
+			"reading history stays put as a live response arrives",
+			"many chats support keyboard search rename deletion and separate drafts",
+			"panel and document switching preserve context and cancel pending approvals",
+			"light chat handles multiline drafts errors and narrow markdown",
+			"dark chat handles multiline drafts errors and narrow markdown",
+			"a long answer leaves the layout and the chat input where they were",
+			"the right panel's content never exceeds its box",
+		],
+	},
 	"document-creation": {
 		description: "Create a new, empty document from both the empty-state and toolbar affordances.",
 		files: ["e2e/new-model.spec.ts"],

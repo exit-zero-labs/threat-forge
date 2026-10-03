@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseThreatModelYaml } from "@/lib/thf-yaml";
-import type { ChatSession } from "@/types/chat-session";
 import type { DocumentId } from "@/types/document";
 import type { DiagramLayout, FileSettings, Threat, ThreatModel } from "@/types/threat-model";
 // A newer-build document that carries a section, a metadata key, and an element key this build's
@@ -955,82 +954,67 @@ describe("canvas viewport on document switch", () => {
 });
 
 describe("AI session references on document switch", () => {
-	function makeSession(id: string): ChatSession {
-		return { id, title: id, messages: [], createdAt: "t", updatedAt: "t" };
-	}
-
-	beforeEach(() => {
-		// Reset the workspace chat store so session state does not leak between tests.
-		useChatStore.setState({
-			sessions: [],
-			activeSessionId: null,
-			sessionKey: null,
-			messages: [],
-			isStreaming: false,
-			error: null,
-		});
-	});
-
-	it("remembers each document's active chat session and restores it on return", () => {
-		useChatStore.setState({
-			sessions: [makeSession("sess-a"), makeSession("sess-b")],
-			activeSessionId: "sess-a",
-			sessionKey: "threatforge-chat-sessions:unsaved",
-			messages: [],
-		});
-
+	it("reselecting the active document leaves its current chat selected", () => {
 		const registry = useDocumentRegistry.getState();
 		const a = registry.createDocument({
 			model: createTestModel("A"),
 			filePath: null,
 			pendingLayout: null,
 		});
-		// Creating B switches away from A, recording A's active session reference.
+		registry.createDocument({ model: createTestModel("B"), filePath: null, pendingLayout: null });
+		registry.activateDocument(a);
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		useChatStore
+			.getState()
+			.recordTurn(first, [{ role: "user", content: [{ type: "text", text: "First chat" }] }], true);
+		useChatStore.getState().newSession();
+		const selected = useChatStore.getState().activeSessionId;
+		expect(selected).not.toBe(first);
+		registry.activateDocument(a);
+		expect(useChatStore.getState().activeSessionId).toBe(selected);
+	});
+	it("restores each document's own sessions and drafts without a shared unsaved key", () => {
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: createTestModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		const aSession = useChatStore.getState().activeSessionId;
+		const aKey = useChatStore.getState().sessionKey;
+		useChatStore.getState().setDraft("A private question");
 		const b = registry.createDocument({
 			model: createTestModel("B"),
 			filePath: null,
 			pendingLayout: null,
 		});
-		expect(useDocumentRegistry.getState().documents[a].activeChatSessionId).toBe("sess-a");
-
-		// The user selects a different session while B is active.
-		useChatStore.getState().switchSession("sess-b");
-		expect(useChatStore.getState().activeSessionId).toBe("sess-b");
-
-		// Returning to A records B's session and restores A's remembered one.
+		const bSession = useChatStore.getState().activeSessionId;
+		expect(bSession).not.toBe(aSession);
+		expect(useChatStore.getState().sessionKey).not.toBe(aKey);
+		expect(useChatStore.getState().sessions[0].draft).toBeUndefined();
 		registry.activateDocument(a);
-		expect(useDocumentRegistry.getState().documents[b].activeChatSessionId).toBe("sess-b");
-		expect(useChatStore.getState().activeSessionId).toBe("sess-a");
+		expect(useChatStore.getState().activeSessionId).toBe(aSession);
+		expect(useChatStore.getState().sessions[0].draft).toBe("A private question");
+		expect(useDocumentRegistry.getState().documents[b].activeChatSessionId).toBe(bSession);
 	});
 
-	it("does not restore a chat session that no longer exists", () => {
-		useChatStore.setState({
-			sessions: [makeSession("sess-x"), makeSession("sess-y")],
-			activeSessionId: "sess-x",
-			sessionKey: "threatforge-chat-sessions:unsaved",
-			messages: [],
-		});
-
+	it("ignores a deleted session reference and restores the surviving chat in that document", () => {
 		const registry = useDocumentRegistry.getState();
 		const a = registry.createDocument({
 			model: createTestModel("A"),
 			filePath: null,
 			pendingLayout: null,
 		});
-		// Leaving A records its active session (sess-x).
-		registry.createDocument({
-			model: createTestModel("B"),
-			filePath: null,
-			pendingLayout: null,
-		});
-		// The user moves to sess-y in B and sess-x is later deleted from the workspace store.
-		useChatStore.getState().switchSession("sess-y");
-		useChatStore.setState({ sessions: [makeSession("sess-y")], activeSessionId: "sess-y" });
-
-		// Returning to A tries to restore sess-x, which no longer exists: switchSession no-ops
-		// and the active session is left as-is rather than cleared.
+		const deleted = useChatStore.getState().activeSessionId;
+		if (!deleted) throw new Error("A chat must exist");
+		useChatStore.getState().deleteSession(deleted);
+		const surviving = useChatStore.getState().activeSessionId;
+		registry.createDocument({ model: createTestModel("B"), filePath: null, pendingLayout: null });
+		registry.setDocumentChatSessionId(a, deleted);
 		registry.activateDocument(a);
-		expect(useChatStore.getState().activeSessionId).toBe("sess-y");
+		expect(useChatStore.getState().activeSessionId).toBe(surviving);
+		expect(useChatStore.getState().sessions.some((s) => s.id === deleted)).toBe(false);
 	});
 });
 
