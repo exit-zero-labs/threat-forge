@@ -19,6 +19,13 @@ import { cn } from "@/lib/utils";
 /** Longest untrusted text shown before it collapses behind an expander. */
 const TEXT_PREVIEW_LIMIT = 240;
 
+const CREATION_TOOLS = new Set([
+	"add_element",
+	"add_data_flow",
+	"add_trust_boundary",
+	"add_threat",
+]);
+
 function assertNever(value: never): never {
 	throw new Error(`Unhandled call status: ${String(value)}`);
 }
@@ -73,6 +80,9 @@ export interface ToolCallCardProps {
 
 /** One tool call, rendered per its status. */
 export function ToolCallCard({ call, onApprove, onDeny }: ToolCallCardProps) {
+	// Creation IDs are provider feedback; the readable summary and chip show the outcome here.
+	const creationApplied =
+		CREATION_TOOLS.has(call.toolName) && (call.status === "succeeded" || call.status === "undone");
 	return (
 		<div
 			data-testid={`tool-call-${call.id}`}
@@ -89,16 +99,19 @@ export function ToolCallCard({ call, onApprove, onDeny }: ToolCallCardProps) {
 				<div className={cn(call.status === "undone" && "line-through opacity-70")}>
 					<ExpandableText text={call.summary} />
 				</div>
-				{call.result !== null && call.status !== "pending" && call.status !== "approved" && (
-					<div
-						className={cn(
-							"mt-0.5 text-[10px]",
-							call.isError ? "text-destructive" : "text-muted-foreground",
-						)}
-					>
-						<ExpandableText text={call.result} />
-					</div>
-				)}
+				{call.result !== null &&
+					!creationApplied &&
+					call.status !== "pending" &&
+					call.status !== "approved" && (
+						<div
+							className={cn(
+								"mt-0.5 text-[10px]",
+								call.isError ? "text-destructive" : "text-muted-foreground",
+							)}
+						>
+							<ExpandableText text={call.result} />
+						</div>
+					)}
 			</div>
 			<CallAffordance call={call} onApprove={onApprove} onDeny={onDeny} />
 		</div>

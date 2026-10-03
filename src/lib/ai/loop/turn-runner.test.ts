@@ -93,6 +93,67 @@ beforeEach(() => {
 });
 
 describe("the corrective feedback channel", () => {
+	it("returns a committed element ID to the next iteration for an approved connection", async () => {
+		const requests: ConversationRequest[] = [];
+		const preTurn = useModelStore.getState().model;
+		const runner = createTurnRunner({
+			getDocument,
+			stream: async (request, onEvent) => {
+				requests.push(request);
+				onEvent({ type: "message_start", model: "m" });
+				if (requests.length === 1) {
+					onEvent({
+						type: "tool_call_complete",
+						id: "create",
+						name: "add_element",
+						input: { action: "add_element", element: { type: "process", name: "Service" } },
+					});
+				} else if (requests.length === 2) {
+					const results = request.messages
+						.flatMap((message) => message.content)
+						.filter((block) => block.type === "tool_result");
+					expect(results).toHaveLength(1);
+					const created: unknown = JSON.parse(results[0].content);
+					if (
+						typeof created !== "object" ||
+						created === null ||
+						!("id" in created) ||
+						typeof created.id !== "string"
+					)
+						throw new Error("Creation returned no usable ID");
+					expect(getDocument()?.elements.some((element) => element.id === created.id)).toBe(true);
+					onEvent({
+						type: "tool_call_complete",
+						id: "connect",
+						name: "add_data_flow",
+						input: { action: "add_data_flow", data_flow: { from: "web-app", to: created.id } },
+					});
+				}
+				onEvent({
+					type: "message_stop",
+					stopReason: requests.length < 3 ? "tool_use" : "end_turn",
+				});
+			},
+		});
+		await runner.submit(config(createAiToolRegistry()));
+		expect(getDocument()).toBe(preTurn);
+		await runner.approveCall("create");
+		expect(runner.getState().phase).toBe("awaiting_approval");
+		expect(getDocument()?.data_flows).toHaveLength(0);
+		await runner.approveCall("connect");
+		expect(runner.getState().outcome).toBe("completed");
+		const document = getDocument();
+		expect(document?.data_flows).toHaveLength(1);
+		expect(document?.data_flows[0]).toMatchObject({
+			from: "web-app",
+			to: document?.elements[1].id,
+		});
+		expect(useHistoryStore.getState().past).toHaveLength(1);
+		for (const request of requests) expect(assertToolPairing(request.messages)).toEqual([]);
+		runner.undo();
+		expect(getDocument()).toEqual(preTurn);
+	});
+
 	it("returns a prepare failure's field-level issue to the model as a tool_result", async () => {
 		const registry = createToolRegistry(GRAPH_ACTION_TOOLS);
 		const { stream, requests } = scriptedStream([

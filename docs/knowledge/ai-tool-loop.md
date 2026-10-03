@@ -172,6 +172,15 @@ first:
 - **Four read tools** (`#203`, below) are all `effect: "read"` and
   `destructive: false`, so they are auto-approved and never pause the turn.
 
+Graph creation result contract v1: `add_element`, `add_data_flow`,
+`add_trust_boundary`, and `add_threat` return JSON `{ "action": "<tool name>",
+"id": "<created entity id>" }` after the transaction commits. A subsequent call
+can use that ID directly to connect or update the new entity. Calls in the same
+provider response cannot consume each other's results; dependent calls belong in
+a later iteration. Update and delete tools retain their plain-text results.
+Approval previews remain plain text. A refused transaction returns its failure
+instead of a successful creation result.
+
 ## Read tools (`#203`)
 
 The read tools let a model query the current document and the typed component
