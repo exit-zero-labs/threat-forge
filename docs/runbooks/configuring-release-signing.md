@@ -42,15 +42,15 @@ Signing is complete only when all of the following are true:
 
 ## Signing verification snapshot — 2026-10-03
 
-Provider setup is verified: the Azure Public Trust profile is active, the CI application has signer access at certificate-profile scope, and its Production OIDC federation is configured. A new Apple Developer ID identity signs successfully; protected Production stores the certificate and notarization key. Certificate-password secret submission still requires owner completion. Secret names alone are not credential validation.
+Provider setup and protected credential use are verified by [rehearsal 37157124605](https://github.com/exit-zero-labs/threat-forge/actions/runs/37157124605) at commit `1d90d8a`, tag `v0.3.0-signing.3`. Validation, Linux, Windows and both macOS jobs passed; draft publication was skipped. Azure uses profile-scoped OIDC without a client-secret fallback. Production stores all three Apple signing secrets, and both architecture jobs imported the certificate and used the notarization key successfully.
 
-Both local Apple Silicon and Intel app/DMG builds passed signature, hardened runtime, timestamp, Gatekeeper and stapled-ticket checks. Intel required signing the Cargo helper before bundling. Both DMGs were separately notarized and stapled. These proofs establish local Apple signing, not protected CI signing or clean-machine owner validation. Windows artifacts remain unverified. Existing public v0.3.0 assets retain their recorded unsigned waiver.
+Windows native verification accepted Exit Zero Labs LLC signatures and timestamps for the standalone app/helper, NSIS/MSI installers, NSIS-installed app/helper/uninstaller and administratively extracted MSI payloads. Downloaded installer hashes match the native verification evidence. Both downloaded macOS DMGs and app archives passed expected authority/team, hardened runtime, timestamp, notarization-ticket and Gatekeeper checks, including mounted DMG contents. Clean-machine owner launch/install validation and normal MSI installation remain outstanding. The workflow is on `codex/distribution-signing`, awaiting authorized PR/merge; existing public v0.3.0 assets retain their unsigned waiver.
 
 The implementation separates Windows OIDC, macOS temporary-keychain signing and draft publication. `scripts/sign-macos.sh` builds without bundling, signs the nested helper, bundles/notarizes the app, then notarizes and staples the final DMG. `scripts/verify-macos-signing.sh` verifies mounted DMG and extracted app-archive contents. Windows uses the structured custom command, `scripts/windows-signing-tools.ps1`, and installed-payload checks in `scripts/verify-windows-signing.ps1`. The current client is integrity-pinned to Microsoft.ArtifactSigning.Client 1.0.128 using the [immutable NuGet catalog SHA-512](https://api.nuget.org/v3/catalog0/data/2026.03.30.23.02.55/microsoft.artifactsigning.client.1.0.128.json).
 
-A separately authorized tag `v<app-version>-signing.<number>` containing the workflow changes triggers a nonpublishing rehearsal, including signing regardless of WINDOWS_SIGNING. It uploads Actions artifacts and never creates a GitHub release. This reserved tag route works before merge; GitHub manual dispatch additionally requires the workflow on the default branch. Branch dispatch cannot pass Production's tag-only rules and an existing tag cannot run new workflow content. Commit, push/tag and protected deployment approval require their respective owner authority. Ordinary push releases fail while WINDOWS_SIGNING is unset; enable the switch only after downloaded Windows verification. Publication receives only final containers whose downloaded hashes match source-bound manifests. Signing keys, keychains and DLLs are excluded from artifact globs and signing jobs do not cache target outputs. Preserve required reviewers and prevent-self-review.
+A separately authorized tag `v<app-version>-signing.<number>` containing the workflow changes triggers a nonpublishing rehearsal, including signing regardless of WINDOWS_SIGNING. It uploads Actions artifacts and never creates a GitHub release. This reserved tag route works before merge; GitHub manual dispatch additionally requires the workflow on the default branch. Branch dispatch cannot pass Production's tag-only rules and an existing tag cannot run new workflow content. Commit, push/tag and protected deployment approval require their respective owner authority. Ordinary push releases fail while WINDOWS_SIGNING is unset; enable the switch only after downloaded Windows verification and the repaired workflow has merged to `main`. Publication receives only final containers whose downloaded hashes match source-bound manifests. Signing keys, keychains and DLLs are excluded from artifact globs and signing jobs do not cache target outputs. Preserve required reviewers and prevent-self-review.
 
-Before public release, obtain clean-machine install/launch validation, complete the protected rehearsal and resolve independent review findings. Do not retire legacy Azure credentials or old Apple keys until the replacement path is proven and retirement is explicitly authorized. On Apple failure the temporary keychain and credentials are removed and the prior keychain configuration is restored; rejected DMG submissions retain the nonsecret notarization log. Credential recovery requires the owner-managed encrypted backup, not CI caches.
+Before public release, obtain clean-machine install/launch validation, merge the reviewed implementation and activate the proven Windows path. The platform-signing rehearsal passed; updater verification and broader release gates remain separate work under #49/#52. Do not retire legacy Azure credentials or old Apple keys until the replacement path is proven and retirement is explicitly authorized. On Apple failure the temporary keychain and credentials are removed and the prior keychain configuration is restored; rejected DMG submissions retain the nonsecret notarization log. Credential recovery requires the owner-managed encrypted backup, not CI caches.
 
 ## Historical repository baseline — 2026-07-21
 
@@ -348,15 +348,13 @@ Under issue #51:
 - Supply `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
   `APPLE_SIGNING_IDENTITY`, `APPLE_API_KEY`, and `APPLE_API_ISSUER` only to macOS release
   steps.
-- Let Tauri import the `.p12`, sign nested code in the correct order, submit notarization, and
-  staple the result.
+- Use `scripts/sign-macos.sh` to import the `.p12` into an ephemeral keychain, sign the helper before bundling, let Tauri sign/notarize the app, then independently sign/notarize/staple the final DMG.
 - Verify the current Tauri schema and generated bundle before adding macOS entitlements.
 - Keep hardened runtime enabled.
 - Add only entitlements required by exercised application capabilities; do not copy broad
   entitlement templates.
 - Build and verify both `aarch64-apple-darwin` and `x86_64-apple-darwin`.
-- Verify Tauri removes any keychain it creates, and delete the temporary `.p8`, decoded
-  certificate, and any workflow-created keychain in an `if: always()` cleanup step.
+- Verify the signer exit trap restores the prior keychain configuration and removes its temporary keychain, `.p8` and decoded certificate on success or failure.
 - Ensure neither the `.p8` nor `.p12` enters the GitHub Actions cache.
 
 ### Verify macOS artifacts
