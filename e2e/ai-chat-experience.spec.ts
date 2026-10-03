@@ -22,7 +22,10 @@ test.describe("AI chat experience", () => {
 			await route.fulfill({
 				status: 200,
 				contentType: "text/event-stream",
-				body: textResponse(`Response ${requests.length}: validate the cache access policy.`),
+				body:
+					requests.length === 103
+						? addElementResponse()
+						: textResponse(`Response ${requests.length}: validate the cache access policy.`),
 			});
 		});
 		await openAiPanelWithModel(page);
@@ -46,6 +49,36 @@ test.describe("AI chat experience", () => {
 		expect(JSON.stringify(requests.at(-1)?.messages)).toContain("Response 100:");
 		expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain("separate database review");
 		expect(requests.at(-1)?.messages.length).toBeLessThanOrEqual(201);
+		// This request is after the restored session has exceeded the retention cap.
+		await send(page, "Add a cache after our long review");
+		await expect(page.getByRole("button", { name: "Approve", exact: true })).toBeVisible();
+		expect(requests.at(-1)?.messages.length).toBeLessThanOrEqual(201);
+		expect(JSON.stringify(requests.at(-1)?.messages)).not.toContain("Response 1:");
+		await page.getByRole("button", { name: "Approve", exact: true }).click();
+		await expect(page.getByTestId("chat-messages")).toContainText("Response 104:");
+		await expect(page.getByTitle("Send (Enter)")).toBeVisible();
+		await send(page, "Summarize the completed changes");
+		await expect(page.getByTestId("chat-messages")).toContainText("Response 105:");
+		const retained = requests.at(-1)?.messages;
+		expect(retained?.length).toBeLessThanOrEqual(201);
+		expect(JSON.stringify(retained)).not.toContain("Response 1:");
+		expect(JSON.stringify(retained)).not.toContain("separate database review");
+		const blocks = retained?.flatMap((message) =>
+			Array.isArray(message.content) ? message.content : [],
+		);
+		expect(blocks?.filter((block) => block.type === "tool_use").map((block) => block.id)).toEqual([
+			"call_1",
+		]);
+		expect(
+			blocks?.filter((block) => block.type === "tool_result").map((block) => block.tool_use_id),
+		).toEqual(["call_1"]);
+		await expect(page.getByTestId("tool-call-call_1")).toContainText("Applied");
+		await expect(
+			page.getByTestId("tool-call-call_1").getByRole("button", { name: "Approve", exact: true }),
+		).toHaveCount(0);
+		const historyPath = testInfo.outputPath("tool-history.png");
+		await page.screenshot({ path: historyPath });
+		await testInfo.attach("tool-history", { path: historyPath, contentType: "image/png" });
 	});
 
 	test("long markdown stays bounded and the stop control stays visible", async ({

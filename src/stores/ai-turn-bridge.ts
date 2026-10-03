@@ -30,3 +30,15 @@ export function registerActiveTurnCanceller(fn: () => void): void {
 export function cancelActiveTurn(): void {
 	canceller();
 }
+
+// Query the document registry without importing it into chat-store. Restored
+// background documents may own a storage key before their chats are bound.
+let storageOwner: (key: string, exceptDocumentId: string | null) => boolean = () => false;
+
+export function registerChatStorageOwner(fn: typeof storageOwner): void {
+	storageOwner = fn;
+}
+
+export function hasOtherChatStorageOwner(key: string, exceptDocumentId: string | null): boolean {
+	return storageOwner(key, exceptDocumentId);
+}

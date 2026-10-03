@@ -24,8 +24,12 @@ change does not reset the conversation.
 
 History is capped at 200 messages using the protocol's tool-group boundary; each document
 retains at most 50 chats. The existing localStorage payload remains text-only. Reload restores
-readable text, without grants, tool results, or Undo ledgers; drafts are runtime-only. Durable
-protocol storage remains #63. Historical messages do not expose fenced mutation controls;
+readable text, without grants, tool results, or Undo ledgers; drafts are runtime-only.
+Earlier tool outcomes remain read-only display receipts during the app session. They
+retain summaries and terminal statuses without prepared actions or approval grants.
+Runner ownership includes both document and chat identity, even when two tabs load
+the same saved file and persisted chat ID. Save As preserves the source chat storage
+while another open document still uses that path. Durable protocol storage remains #63. Historical messages do not expose fenced mutation controls;
 the current text-only fallback turn keeps its existing review flow.
 
 ## The turn is a pure reducer

@@ -244,3 +244,5 @@ CI for that lane without claiming local completion. Do not bypass git hooks or s
 |------|--------|---------------------|
 | 2026-10-03 | Initial plan | Settled issue #335, owner authorization, and inspected chat/session/runner code |
 | 2026-10-03 | Review corrections | Move Save As binding into document lifecycle so hidden panels cannot lose association; focus deletion confirmation and retain picker focus; recognize descendant touch gestures; release restored document caches; bind retained Undo to the actual history entry rather than equal contents. Four behavioral regressions failed before their fixes; browser coverage includes a Chromium touch gesture. |
+
+| 2026-10-03 | Deep review corrections | Protect shared saved-path history during Save As, including restored background tabs; key retained runners by document and session together; preserve read-only historical tool outcomes across follow-ups; keep scroll gestures on short transcripts from disabling follow and always expose recovery after suspension. Added failing-before regressions for all four findings and extended browser verification past the 200-message cap with paired tool feedback. |

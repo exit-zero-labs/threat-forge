@@ -2,8 +2,9 @@ import { create } from "zustand";
 import { createDocumentId } from "@/lib/document-id";
 import type { DocumentId, DocumentSession } from "@/types/document";
 import type { DiagramLayout, FileSettings, ThreatModel } from "@/types/threat-model";
+import { registerChatStorageOwner } from "./ai-turn-bridge";
 import { useCanvasInstanceStore } from "./canvas-instance-store";
-import { useChatStore } from "./chat-store";
+import { getChatStorageKey, useChatStore } from "./chat-store";
 import { createDocumentStores, type DocumentStores, setActiveStores } from "./document-stores";
 
 const chatPathSubscriptions = new WeakMap<DocumentStores, () => void>();
@@ -393,3 +394,11 @@ export const useDocumentRegistry = create<DocumentRegistryState>((set, get) => (
 export function useDocumentStores(id: DocumentId): DocumentStores | null {
 	return useDocumentRegistry((state) => state.documents[id]?.stores ?? null);
 }
+
+registerChatStorageOwner((key, exceptDocumentId) =>
+	Object.values(useDocumentRegistry.getState().documents).some(
+		(document) =>
+			document.id !== exceptDocumentId &&
+			getChatStorageKey(document.stores.model.getState().filePath, document.id) === key,
+	),
+);

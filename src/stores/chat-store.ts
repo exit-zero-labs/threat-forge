@@ -22,7 +22,7 @@ import {
 	MAX_SESSIONS_PER_FILE,
 } from "@/types/chat-session";
 import type { ThreatModel } from "@/types/threat-model";
-import { cancelActiveTurn, disposeDocumentTurns } from "./ai-turn-bridge";
+import { cancelActiveTurn, disposeDocumentTurns, hasOtherChatStorageOwner } from "./ai-turn-bridge";
 
 // `AiProvider` now belongs to the protocol module; re-exported so the eight
 // existing importers keep their import path while the AI stack is rebuilt.
@@ -83,7 +83,7 @@ function generateSessionTitle(firstMessage: string): string {
 	return `${trimmed.slice(0, 57)}...`;
 }
 
-function getStorageKey(filePath: string | null, documentId?: string | null): string {
+export function getChatStorageKey(filePath: string | null, documentId?: string | null): string {
 	if (!filePath) return `threatforge-chat-sessions:unsaved${documentId ? `:${documentId}` : ""}`;
 	return `threatforge-chat-sessions:${filePath}`;
 }
@@ -252,7 +252,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 	bindDocument: (documentId, filePath) => {
 		const current = get();
-		const key = getStorageKey(filePath, documentId);
+		const key = getChatStorageKey(filePath, documentId);
 		if (current.documentId === documentId) {
 			if (current.sessionKey !== key && filePath) current.migrateSessionKey(filePath);
 			return;
@@ -298,7 +298,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 	loadSessionsForFile: (filePath, documentId = null) => {
 		get().stopGenerating();
-		const key = getStorageKey(filePath, documentId);
+		const key = getChatStorageKey(filePath, documentId);
 		const sessions = loadSessionsFromStorage(key);
 
 		if (sessions.length > 0) {
@@ -467,19 +467,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	migrateSessionKey: (newFilePath) => {
-		const { sessions, sessionKey } = get();
+		const { sessions, sessionKey, documentId } = get();
 		if (!sessionKey) return;
 
-		const newKey = getStorageKey(newFilePath);
+		const newKey = getChatStorageKey(newFilePath);
 		if (newKey === sessionKey) return;
 
 		// Save sessions under new key
 		saveSessionsToStorage(newKey, sessions);
-		// Remove old key
-		try {
-			localStorage.removeItem(sessionKey);
-		} catch {
-			// Ignore
+		// Another open tab may still use the saved file, including a restored tab
+		// that has not loaded its chats yet. Save As must leave that history intact.
+		const cachedOwner = [...documentChats.values()].some((chat) => chat.sessionKey === sessionKey);
+		if (!cachedOwner && !hasOtherChatStorageOwner(sessionKey, documentId)) {
+			try {
+				localStorage.removeItem(sessionKey);
+			} catch {
+				// Storage may be unavailable.
+			}
 		}
 		set({ sessionKey: newKey });
 	},

@@ -954,6 +954,61 @@ describe("canvas viewport on document switch", () => {
 });
 
 describe("AI session references on document switch", () => {
+	it.each([false, true])(
+		"Save As preserves another tab's persisted chats (background restore: %s)",
+		(restored) => {
+			localStorage.clear();
+			const registry = useDocumentRegistry.getState();
+			const a = registry.createDocument({
+				model: createTestModel("A"),
+				filePath: "/shared.thf",
+				pendingLayout: null,
+			});
+			const session = useChatStore.getState().activeSessionId;
+			if (!session) throw new Error("A chat must exist");
+			useChatStore
+				.getState()
+				.recordTurn(
+					session,
+					[{ role: "user", content: [{ type: "text", text: "Shared saved history" }] }],
+					true,
+				);
+			let b: DocumentId;
+			if (restored) {
+				b = "doc-restored-shared" as DocumentId;
+				registry.hydrateDocument({
+					id: b,
+					model: createTestModel("B"),
+					filePath: "/shared.thf",
+					pendingLayout: null,
+					createdAt: "2026-01-01",
+					activate: false,
+				});
+			} else {
+				b = registry.createDocument({
+					model: createTestModel("B"),
+					filePath: "/shared.thf",
+					pendingLayout: null,
+				});
+				registry.activateDocument(a);
+			}
+			useModelStore.setState({ filePath: "/a-copy.thf" });
+			expect(localStorage.getItem("threatforge-chat-sessions:/shared.thf")).toContain(
+				"Shared saved history",
+			);
+			expect(localStorage.getItem("threatforge-chat-sessions:/a-copy.thf")).toContain(
+				"Shared saved history",
+			);
+			registry.closeDocument(b);
+			registry.createDocument({
+				model: createTestModel("Reopened B"),
+				filePath: "/shared.thf",
+				pendingLayout: null,
+			});
+			expect(JSON.stringify(useChatStore.getState().messages)).toContain("Shared saved history");
+		},
+	);
+
 	it("preserves saved chat history after Save As with the AI panel unmounted", () => {
 		localStorage.clear();
 		const registry = useDocumentRegistry.getState();

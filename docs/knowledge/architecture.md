@@ -206,11 +206,11 @@ document, so opening is no longer destructive and prompts nothing.
   that rebuilds a session under a *persisted* `DocumentId`/`createdAt` — where `createDocument`
   always mints a fresh id and always activates. See
   [`docs/plans/56-indexeddb-persistence.md`](../plans/56-indexeddb-persistence.md).
-- **`#63` (AI conversation persistence):** the registry owns only `activeChatSessionId`, a
-  reference — never conversation content. While chat storage stays keyed by `filePath`, two unsaved
-  documents share the `threatforge-chat-sessions:unsaved` bucket; `#63` rekeys conversation storage
-  to `DocumentId`. The session-binding effect and its `ai-chat-tab` effect-override limitation are
-  carried by the session-ownership PR (`#127`).
+- **`#63` (AI conversation persistence):** the registry owns `activeChatSessionId`, a
+  reference, and binds document-owned runtime chats during activation. Saved chat storage
+  stays keyed by `filePath`; unsaved chat keys include `DocumentId` to isolate open documents.
+  Save As preserves the source history while another open tab uses that path. Persistent
+  messages remain a text-only projection; durable native protocol storage remains `#63`'s scope.
 
 ## Browser workspace persistence
 

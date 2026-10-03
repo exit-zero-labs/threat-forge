@@ -15,6 +15,7 @@ import { useState } from "react";
 import type { DenialReason } from "@/lib/ai/loop/authorization";
 import type { CallRecord, CallStatus } from "@/lib/ai/loop/turn-machine";
 import { cn } from "@/lib/utils";
+import type { ToolCallPresentation } from "@/types/chat-session";
 
 /** Longest untrusted text shown before it collapses behind an expander. */
 const TEXT_PREVIEW_LIMIT = 240;
@@ -73,9 +74,9 @@ function deniedLabel(reason: DenialReason | null): string {
 }
 
 export interface ToolCallCardProps {
-	call: CallRecord;
-	onApprove: (id: string) => void;
-	onDeny: (id: string) => void;
+	call: ToolCallPresentation;
+	onApprove?: (id: string) => void;
+	onDeny?: (id: string) => void;
 }
 
 /** One tool call, rendered per its status. */
@@ -142,6 +143,7 @@ function CallIcon({ status }: { status: CallStatus }) {
 function CallAffordance({ call, onApprove, onDeny }: ToolCallCardProps) {
 	switch (call.status) {
 		case "pending":
+			if (!onApprove || !onDeny) return <StatusChip label="Awaiting review" tone="muted" />;
 			return (
 				<div className="flex shrink-0 items-center gap-1">
 					<button

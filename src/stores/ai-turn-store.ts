@@ -7,7 +7,7 @@ import { getChatTransport } from "@/lib/adapters/get-chat-transport";
 import { DEFAULT_TURN_LIMITS } from "@/lib/ai/loop/limits";
 import { createToolRegistry } from "@/lib/ai/loop/tool-runtime";
 import type { UndoAvailability } from "@/lib/ai/loop/transaction";
-import type { TurnState } from "@/lib/ai/loop/turn-machine";
+import { isTerminalStatus, type TurnState } from "@/lib/ai/loop/turn-machine";
 import { createTurnRunner, type TurnRunner } from "@/lib/ai/loop/turn-runner";
 import { streamConversation } from "@/lib/ai/protocol/client";
 import type { ProtocolMessage } from "@/lib/ai/protocol/messages";
@@ -17,6 +17,7 @@ import { buildSystemPrompt } from "@/lib/ai-prompt";
 import { useChatStore } from "@/stores/chat-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import type { ToolCallPresentation } from "@/types/chat-session";
 import type { ThreatModel } from "@/types/threat-model";
 import { registerActiveTurnCanceller, registerDocumentTurnDisposer } from "./ai-turn-bridge";
 
@@ -25,6 +26,7 @@ interface AiTurnState {
 	/** The current turn, or `null` before the first one. */
 	turn: TurnState | null;
 	turnStartIndex: number;
+	getToolCallPresentation: (message: ProtocolMessage) => readonly ToolCallPresentation[];
 	submitTurn: (text: string, model: ThreatModel) => Promise<void>;
 	approveCall: (id: string) => void;
 	approveBatch: (ids: readonly string[]) => void;
@@ -56,6 +58,36 @@ interface SessionRunner {
 }
 
 const sessionRunners = new Map<string, SessionRunner>();
+let toolPresentations = new WeakMap<ProtocolMessage, readonly ToolCallPresentation[]>();
+
+function runnerKey(documentId: string | null, sessionId: string): string {
+	return JSON.stringify([documentId, sessionId]);
+}
+
+function retainToolPresentation(turn: TurnState, startIndex: number): void {
+	for (const message of turn.messages.slice(startIndex)) {
+		const ids = message.content.flatMap((block) => (block.type === "tool_call" ? [block.id] : []));
+		const calls = turn.calls.filter(
+			(call) => ids.includes(call.id) && isTerminalStatus(call.status),
+		);
+		if (calls.length === 0) continue;
+		toolPresentations.set(
+			message,
+			calls.map(
+				({ id, toolName, summary, status, result, isError, denialReason, destructive }) => ({
+					id,
+					toolName,
+					summary,
+					status,
+					result,
+					isError,
+					denialReason,
+					destructive,
+				}),
+			),
+		);
+	}
+}
 
 function ownsActiveSession(entry: SessionRunner): boolean {
 	const chat = useChatStore.getState();
@@ -80,6 +112,7 @@ registerActiveTurnCanceller(() => {
 export const useAiTurnStore = create<AiTurnState>((set) => ({
 	turn: null,
 	turnStartIndex: 0,
+	getToolCallPresentation: (message) => toolPresentations.get(message) ?? [],
 
 	submitTurn: async (text, model) => {
 		// One turn at a time: refuse a submit while a turn is still live.
@@ -114,6 +147,7 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 						useChatStore.getState().activeSessionId !== activeSessionId)
 				)
 					return;
+				if (turn.phase === "settled") retainToolPresentation(turn, baseMessages.length);
 				set({ turn, turnStartIndex: baseMessages.length });
 				if (activeSessionId)
 					useChatStore
@@ -126,7 +160,7 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 		});
 		activeRunner = runner;
 		if (activeSessionId)
-			sessionRunners.set(activeSessionId, {
+			sessionRunners.set(runnerKey(documentId, activeSessionId), {
 				documentId,
 				sessionId: activeSessionId,
 				runner,
@@ -170,6 +204,7 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 		activeRunner = null;
 		conversationHistory = [];
 		sessionRunners.clear();
+		toolPresentations = new WeakMap();
 		set({ turn: null, turnStartIndex: 0 });
 	},
 }));
@@ -178,13 +213,18 @@ export const useAiTurnStore = create<AiTurnState>((set) => ({
 // changing panels cannot erase history and a hidden panel still cancels correctly.
 useChatStore.subscribe((chat, previous) => {
 	for (const [id, entry] of sessionRunners) {
-		if (entry.documentId === chat.documentId && !chat.sessions.some((s) => s.id === id))
+		if (
+			entry.documentId === chat.documentId &&
+			!chat.sessions.some((s) => s.id === entry.sessionId)
+		)
 			sessionRunners.delete(id);
 	}
 	if (chat.documentId === previous.documentId && chat.activeSessionId === previous.activeSessionId)
 		return;
 	if (isLive(activeRunner?.getState().phase)) activeRunner?.cancel();
-	const entry = chat.activeSessionId ? sessionRunners.get(chat.activeSessionId) : undefined;
+	const entry = chat.activeSessionId
+		? sessionRunners.get(runnerKey(chat.documentId, chat.activeSessionId))
+		: undefined;
 	activeRunner = entry && ownsActiveSession(entry) ? entry.runner : null;
 	conversationHistory = [];
 	useAiTurnStore.setState({

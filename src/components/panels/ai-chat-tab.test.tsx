@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
@@ -693,4 +693,65 @@ describe("chat picker accessibility", () => {
 		expect(screen.queryByRole("dialog", { name: "Chats" })).not.toBeInTheDocument();
 		expect(trigger).toHaveFocus();
 	});
+});
+
+describe("historical tool outcomes", () => {
+	it.each(["Applied", "Declined", "Not run", "Failed", "Undone"])(
+		"preserves %s after a follow-up and panel remount",
+		async (outcome) => {
+			keychain.hasKey = true;
+			const registry = useDocumentRegistry.getState();
+			registry.createDocument({
+				model: makeModel("A"),
+				filePath: "/history.thf",
+				pendingLayout: null,
+			});
+			streamConversationMock
+				.mockImplementationOnce(
+					async (_r: unknown, _t: unknown, handlers: StreamConversationHandlers) => {
+						handlers.onEvent({ type: "message_start", model: "m" });
+						handlers.onEvent({
+							type: "tool_call_complete",
+							id: "historic",
+							name: outcome === "Failed" ? "unknown_tool" : "add_element",
+							input: { action: "add_element", element: { type: "process", name: "Cache" } },
+						});
+						handlers.onEvent({ type: "message_stop", stopReason: "tool_use" });
+					},
+				)
+				.mockImplementation(textTurn("Review complete"));
+			let view: ReturnType<typeof render>;
+			await act(async () => {
+				view = render(<AiChatTab />);
+			});
+			await act(async () => {
+				await useAiTurnStore.getState().submitTurn("Add Cache", makeModel("A"));
+			});
+			await act(async () => {
+				if (outcome === "Applied" || outcome === "Undone")
+					useAiTurnStore.getState().approveCall("historic");
+				if (outcome === "Declined") useAiTurnStore.getState().denyCall("historic");
+				if (outcome === "Not run") useAiTurnStore.getState().cancelActiveTurn();
+				await flush();
+				if (outcome === "Undone") useAiTurnStore.getState().undoTurn();
+			});
+			const summary = useAiTurnStore.getState().turn?.calls[0].summary;
+			expect(summary).toBeTruthy();
+			await act(async () => {
+				await useAiTurnStore.getState().submitTurn("Continue reviewing", makeModel("A"));
+			});
+			const card = screen.getByTestId("tool-call-historic");
+			expect(card).toHaveTextContent(outcome);
+			expect(card).toHaveTextContent(summary ?? "missing summary");
+			expect(within(card).queryByRole("button", { name: /^Approve$/ })).not.toBeInTheDocument();
+			await act(async () => {
+				view.unmount();
+				render(<AiChatTab />);
+			});
+			expect(screen.getByTestId("tool-call-historic")).toHaveTextContent(outcome);
+			const stored = localStorage.getItem("threatforge-chat-sessions:/history.thf");
+			expect(stored).not.toContain("prepared");
+			expect(stored).not.toContain("inputDigest");
+		},
+	);
 });

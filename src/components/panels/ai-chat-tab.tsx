@@ -37,7 +37,7 @@ import type { Threat } from "@/types/threat-model";
 import { ChatSessionPicker } from "./chat-session-picker";
 import { ChatViewport } from "./chat-viewport";
 import { MarkdownContent } from "./markdown-content";
-import { ToolCallBatch } from "./tool-call-card";
+import { ToolCallBatch, ToolCallCard } from "./tool-call-card";
 
 /** Turn phases in which a request or execution is in flight and can be stopped. */
 function isTurnLive(phase: TurnState["phase"] | undefined): boolean {
@@ -282,6 +282,7 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 	const approveBatch = useAiTurnStore((s) => s.approveBatch);
 	const denyCall = useAiTurnStore((s) => s.denyCall);
 	const turnStartIndex = useAiTurnStore((s) => s.turnStartIndex);
+	const getToolCallPresentation = useAiTurnStore((s) => s.getToolCallPresentation);
 	const undoTurn = useAiTurnStore((s) => s.undoTurn);
 	const undoAvailability = useAiTurnStore((s) => s.undoAvailability);
 	// Undo availability lives in the runner's ledger and depends on the history
@@ -308,6 +309,7 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 			{turn.messages.map((message, i) => {
 				const toolIds = message.content.flatMap((b) => (b.type === "tool_call" ? [b.id] : []));
 				const calls = i >= turnStartIndex ? turn.calls.filter((c) => toolIds.includes(c.id)) : [];
+				const previousCalls = i < turnStartIndex ? getToolCallPresentation(message) : [];
 				const last = message === bubbles[bubbles.length - 1];
 				return (
 					// biome-ignore lint/suspicious/noArrayIndexKey: transcript messages retain their order during a turn
@@ -328,7 +330,14 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 								onDeny={denyCall}
 							/>
 						)}
-						{i < turnStartIndex && toolIds.length > 0 && (
+						{previousCalls.length > 0 && (
+							<div className="space-y-2">
+								{previousCalls.map((call) => (
+									<ToolCallCard key={call.id} call={call} />
+								))}
+							</div>
+						)}
+						{i < turnStartIndex && toolIds.length > 0 && previousCalls.length === 0 && (
 							<p className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
 								{message.content
 									.flatMap((b) => (b.type === "tool_call" ? [b.name.replace(/_/g, " ")] : []))

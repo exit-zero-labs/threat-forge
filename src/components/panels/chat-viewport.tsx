@@ -49,6 +49,13 @@ export function ChatViewport({
 		return () => observer.disconnect();
 	}, [jump]);
 
+	function suspendFollowing(viewport: HTMLElement): void {
+		userScrolling.current = true;
+		if (viewport.scrollHeight <= viewport.clientHeight) return;
+		following.current = false;
+		setShowJump(true);
+	}
+
 	return (
 		<div className="relative min-h-0 min-w-0 flex-1">
 			<section
@@ -60,24 +67,19 @@ export function ChatViewport({
 				className="relative h-full overflow-y-auto overflow-x-hidden overscroll-contain [overflow-anchor:none]"
 				onWheel={(event) => {
 					userScrolling.current = true;
-					if (event.deltaY < 0) following.current = false;
+					if (event.deltaY < 0) suspendFollowing(event.currentTarget);
 				}}
 				onPointerDown={(event) => {
 					if (event.target === event.currentTarget || event.pointerType === "pen") {
-						userScrolling.current = true;
-						following.current = false;
+						suspendFollowing(event.currentTarget);
 					}
 				}}
-				onTouchMove={() => {
-					userScrolling.current = true;
-					following.current = false;
-				}}
+				onTouchMove={(event) => suspendFollowing(event.currentTarget)}
 				onKeyDown={(event) => {
 					if (
 						["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)
 					) {
-						userScrolling.current = true;
-						following.current = false;
+						suspendFollowing(event.currentTarget);
 					}
 				}}
 				onScroll={(event) => {

@@ -12,7 +12,8 @@ After images exercise the same long-session and approval states, plus chat manag
 reading history, empty states, narrow Markdown, and errors in light/dark themes.
 
 Run `npm run test:e2e:agent -- ai-chat-experience --headless` to reproduce the nine browser
-checks and path-backed screenshot attachments. It covers 100 exchanges, 24 separate chats,
+checks and path-backed screenshot attachments. It covers more than 100 exchanges, trimming beyond the 200-message cap with paired tool
+feedback, 24 separate chats,
 follow-up request context, document/panel switching, pending approval cancellation,
 reader-controlled wheel and touch scrolling, multiline drafts, keyboard navigation, and existing scroll
 containment. Narrow panels are 260px; the default panel is 320px. Theme tests also resize
@@ -32,7 +33,9 @@ Public references inspected for the interaction patterns:
   initialize at the latest content, bounded input, keyboard behavior, and cancellation.
 
 The implementation uses existing React/Zustand components, with no chat-framework dependency.
-Runtime sessions retain protocol blocks, drafts, and the latest terminal runner. The existing
+Runtime sessions retain protocol blocks, drafts, the latest terminal runner, and read-only
+earlier tool outcomes. The `after-tool-history.png` image shows an applied change after a
+follow-up. The existing
 text-only localStorage projection is retained; reload does not restore tool ledgers or drafts.
 Durable protocol history is #63; whole-change proposal review is #333.
 
@@ -42,8 +45,17 @@ Undo ownership after another chat replaces an equal-baseline history entry. Four
 regressions failed before their fixes; the affected six-file check passes 89 tests. The cache
 correction releases the restored entry instead of retaining a second, stale session array.
 
-Local verification includes the full 2,259-test frontend suite on the final source,
+Local verification includes the full 2,272-test frontend suite on the final source,
 the targeted checks above, Biome, TypeScript/web build, and E2E types. The
 required `npm run ci:local` was attempted but cannot pass the Cargo metadata step because
 this environment has no `cargo`. Rust/desktop checks are left to GitHub CI; no local native
 shell validation is claimed.
+
+The owner-requested deep review added shared-file Save As regressions for both activated
+and restored background tabs, retained runners under duplicate persisted chat IDs, recovery
+from gestures that do not scroll, and five historical tool outcome states after follow-ups
+and panel remounts. All thirteen new assertions failed on their respective pre-fix source;
+the four-file selector now passes 86 tests. The extended browser scenario passes nine checks;
+the native tool scenario passes four. Before images remain the original baseline, while all
+thirteen after images were recaptured on the revised source. The pre-existing provider
+call-ID reuse defect is tracked separately in #337.
