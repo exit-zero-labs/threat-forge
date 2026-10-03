@@ -20,7 +20,7 @@ import { useCanvasStore } from "@/stores/canvas-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import type { ThreatModel } from "@/types/threat-model";
-import { canonicalJson, type ToolEffect, type ToolOutcome } from "./tool-runtime";
+import type { ToolEffect, ToolOutcome } from "./tool-runtime";
 
 /** Why a commit was refused. Each is fed back to the model as corrective feedback. */
 export type CommitRefusal =
@@ -49,7 +49,7 @@ export type CommitOutcome =
  *
  * One snapshot is pushed per turn, lazily, at the first successful commit. After
  * the push, `undoDepth` records `history.past.length` and `baseline` records the
- * exact document that was pushed, so {@link turnUndoAvailability} can tell an
+ * actual cloned history entry that was pushed, so {@link turnUndoAvailability} can tell an
  * undoable turn from one whose history entry a later edit or the 20-entry trim
  * has superseded.
  */
@@ -138,8 +138,9 @@ function pushTurnSnapshotOnce(input: CommitInput): void {
 	if (input.ledger.pushed) return;
 	useHistoryStore.getState().pushSnapshot(input.expected);
 	input.ledger.pushed = true;
-	input.ledger.undoDepth = useHistoryStore.getState().past.length;
-	input.ledger.baseline = input.expected;
+	const past = useHistoryStore.getState().past;
+	input.ledger.undoDepth = past.length;
+	input.ledger.baseline = past[past.length - 1] ?? null;
 }
 
 /** Whether the whole turn can still be undone as one entry. */
@@ -149,8 +150,8 @@ export type UndoAvailability = "undoable" | "already_undone" | "superseded";
  * Decide whether the turn's single undo entry is still the one at the top of the
  * history stack.
  *
- * The deep-equality check is what stops the 20-entry trim from making an old
- * turn's index alias a newer entry and undoing the wrong thing.
+ * Entry identity prevents a removed turn from claiming a newer entry with an
+ * equal baseline, including after keyboard Undo, Redo, or the 20-entry trim.
  */
 export function turnUndoAvailability(ledger: TurnUndoLedger): UndoAvailability {
 	if (!ledger.pushed || ledger.baseline === null) return "already_undone";
@@ -158,7 +159,7 @@ export function turnUndoAvailability(ledger: TurnUndoLedger): UndoAvailability {
 	if (past.length < ledger.undoDepth) return "already_undone";
 	if (past.length === ledger.undoDepth) {
 		const top = past[past.length - 1];
-		if (top !== undefined && canonicalJson(top) === canonicalJson(ledger.baseline)) {
+		if (top === ledger.baseline) {
 			return "undoable";
 		}
 		return "superseded";

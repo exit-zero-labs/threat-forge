@@ -323,6 +323,41 @@ describe("native session ownership", () => {
 		{ type: "text_delta", text },
 		{ type: "message_stop", stopReason: "end_turn" },
 	];
+	it("never lets a restored chat undo another chat's equal-baseline history entry", async () => {
+		useChatStore.getState().loadSessionsForFile("/models/undo.thf");
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		const add = (name: string): StreamEvent[] => [
+			{ type: "message_start", model: "m" },
+			{
+				type: "tool_call_complete",
+				id: name,
+				name: "add_element",
+				input: { action: "add_element", element: { type: "process", name } },
+			},
+			{ type: "message_stop", stopReason: "tool_use" },
+		];
+		script(add("Cache"), reply("Cache added"), add("Database"), reply("Database added"));
+		await useAiTurnStore.getState().submitTurn("Add cache", model);
+		useAiTurnStore.getState().approveCall("Cache");
+		await flush();
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("undoable");
+		useChatStore.getState().newSession();
+		const current = useModelStore.getState().model;
+		if (!current) throw new Error("A model must exist");
+		const restored = useHistoryStore.getState().undo(current);
+		if (!restored) throw new Error("The keyboard Undo path must return a snapshot");
+		useModelStore.getState().restoreSnapshot(restored);
+		await useAiTurnStore.getState().submitTurn("Add database", restored);
+		useAiTurnStore.getState().approveCall("Database");
+		await flush();
+		const secondChatModel = useModelStore.getState().model;
+		useChatStore.getState().switchSession(first);
+		expect(useAiTurnStore.getState().undoAvailability()).toBe("superseded");
+		useAiTurnStore.getState().undoTurn();
+		expect(useModelStore.getState().model).toBe(secondChatModel);
+		expect(secondChatModel?.elements.map((element) => element.name)).toContain("Database");
+	});
 
 	it("restores native messages and tool pairing as context only for their selected session", async () => {
 		localStorage.clear();

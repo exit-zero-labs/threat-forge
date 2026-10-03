@@ -243,3 +243,4 @@ CI for that lane without claiming local completion. Do not bypass git hooks or s
 | Date | Change | Evidence and reason |
 |------|--------|---------------------|
 | 2026-10-03 | Initial plan | Settled issue #335, owner authorization, and inspected chat/session/runner code |
+| 2026-10-03 | Review corrections | Move Save As binding into document lifecycle so hidden panels cannot lose association; focus deletion confirmation and retain picker focus; recognize descendant touch gestures; release restored document caches; bind retained Undo to the actual history entry rather than equal contents. Four behavioral regressions failed before their fixes; browser coverage includes a Chromium touch gesture. |

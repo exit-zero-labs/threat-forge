@@ -58,19 +58,17 @@ export function AiChatTab() {
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
 	const openSettingsDialogAtTab = useSettingsStore((s) => s.openSettingsDialogAtTab);
-	const bindDocument = useChatStore((s) => s.bindDocument);
 
 	// Check API key on mount
 	useEffect(() => {
 		void checkApiKey();
 	}, [checkApiKey]);
 
-	// Activation binds before the panel mounts. This also handles Save As on the
-	// same document; it must never migrate the outgoing document during a switch.
+	// The registry owns document binding and Save As. Standalone callers without
+	// a registered document retain the text-only chat path.
 	useEffect(() => {
-		if (activeDocumentId) bindDocument(activeDocumentId, filePath);
-		else if (!useChatStore.getState().sessionKey) loadSessionsForFile(filePath);
-	}, [activeDocumentId, filePath, loadSessionsForFile, bindDocument]);
+		if (!activeDocumentId && !useChatStore.getState().sessionKey) loadSessionsForFile(filePath);
+	}, [activeDocumentId, filePath, loadSessionsForFile]);
 
 	if (!model) {
 		return (
@@ -711,7 +709,7 @@ function ChatInput() {
 	}, [input]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: focus the composer on chat selection
-	useEffect(() => {
+	useLayoutEffect(() => {
 		inputRef.current?.focus();
 	}, [activeSessionId]);
 

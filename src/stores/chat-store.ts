@@ -267,6 +267,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		}
 		const cached = documentChats.get(documentId);
 		if (cached) {
+			documentChats.delete(documentId);
 			set({
 				...cached,
 				documentId,

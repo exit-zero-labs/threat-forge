@@ -63,13 +63,19 @@ export function ChatViewport({
 					if (event.deltaY < 0) following.current = false;
 				}}
 				onPointerDown={(event) => {
-					if (event.target === event.currentTarget) {
+					if (event.target === event.currentTarget || event.pointerType === "pen") {
 						userScrolling.current = true;
 						following.current = false;
 					}
 				}}
+				onTouchMove={() => {
+					userScrolling.current = true;
+					following.current = false;
+				}}
 				onKeyDown={(event) => {
-					if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+					if (
+						["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)
+					) {
 						userScrolling.current = true;
 						following.current = false;
 					}

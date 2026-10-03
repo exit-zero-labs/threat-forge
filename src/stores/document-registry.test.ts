@@ -954,6 +954,52 @@ describe("canvas viewport on document switch", () => {
 });
 
 describe("AI session references on document switch", () => {
+	it("preserves saved chat history after Save As with the AI panel unmounted", () => {
+		localStorage.clear();
+		const registry = useDocumentRegistry.getState();
+		const a = registry.createDocument({
+			model: createTestModel("A"),
+			filePath: "/old.thf",
+			pendingLayout: null,
+		});
+		const first = useChatStore.getState().activeSessionId;
+		if (!first) throw new Error("A chat must exist");
+		useChatStore
+			.getState()
+			.recordTurn(
+				first,
+				[{ role: "user", content: [{ type: "text", text: "A's saved history" }] }],
+				true,
+			);
+		const b = registry.createDocument({
+			model: createTestModel("B"),
+			filePath: "/b.thf",
+			pendingLayout: null,
+		});
+		const second = useChatStore.getState().activeSessionId;
+		if (!second) throw new Error("A chat must exist");
+		useChatStore
+			.getState()
+			.recordTurn(
+				second,
+				[{ role: "user", content: [{ type: "text", text: "B's separate history" }] }],
+				true,
+			);
+		registry.activateDocument(a);
+		useModelStore.setState({ filePath: "/new.thf" });
+		registry.closeDocument(a);
+		expect(useDocumentRegistry.getState().activeDocumentId).toBe(b);
+		expect(JSON.stringify(useChatStore.getState().messages)).toContain("B's separate history");
+		registry.createDocument({
+			model: createTestModel("A"),
+			filePath: "/new.thf",
+			pendingLayout: null,
+		});
+		expect(JSON.stringify(useChatStore.getState().messages)).toContain("A's saved history");
+		expect(JSON.stringify(useChatStore.getState().messages)).not.toContain("B's separate history");
+		expect(localStorage.getItem("threatforge-chat-sessions:/old.thf")).toBeNull();
+	});
+
 	it("reselecting the active document leaves its current chat selected", () => {
 		const registry = useDocumentRegistry.getState();
 		const a = registry.createDocument({

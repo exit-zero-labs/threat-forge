@@ -13,16 +13,16 @@ import { createDocument, switchToTab } from "./support/interactions";
 const longAnswer = `## Protect the cache\n\n${"Validate user and tenant access before reading cached data. Keep credentials out of logs.\n\n".repeat(18)}\n\`\`\`\nconst cacheKey = "${"namespace:".repeat(35)}";\n\`\`\`\n\n| Component | Threat | Mitigation |\n| --- | --- | --- |\n| Cache | Unauthorized read | Validate tenant and user permissions |`;
 
 test.describe("Chat interactions", () => {
-	test.use({ viewport: { width: 1280, height: 800 } });
+	test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true });
 
 	test("reading history stays put as a live response arrives", async ({ page }, testInfo) => {
 		let requests = 0;
-		let release: (() => void) | undefined;
+		const releases: Array<() => void> = [];
 		await page.route("https://api.anthropic.com/v1/messages", async (route) => {
 			requests++;
 			if (requests > 1)
 				await new Promise<void>((resolve) => {
-					release = resolve;
+					releases.push(resolve);
 				});
 			await route.fulfill({
 				status: 200,
@@ -35,13 +35,13 @@ test.describe("Chat interactions", () => {
 		await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
 		await send(page, "Continue with the next risks");
 		await expect(page.getByRole("button", { name: "Stop response" })).toBeVisible();
-		await expect.poll(() => Boolean(release)).toBe(true);
+		await expect.poll(() => releases.length).toBe(1);
 		const scroller = page.getByTestId("chat-messages");
 		await scroller.hover();
 		await page.mouse.wheel(0, -400);
 		await expect(page.getByRole("button", { name: "Jump to latest" })).toBeVisible();
 		const readingTop = await scroller.evaluate((el) => el.scrollTop);
-		release?.();
+		releases[0]?.();
 		await expect(scroller).toContainText("The latest cache review is ready.");
 		await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
 		expect(await scroller.evaluate((el) => el.scrollTop)).toBe(readingTop);
@@ -53,6 +53,33 @@ test.describe("Chat interactions", () => {
 			.poll(() => scroller.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight))
 			.toBeLessThanOrEqual(1);
 		await expect(page.getByRole("button", { name: "Jump to latest" })).toBeHidden();
+
+		await send(page, "Continue the touch scroll review");
+		await expect.poll(() => releases.length).toBe(2);
+		const box = await scroller.boundingBox();
+		if (!box) throw new Error("The conversation must have layout");
+		const cdp = await page.context().newCDPSession(page);
+		const point = { x: box.x + box.width / 2, y: box.y + box.height / 3 };
+		const touchScrollEnded = scroller.evaluate(
+			(el) =>
+				new Promise<number>((resolve) => {
+					el.addEventListener("scrollend", () => resolve(el.scrollTop), { once: true });
+				}),
+		);
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+		for (let step = 1; step <= 8; step++) {
+			await cdp.send("Input.dispatchTouchEvent", {
+				type: "touchMove",
+				touchPoints: [{ ...point, y: point.y + step * 25 }],
+			});
+		}
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		const touchReadingTop = await touchScrollEnded;
+		await cdp.detach();
+		await expect(page.getByRole("button", { name: "Jump to latest" })).toBeVisible();
+		releases[1]?.();
+		await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+		expect(await scroller.evaluate((el) => el.scrollTop)).toBe(touchReadingTop);
 	});
 
 	test("many chats support keyboard search rename deletion and separate drafts", async ({
@@ -82,12 +109,15 @@ test.describe("Chat interactions", () => {
 		await page.getByRole("textbox", { name: "Chat name" }).press("Enter");
 		await page.getByRole("textbox", { name: "Search chats" }).fill("permission");
 		await page.getByRole("button", { name: "Delete chat: Cache permission review" }).click();
-		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+		await page.keyboard.press("Escape");
+		await expect(page.getByRole("textbox", { name: "Search chats" })).toBeFocused();
 		await expect(
 			page.getByRole("button", { name: "Open chat: Cache permission review" }),
 		).toBeVisible();
 		await page.getByRole("button", { name: "Delete chat: Cache permission review" }).click();
 		await page.getByRole("button", { name: "Delete chat", exact: true }).click();
+		await expect(page.getByRole("textbox", { name: "Search chats" })).toBeFocused();
 		await expect(
 			page.getByRole("button", { name: "Open chat: Cache permission review" }),
 		).toBeHidden();

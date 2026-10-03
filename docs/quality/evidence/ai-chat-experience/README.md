@@ -14,7 +14,7 @@ reading history, empty states, narrow Markdown, and errors in light/dark themes.
 Run `npm run test:e2e:agent -- ai-chat-experience --headless` to reproduce the nine browser
 checks and path-backed screenshot attachments. It covers 100 exchanges, 24 separate chats,
 follow-up request context, document/panel switching, pending approval cancellation,
-reader-controlled scrolling, multiline drafts, keyboard navigation, and existing scroll
+reader-controlled wheel and touch scrolling, multiline drafts, keyboard navigation, and existing scroll
 containment. Narrow panels are 260px; the default panel is 320px. Theme tests also resize
 to 500px through the real drag handle. The native tool scenario separately covers Apply,
 Deny, Stop, and Undo.
@@ -36,8 +36,14 @@ Runtime sessions retain protocol blocks, drafts, and the latest terminal runner.
 text-only localStorage projection is retained; reload does not restore tool ledgers or drafts.
 Durable protocol history is #63; whole-change proposal review is #333.
 
-Local verification includes the full 2,254-test frontend suite, subsequent targeted checks
-for the final document/session changes, Biome, TypeScript/web build, and E2E types. The
+Review corrections cover Save As with the AI panel unmounted, deletion-confirmation focus,
+touch scrolling from message descendants, inactive document-cache retention, and retained
+Undo ownership after another chat replaces an equal-baseline history entry. Four behavioral
+regressions failed before their fixes; the affected six-file check passes 89 tests. The cache
+correction releases the restored entry instead of retaining a second, stale session array.
+
+Local verification includes the full 2,259-test frontend suite on the final source,
+the targeted checks above, Biome, TypeScript/web build, and E2E types. The
 required `npm run ci:local` was attempted but cannot pass the Cargo metadata step because
 this environment has no `cargo`. Rust/desktop checks are left to GitHub CI; no local native
 shell validation is claimed.

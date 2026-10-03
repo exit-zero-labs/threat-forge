@@ -19,6 +19,7 @@ export function ChatSessionPicker() {
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const nameRef = useRef<HTMLInputElement>(null);
+	const cancelDeleteRef = useRef<HTMLButtonElement>(null);
 	const active = sessions.find((s) => s.id === activeId);
 	const filtered = [...sessions]
 		.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -31,9 +32,13 @@ export function ChatSessionPicker() {
 		triggerRef.current?.focus();
 	}
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: deleting the selected chat must return focus to the open picker
+	useEffect(() => {
+		if (open) searchRef.current?.focus();
+	}, [open, activeId]);
+
 	useEffect(() => {
 		if (!open) return;
-		searchRef.current?.focus();
 		function outside(event: MouseEvent) {
 			if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
 		}
@@ -47,6 +52,10 @@ export function ChatSessionPicker() {
 			nameRef.current?.select();
 		}
 	}, [editing]);
+
+	useEffect(() => {
+		if (deleting) cancelDeleteRef.current?.focus();
+	}, [deleting]);
 
 	return (
 		<div ref={rootRef} className="relative flex min-w-0 shrink-0 items-center gap-2">
@@ -188,6 +197,7 @@ export function ChatSessionPicker() {
 										<p className="mt-1 text-muted-foreground">This removes this chat’s history.</p>
 										<div className="mt-3 flex justify-end gap-2">
 											<button
+												ref={cancelDeleteRef}
 												type="button"
 												onClick={() => {
 													setDeleting(null);

@@ -464,8 +464,7 @@ describe("AiChatTab conversation isolation", () => {
 		});
 		expect(screen.getByText("Doc A analysis")).toBeInTheDocument();
 
-		// Switching documents clears the turn through the panel's activeDocumentId
-		// effect — document-registry.ts is unchanged.
+		// The registry binds the incoming document; the turn store restores only its chat.
 		await act(async () => {
 			registry.activateDocument(b);
 			await flush();
@@ -653,6 +652,30 @@ describe("AiChatTab key storage faults", () => {
 });
 
 describe("chat picker accessibility", () => {
+	it("keeps keyboard focus through delete confirmation, cancellation, and deletion", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry.getState().createDocument({
+			model: makeModel("A"),
+			filePath: null,
+			pendingLayout: null,
+		});
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Choose chat" }));
+		const deleteButton = screen.getByRole("button", { name: "Delete chat: New Chat" });
+		deleteButton.focus();
+		fireEvent.click(deleteButton);
+		expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+		fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+		expect(screen.queryByRole("button", { name: "Delete chat" })).not.toBeInTheDocument();
+		expect(screen.getByRole("textbox", { name: "Search chats" })).toHaveFocus();
+		fireEvent.click(screen.getByRole("button", { name: "Delete chat: New Chat" }));
+		fireEvent.click(screen.getByRole("button", { name: "Delete chat" }));
+		expect(screen.getByRole("textbox", { name: "Search chats" })).toHaveFocus();
+		expect(screen.getByRole("button", { name: "Open chat: New Chat" })).toBeInTheDocument();
+	});
+
 	it("opens a single chat, supports Escape dismissal, and returns focus", async () => {
 		keychain.hasKey = true;
 		useDocumentRegistry
