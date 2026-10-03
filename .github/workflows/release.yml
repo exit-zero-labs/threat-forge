@@ -170,6 +170,11 @@ jobs:
       - run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
       - name: Build signed Windows installers
         run: npm run tauri -- build --config src-tauri/tauri.signing.conf.json -- --frozen
+      # Tauri restores the unsigned, unpatched main binary after creating each installer.
+      # Installer payloads are signed independently; sign the restored standalone bytes too.
+      - name: Sign restored standalone Windows application
+        shell: pwsh
+        run: ./scripts/sign-windows.ps1 -FilePath src-tauri/target/release/threat-forge.exe
       - name: Verify actual installed payloads and uninstaller
         shell: pwsh
         run: ./scripts/verify-windows-signing.ps1 -TargetRoot src-tauri/target/release -EvidenceDirectory "$env:RUNNER_TEMP/windows-signing-evidence"

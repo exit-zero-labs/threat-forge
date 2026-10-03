@@ -106,3 +106,21 @@ test("third-party release actions use immutable commit pins and signing jobs nev
 			/actions\/cache@|AZURE_CLIENT_SECRET/,
 		);
 });
+
+test("Windows signs Tauri's restored standalone application after bundling and before verification", () => {
+	const steps = workflow.jobs.windows.steps;
+	const build = steps.findIndex((step) => step.run?.includes("tauri -- build"));
+	const standaloneSign = steps.findIndex((step) =>
+		step.run?.includes("sign-windows.ps1 -FilePath src-tauri/target/release/threat-forge.exe"),
+	);
+	const verify = steps.findIndex((step) => step.run?.includes("verify-windows-signing.ps1"));
+	assert.ok(build >= 0);
+	assert.ok(
+		standaloneSign > build,
+		"Bundling restores unsigned main bytes; signing must follow it",
+	);
+	assert.ok(verify > standaloneSign, "Verification must inspect the restored and re-signed main");
+	assert.equal(steps[standaloneSign].shell, "pwsh");
+	assert.equal(steps[standaloneSign].continueOnError, undefined);
+	assert.equal(steps[standaloneSign]["continue-on-error"], undefined);
+});
