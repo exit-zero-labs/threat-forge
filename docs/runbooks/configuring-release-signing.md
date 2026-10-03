@@ -40,7 +40,19 @@ Signing is complete only when all of the following are true:
 - Provider credential rotation, failed notarization, compromised-key response, and release
   rollback procedures have been exercised or reviewed by an owner.
 
-## Repository configuration reviewed on 2026-07-21
+## Signing verification snapshot — 2026-10-03
+
+Provider setup is verified: the Azure Public Trust profile is active, the CI application has signer access at certificate-profile scope, and its Production OIDC federation is configured. A new Apple Developer ID identity signs successfully; protected Production stores the certificate and notarization key. Certificate-password secret submission still requires owner completion. Secret names alone are not credential validation.
+
+Both local Apple Silicon and Intel app/DMG builds passed signature, hardened runtime, timestamp, Gatekeeper and stapled-ticket checks. Intel required signing the Cargo helper before bundling. Both DMGs were separately notarized and stapled. These proofs establish local Apple signing, not protected CI signing or clean-machine owner validation. Windows artifacts remain unverified. Existing public v0.3.0 assets retain their recorded unsigned waiver.
+
+The implementation separates Windows OIDC, macOS temporary-keychain signing and draft publication. `scripts/sign-macos.sh` builds without bundling, signs the nested helper, bundles/notarizes the app, then notarizes and staples the final DMG. `scripts/verify-macos-signing.sh` verifies mounted DMG and extracted app-archive contents. Windows uses the structured custom command, `scripts/windows-signing-tools.ps1`, and installed-payload checks in `scripts/verify-windows-signing.ps1`. The current client is integrity-pinned to Microsoft.ArtifactSigning.Client 1.0.128 using the [immutable NuGet catalog SHA-512](https://api.nuget.org/v3/catalog0/data/2026.03.30.23.02.55/microsoft.artifactsigning.client.1.0.128.json).
+
+A separately authorized tag `v<app-version>-signing.<number>` containing the workflow changes triggers a nonpublishing rehearsal, including signing regardless of WINDOWS_SIGNING. It uploads Actions artifacts and never creates a GitHub release. This reserved tag route works before merge; GitHub manual dispatch additionally requires the workflow on the default branch. Branch dispatch cannot pass Production's tag-only rules and an existing tag cannot run new workflow content. Commit, push/tag and protected deployment approval require their respective owner authority. Ordinary push releases fail while WINDOWS_SIGNING is unset; enable the switch only after downloaded Windows verification. Publication receives only final containers whose downloaded hashes match source-bound manifests. Signing keys, keychains and DLLs are excluded from artifact globs and signing jobs do not cache target outputs. Preserve required reviewers and prevent-self-review.
+
+Before public release, obtain clean-machine install/launch validation, complete the protected rehearsal and resolve independent review findings. Do not retire legacy Azure credentials or old Apple keys until the replacement path is proven and retirement is explicitly authorized. On Apple failure the temporary keychain and credentials are removed and the prior keychain configuration is restored; rejected DMG submissions retain the nonsecret notarization log. Credential recovery requires the owner-managed encrypted backup, not CI caches.
+
+## Historical repository baseline — 2026-07-21
 
 This baseline covers repository and GitHub configuration only. It does not verify live Apple or
 Azure resources.

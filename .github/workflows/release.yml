@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -15,12 +16,24 @@ permissions:
 jobs:
   validate:
     name: Validate
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     env:
       CARGO_HOME: ${{ github.workspace }}/.cargo-home
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
+      - name: Validate release or nonpublishing rehearsal tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node - <<'NODE'
+          const version = require('./src-tauri/tauri.conf.json').version;
+          const tag = process.env.RELEASE_TAG;
+          const prefix = `v${version}-signing.`;
+          if (tag !== `v${version}` && !(tag.startsWith(prefix) && /^[0-9]+$/.test(tag.slice(prefix.length)))) {
+            throw new Error('Tag must match the app version or its reserved signing rehearsal suffix');
+          }
+          NODE
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".node-version"
@@ -81,123 +94,199 @@ jobs:
       - name: Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --frozen
 
-  release:
-    name: Release (${{ matrix.settings.platform }})
+  linux:
+    name: Release (ubuntu-latest)
     needs: [validate]
-    permissions:
-      contents: write
-    environment:
-      name: Production
-      url: https://github.com/exit-zero-labs/threat-forge/releases/tag/${{ github.ref_name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        settings:
-          - platform: ubuntu-latest
-            args: ""
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
-          - platform: windows-latest
-            args: ""
-    runs-on: ${{ matrix.settings.platform }}
-    env:
-      CARGO_HOME: ${{ github.workspace }}/.cargo-home
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: ".node-version"
-          cache: "npm"
-
-      - name: Verify package registry and integrity
-        run: node scripts/check-lockfile-registry.mjs
-
-      - run: npm ci
-
+          cache: npm
+      - run: node scripts/check-lockfile-registry.mjs && npm ci
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
         with:
           toolchain: stable
-          targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ${{ env.CARGO_HOME }}/registry
-            ${{ env.CARGO_HOME }}/git
-            src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Verify Tauri JavaScript and Rust versions align
-        run: node scripts/check-tauri-version-alignment.mjs
-
-      - name: Fetch locked Rust dependencies
-        run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
-
       - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libdbus-1-dev \
-            libssl-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev libssl-dev
+      - run: node scripts/check-tauri-version-alignment.mjs
+      - run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+      - run: npm run tauri -- build -- --frozen
+      - name: Collect final Linux containers
+        run: node scripts/release-artifacts.mjs collect linux src-tauri/target/release/bundle "$RUNNER_TEMP/release-linux"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-linux
+          path: ${{ runner.temp }}/release-linux
+          if-no-files-found: error
 
-      # Windows code signing is off until #50 lands. `WINDOWS_SIGNING` is the switch: set the
-      # repository variable to `true` only once a release run has produced an installer whose
-      # signature actually verifies. Until then this step and the `--config` flag below stay
-      # inert, and Windows ships unsigned rather than failing the release. The v0.3.0 attempt
-      # died here with `failed to bundle project: failed to run powershell` — see #50 for the
-      # three defects that diagnosis turned up.
-      - name: Install Azure Trusted Signing dlib
-        if: runner.os == 'Windows' && vars.WINDOWS_SIGNING == 'true'
+  windows:
+    name: Release (windows-latest)
+    needs: [validate]
+    runs-on: windows-latest
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENDPOINT: ${{ vars.AZURE_ENDPOINT }}
+      AZURE_CODE_SIGNING_ACCOUNT_NAME: ${{ vars.AZURE_CODE_SIGNING_ACCOUNT_NAME }}
+      AZURE_CERTIFICATE_PROFILE_NAME: ${{ vars.AZURE_CERTIFICATE_PROFILE_NAME }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require verified rollout for release pushes
+        if: github.event_name == 'push' && !contains(github.ref_name, '-signing.') && vars.WINDOWS_SIGNING != 'true'
+        shell: pwsh
+        run: throw 'Complete a protected manual signing rehearsal before enabling WINDOWS_SIGNING.'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+          cache: npm
+      - run: node scripts/check-lockfile-registry.mjs
+      - run: npm ci
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
+        with:
+          toolchain: stable
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 8.0.x
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Prepare pinned signing tools for Azure CLI OIDC
+        shell: pwsh
+        run: ./scripts/prepare-windows-signing.ps1
+      - name: Signer rejection checks
+        shell: pwsh
+        run: ./scripts/signing-windows.test.ps1
+      - run: node scripts/check-tauri-version-alignment.mjs
+      - run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+      - name: Build signed Windows installers
+        run: npm run tauri -- build --config src-tauri/tauri.signing.conf.json -- --frozen
+      - name: Verify actual installed payloads and uninstaller
+        shell: pwsh
+        run: ./scripts/verify-windows-signing.ps1 -TargetRoot src-tauri/target/release -EvidenceDirectory "$env:RUNNER_TEMP/windows-signing-evidence"
+      - name: Collect verified final Windows containers
+        shell: pwsh
+        run: node scripts/release-artifacts.mjs collect windows src-tauri/target/release/bundle "$env:RUNNER_TEMP/release-windows"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-windows
+          path: ${{ runner.temp }}/release-windows
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: signing-evidence-windows
+          path: ${{ runner.temp }}/windows-signing-evidence
+          if-no-files-found: error
+      - name: Remove signing tools and Azure session
+        if: always()
         shell: pwsh
         run: |
-          $packageUri = "https://api.nuget.org/v3-flatcontainer/microsoft.trusted.signing.client/1.0.60/microsoft.trusted.signing.client.1.0.60.nupkg"
-          $packagePath = Join-Path "${{ runner.temp }}" "Microsoft.Trusted.Signing.Client.1.0.60.zip"
-          $extractPath = Join-Path "${{ runner.temp }}" "TrustedSigning"
-          # SHA-512 published by the immutable NuGet catalog entry for version 1.0.60.
-          $expectedSha512 = "EF6928E067158772540D3222A25734E8F944576CBE48272495D94CE8129B14A0B27FFA7378C0DABA94EEF1F5DC20D04DA30EC1AF3FB63F73ED5FB7212BEA57C4"
+          $ErrorActionPreference = 'Stop'
+          az logout
+          if ($LASTEXITCODE -ne 0) { throw 'Azure logout failed.' }
+          $work = Join-Path $env:RUNNER_TEMP 'artifact-signing'
+          if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 
-          Invoke-WebRequest -Uri $packageUri -OutFile $packagePath
-          $actualSha512 = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA512).Hash
-          if ($actualSha512 -ne $expectedSha512) {
-            throw "Microsoft.Trusted.Signing.Client package hash mismatch"
-          }
-
-          Expand-Archive -LiteralPath $packagePath -DestinationPath $extractPath
-          $dlib = Join-Path $extractPath "bin\x64\Azure.CodeSigning.Dlib.dll"
-          if (-not (Test-Path -LiteralPath $dlib -PathType Leaf)) {
-            throw "Azure.CodeSigning.Dlib.dll missing from verified package"
-          }
-          echo "DLIB_PATH=$dlib" >> $env:GITHUB_ENV
-
-      - uses: tauri-apps/tauri-action@73fb865345c54760d875b94642314f8c0c894afa # action-v0.6.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Azure Trusted Signing (Windows)
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          # macOS code signing — tauri-action skips signing when these are empty.
-          # To enable: add Apple Developer secrets in GitHub repo settings.
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+  macos:
+    name: Release (macos-latest, ${{ matrix.target }})
+    needs: [validate]
+    runs-on: macos-latest
+    environment: Production
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          tagName: v__VERSION__
-          releaseName: "ThreatForge v__VERSION__"
-          releaseBody: "See the assets to download this version and install ThreatForge."
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.settings.args }} ${{ (runner.os == 'Windows' && vars.WINDOWS_SIGNING == 'true') && '--config src-tauri/tauri.signing.conf.json' || '' }} -- --frozen
+          node-version-file: ".node-version"
+          cache: npm
+      - run: node scripts/check-lockfile-registry.mjs && npm ci
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master 2026-02-13
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - run: node scripts/check-tauri-version-alignment.mjs
+      - run: cargo fetch --manifest-path src-tauri/Cargo.toml --locked
+      - name: Sign and notarize nested app and final DMG
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ vars.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ vars.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: Q4N97LZS6U
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/sign-macos.sh "$TARGET"
+      - name: Collect verified final macOS containers
+        env:
+          TARGET: ${{ matrix.target }}
+        run: node scripts/release-artifacts.mjs collect "$TARGET" "src-tauri/target/$TARGET/release/bundle" "$RUNNER_TEMP/release-$TARGET"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ runner.temp }}/release-${{ matrix.target }}
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: signing-evidence-${{ matrix.target }}
+          path: ${{ runner.temp }}/macos-signing-evidence-${{ matrix.target }}
+          if-no-files-found: error
+
+  publish-draft:
+    name: Upload verified draft release
+    if: github.event_name == 'push' && !contains(github.ref_name, '-signing.')
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    environment: Production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".node-version"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*
+          path: downloaded
+      - name: Verify downloaded bytes and create a new draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          [[ "$RELEASE_TAG" == "v$version" ]] || { echo 'Tag and configured version disagree'; exit 1; }
+          assets=()
+          for platform in linux windows aarch64-apple-darwin x86_64-apple-darwin; do
+            node scripts/release-artifacts.mjs verify "$platform" "downloaded/release-$platform" > "$RUNNER_TEMP/assets-$platform"
+            while IFS= read -r path; do assets+=("$path"); done < "$RUNNER_TEMP/assets-$platform"
+          done
+          # Existing releases and assets must not be replaced by a rerun.
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "ThreatForge v$version" --notes 'Signed platform artifacts; owner validation is required before publication.' "${assets[@]}"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: signing-evidence-*
+          path: signing-evidence
+      - name: Retain verification evidence with the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/signing-evidence.tar.gz" signing-evidence downloaded/release-*/manifest.json
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/signing-evidence.tar.gz"

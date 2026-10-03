@@ -53,7 +53,8 @@ These are proposed executable decomposition Tasks, not filed issues. Every imple
 
 - **Behavior:** CI runner credentials and downloaded artifacts reproduce local signing proof.
 - **Files:** signing rehearsal workflow and runbook evidence references.
-- **Implementation:** workflow_dispatch builds from a separately authorized new v* tag whose commit includes these changes, uses Production, and uploads only GitHub Actions artifacts/evidence with contents read. Existing branch dispatch cannot pass Production's tag-only rules; existing tag workflows cannot include new code. Preserve required reviewers/prevent-self-review and require another owner approval. Do not create or publish a GitHub release. Download both architecture artifacts and verify final hashes/native checks again; owner performs clean compatible-Mac launch/save/reopen .thf and helper validation. Release publication remains separate.
+- **Superseded implementation route (see the 2026-10-03 replan):** workflow_dispatch builds from a separately authorized new v* tag whose commit includes these changes, uses Production, and uploads only GitHub Actions artifacts/evidence with contents read. Existing branch dispatch cannot pass Production's tag-only rules; existing tag workflows cannot include new code. Preserve required reviewers/prevent-self-review and require another owner approval. Do not create or publish a GitHub release. Download both architecture artifacts and verify final hashes/native checks again; owner performs clean compatible-Mac launch/save/reopen .thf and helper validation. Release publication remains separate.
+- **Current implementation route:** push a separately authorized `v<app-version>-signing.<number>` tag containing the workflow; preserve Production approval and verify `publish-draft` is skipped. Manual dispatch is available only after the workflow reaches the default branch.
 - **Targeted verification:** arm64 and x86_64 protected CI runs each show Developer ID authority, expected Team ID, hardened runtime, secure timestamp, Accepted submissions and valid app/DMG tickets. Downloaded byte digests match final CI evidence. Record clean-machine validation separately from CI.
 - **Intent validation:** Apple Silicon and Intel-compatible Macs accept downloaded apps without override; signing issue remains In progress until owner validation/merge/local-main validation.
 
@@ -85,6 +86,7 @@ Inspect plausible-but-wrong outcomes: ARM succeeds only because cache contained 
 | Date | Change | Evidence and reason |
 |------|--------|---------------------|
 | 2026-10-03 | Initial independent plan with clean helper ordering and DMG ticket gates | Live issue #51/#44, source 53ffc0b, orchestrator clean Intel failure and local ARM proof |
+| 2026-10-03 | Reserved signing tag enables protected pre-merge rehearsal | GitHub manual dispatch requires default-branch workflow availability. An authorized `v<app-version>-signing.<number>` tag push runs the tagged code without creating a release or weakening Production protections. |
 | 2026-10-03 | Intel DMG verification completed after initial writing | Orchestrator reports submission `58a1b417-8c75-48fb-85f4-9bd0523a2341` Accepted, stapling and validation successful, final signature valid, and `spctl --assess --type open --context context:primary-signature` Accepted with source Notarized Developer ID. Both architecture app/DMG pairs now pass local native verification; protected CI and clean-machine owner validation remain outstanding. |
 
 ## Primary references

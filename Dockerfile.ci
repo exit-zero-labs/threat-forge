@@ -15,6 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 1. System dependencies for Tauri + WebKit
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    file \
     curl \
     ca-certificates \
     gnupg \

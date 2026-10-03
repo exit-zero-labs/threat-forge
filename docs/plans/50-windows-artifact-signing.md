@@ -70,7 +70,9 @@ These are bounded executable decomposition proposals, not filed issues. Each imp
 
 Run focused signer/verifier failure tests and workflow validation first, then `npm run ci:local`, `npm run ci:docker`, `npm run ci:docker:build`. Docker checks cannot prove Windows Authenticode or OIDC. Require the real protected Windows rehearsal and downloaded-artifact verification described above.
 
-A workflow_dispatch rehearsal must use a separately approved v* tag whose commit contains the rehearsal workflow; existing tags cannot execute newly added workflow content. Production admits no branches. Do not weaken that restriction or reuse an existing release version/tag. The rehearsal builds and uploads GitHub Actions artifacts only; it creates no GitHub release and has contents read. Commit, branch push, new tag push, run dispatch and environment approval are separate authorization gates. An approved publisher path can later upload verified bytes to an authorized draft release.
+Superseded rehearsal route (see the 2026-10-03 replan): a workflow_dispatch rehearsal must use a separately approved v* tag whose commit contains the rehearsal workflow; existing tags cannot execute newly added workflow content. Production admits no branches. Do not weaken that restriction or reuse an existing release version/tag. The rehearsal builds and uploads GitHub Actions artifacts only; it creates no GitHub release and has contents read. Commit, branch push, new tag push, run dispatch and environment approval are separate authorization gates. An approved publisher path can later upload verified bytes to an authorized draft release.
+
+Current rehearsal route: push a separately authorized `v<app-version>-signing.<number>` tag containing the workflow. Verify that Production approval gates signing, Windows signing remains mandatory, all platform artifacts pass verification, and `publish-draft` is skipped. Manual dispatch is available only after the workflow reaches the default branch.
 
 ## Owner validation
 
@@ -87,6 +89,7 @@ Check plausible failures: signed installer embedding unsigned main/helper/uninst
 | Date | Change | Evidence and reason |
 |------|--------|---------------------|
 | 2026-10-03 | Initial independent plan | Live issues #50/#44, source at 53ffc0b, provisioning evidence supplied by orchestrator and official references |
+| 2026-10-03 | Reserved signing tag enables nonpublishing rehearsal before merge | GitHub manual dispatch requires the workflow on the default branch. Use an authorized `v<app-version>-signing.<number>` tag push, preserve Production approval and skip draft publication; ordinary release tags retain the activation gate. |
 
 ## Primary references
 
