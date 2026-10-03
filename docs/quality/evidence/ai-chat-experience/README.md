@@ -45,7 +45,7 @@ Undo ownership after another chat replaces an equal-baseline history entry. Four
 regressions failed before their fixes; the affected six-file check passes 89 tests. The cache
 correction releases the restored entry instead of retaining a second, stale session array.
 
-Local verification includes the full 2,272-test frontend suite on the final source,
+Local verification includes the full 2,274-test frontend suite on the final source,
 the targeted checks above, Biome, TypeScript/web build, and E2E types. The
 required `npm run ci:local` was attempted but cannot pass the Cargo metadata step because
 this environment has no `cargo`. Rust/desktop checks are left to GitHub CI; no local native
@@ -59,3 +59,7 @@ the four-file selector now passes 86 tests. The extended browser scenario passes
 the native tool scenario passes four. Before images remain the original baseline, while all
 thirteen after images were recaptured on the revised source. The pre-existing provider
 call-ID reuse defect is tracked separately in #337.
+
+A further review caught manifest-only inactive tabs after normal lazy browser restore.
+The real IndexedDB/boot-restore regression failed before its correction; both it and
+a hydrated-path precedence case now pass in the five-file, 105-test selector.

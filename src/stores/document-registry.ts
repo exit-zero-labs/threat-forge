@@ -6,6 +6,7 @@ import { registerChatStorageOwner } from "./ai-turn-bridge";
 import { useCanvasInstanceStore } from "./canvas-instance-store";
 import { getChatStorageKey, useChatStore } from "./chat-store";
 import { createDocumentStores, type DocumentStores, setActiveStores } from "./document-stores";
+import { useWorkspaceStore } from "./workspace-store";
 
 const chatPathSubscriptions = new WeakMap<DocumentStores, () => void>();
 
@@ -395,10 +396,21 @@ export function useDocumentStores(id: DocumentId): DocumentStores | null {
 	return useDocumentRegistry((state) => state.documents[id]?.stores ?? null);
 }
 
-registerChatStorageOwner((key, exceptDocumentId) =>
-	Object.values(useDocumentRegistry.getState().documents).some(
-		(document) =>
-			document.id !== exceptDocumentId &&
-			getChatStorageKey(document.stores.model.getState().filePath, document.id) === key,
-	),
-);
+registerChatStorageOwner((key, exceptDocumentId) => {
+	const { documents } = useDocumentRegistry.getState();
+	return (
+		Object.values(documents).some(
+			(document) =>
+				document.id !== exceptDocumentId &&
+				getChatStorageKey(document.stores.model.getState().filePath, document.id) === key,
+		) ||
+		useWorkspaceStore.getState().documents.some(
+			// Browser restore keeps inactive tabs as descriptors. A hydrated tab's
+			// live path wins over its manifest entry, which may lag behind Save As.
+			(entry) =>
+				entry.id !== exceptDocumentId &&
+				!documents[entry.id] &&
+				getChatStorageKey(entry.filePath, entry.id) === key,
+		)
+	);
+});
