@@ -153,8 +153,8 @@ undoing writes, and a failing tool commits nothing because it returned nothing.
 
 `undoTurn` reverts the whole turn in one step, and `turnUndoAvailability` reports
 `undoable` only while the turn's snapshot is still the top of the history stack
-(a deep-equality check defeats the 20-entry trim aliasing an old index to a newer
-entry). See ADR-011.
+(history-entry identity prevents the 20-entry trim or an equal-baseline replacement
+from aliasing another turn's snapshot). See ADR-011.
 
 ## The `#64` boundary
 
