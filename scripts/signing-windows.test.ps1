@@ -99,3 +99,6 @@ try {
     ${env:ProgramFiles(x86)} = $oldSdk
     Remove-Item -LiteralPath $root -Recurse -Force
 }
+
+# Expected child-process failures must not become the successful harness's exit code.
+exit 0
