@@ -37,13 +37,17 @@ import {
 	buildAnthropicRequestBody,
 	createAnthropicStreamMapper,
 } from "@/lib/ai/providers/anthropic";
-import { buildOpenAiRequestBody, createOpenAiStreamMapper } from "@/lib/ai/providers/openai";
+import {
+	buildOpenAiRequestBody,
+	createOpenAiStreamMapper,
+	stripOpenAiReasoning,
+} from "@/lib/ai/providers/openai";
 import type { SseFrame } from "@/lib/ai/providers/sse";
 import { resolveCapabilities } from "@/lib/ai-models";
 import { budgetMessages } from "./budget";
 import { type ProtocolError, ProtocolException } from "./errors";
 import type { ErrorEvent, StreamEvent } from "./events";
-import type { AiProvider, ProtocolMessage } from "./messages";
+import { type AiProvider, assertToolPairing, type ProtocolMessage } from "./messages";
 import { type ProviderChatRequest, preflightRequest } from "./request";
 import type { AdvertisedTool } from "./tools";
 
@@ -55,6 +59,9 @@ import type { AdvertisedTool } from "./tools";
  * makes the turn require native tool calling, which preflight enforces.
  */
 export interface ConversationRequest {
+	/** Frozen runner identity and start index protect the current tool turn from truncation. */
+	turnId?: string;
+	turnStartIndex?: number;
 	provider: AiProvider;
 	/** Model id from settings, which may be stale; preflight decides what that means. */
 	modelId: string;
@@ -155,6 +162,58 @@ function buildProviderStream(
 	};
 }
 
+/** Bind replay data to exactly the system, tools and serialized history which produced it. */
+async function prefixDigest(provider: AiProvider, request: ProviderChatRequest): Promise<string> {
+	const body = buildProviderStream(provider, request).streamRequest.body;
+	const prefix =
+		"input" in body
+			? { instructions: body.instructions, tools: body.tools ?? [], input: body.input }
+			: { system: body.system, tools: body.tools ?? [], messages: body.messages };
+	const bytes = new TextEncoder().encode(JSON.stringify(prefix));
+	const hash = await crypto.subtle.digest("SHA-256", bytes);
+	return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Stale prior-turn receipts are stripped from an outgoing projection, never from saved history. */
+async function prepareContinuations(
+	provider: AiProvider,
+	request: ProviderChatRequest,
+	turnId?: string,
+): Promise<ProtocolMessage[]> {
+	const messages: ProtocolMessage[] = [];
+	let lastUserText = -1;
+	request.messages.forEach((m, index) => {
+		if (m.role === "user" && m.content.some((b) => b.type === "text")) lastUserText = index;
+	});
+	for (const [index, message] of request.messages.entries()) {
+		const receipt = message.continuation;
+		if (!receipt) {
+			messages.push(message);
+			continue;
+		}
+		const active = turnId ? receipt.binding.turnId === turnId : index > lastUserText;
+		const matches =
+			receipt.output.provider === provider &&
+			receipt.binding.modelId === request.modelId &&
+			receipt.binding.prefixDigest === (await prefixDigest(provider, { ...request, messages }));
+		if (matches) {
+			messages.push(message);
+			continue;
+		}
+		if (active)
+			throw new ProtocolException({
+				code: "context_overflow",
+				message: "The current AI tool turn cannot continue with changed context. Start a new turn.",
+			});
+		messages.push(
+			provider === "openai" && receipt.output.provider === "openai"
+				? stripOpenAiReasoning(message)
+				: { role: message.role, content: message.content },
+		);
+	}
+	return messages;
+}
+
 /**
  * Run one AI conversation turn to a terminal event.
  *
@@ -196,6 +255,11 @@ export async function streamConversation(
 			modelId: request.modelId,
 			tools: request.tools,
 		});
+		if (assertToolPairing(request.messages).length)
+			throw new ProtocolException({
+				code: "malformed_stream",
+				message: "The AI tool history is incomplete or contains duplicate calls. Start a new chat.",
+			});
 	} catch (error) {
 		dispatch(errorEventFrom(error));
 		return;
@@ -216,6 +280,19 @@ export async function streamConversation(
 			return;
 		}
 		messages = budget.messages;
+		if (
+			request.turnStartIndex !== undefined &&
+			request.messages.slice(request.turnStartIndex).some((m) => !messages.includes(m))
+		) {
+			dispatch({
+				type: "error",
+				error: {
+					code: "context_overflow",
+					message: "The current AI tool turn exceeds the model's context window. Start a new turn.",
+				},
+			});
+			return;
+		}
 	}
 
 	const providerRequest: ProviderChatRequest = {
@@ -225,7 +302,25 @@ export async function streamConversation(
 		tools: request.tools,
 		maxOutputTokens: request.maxOutputTokens,
 	};
-	const { streamRequest, mapper } = buildProviderStream(request.provider, providerRequest);
+	let prepared: ReturnType<typeof buildProviderStream>;
+	let digest: string;
+	try {
+		providerRequest.messages = await prepareContinuations(
+			request.provider,
+			providerRequest,
+			request.turnId,
+		);
+		prepared = buildProviderStream(request.provider, providerRequest);
+		digest = await prefixDigest(request.provider, providerRequest);
+	} catch (error) {
+		dispatch(errorEventFrom(error));
+		return;
+	}
+	if (signal?.aborted) {
+		dispatch({ type: "aborted" });
+		return;
+	}
+	const { streamRequest, mapper } = prepared;
 
 	// Whether the mapper produced a terminal event before the stream closed. A
 	// normal `done` close after a `message_stop` (or after a provider error the
@@ -235,21 +330,28 @@ export async function streamConversation(
 
 	const callbacks: TransportCallbacks = {
 		onFrame: (frame) => {
+			if (signal?.aborted || sawTerminalEvent) return;
 			// Mappers are total (they report undecodable frames as `malformed_stream`
 			// events rather than throwing), so only the consumer dispatch below can
 			// throw, and only it is isolated.
 			for (const event of mapper.mapFrame(frame)) {
-				// A `malformed_stream` error is a non-terminal notice scoped to one bad
-				// frame (see `events.ts`); the turn continues, so it must not count as
-				// the terminal event. Only a `message_stop` or a terminal provider error
-				// ends the turn.
+				if (signal?.aborted) return;
+				// Corrupt executable output ends the turn; legacy non-terminal
+				// notices remain supported without producing a duplicate close error.
 				if (
 					event.type === "message_stop" ||
-					(event.type === "error" && event.error.code !== "malformed_stream")
+					(event.type === "error" && (event.terminal || event.error.code !== "malformed_stream"))
 				) {
 					sawTerminalEvent = true;
 				}
-				dispatch(event);
+				dispatch(
+					event.type === "continuation"
+						? {
+								...event,
+								binding: { modelId: request.modelId, prefixDigest: digest, turnId: request.turnId },
+							}
+						: event,
+				);
 			}
 		},
 		onHttpError: (error) => dispatch({ type: "error", error: httpErrorToProtocolError(error) }),

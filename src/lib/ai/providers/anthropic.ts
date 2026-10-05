@@ -3,19 +3,22 @@
  *
  * This module and `./openai.ts` are the only places Anthropic's wire shapes may
  * appear; everything downstream speaks the protocol types in
- * `src/lib/ai/protocol/`. Two logically identical responses from the two
- * providers must map to identical `StreamEvent` sequences — the cross-provider
- * equality test in `./openai.test.ts` is the proof.
+ * `src/lib/ai/protocol/`. Provider-neutral visible events stay equivalent; native continuation receipts
+ * retain provider-specific signed content.
  *
- * Tool results serialize as `tool_result` blocks inside a `user` message,
- * which is Anthropic's shape; OpenAI's `role: "tool"` divergence lives wholly
+ * Tool results serialize as `tool_result` blocks inside a `user` message;
+ * OpenAI function-call output items live wholly
  * in `./openai.ts`.
  */
 
 import { z } from "zod";
-import { type ProtocolError, redactProviderDetail } from "@/lib/ai/protocol/errors";
+import {
+	type ProtocolError,
+	ProtocolException,
+	redactProviderDetail,
+} from "@/lib/ai/protocol/errors";
 import type { StopReason, StreamEvent } from "@/lib/ai/protocol/events";
-import type { ContentBlock } from "@/lib/ai/protocol/messages";
+import { type ContentBlock, flattenText, type ProtocolMessage } from "@/lib/ai/protocol/messages";
 import type { ProviderChatRequest } from "@/lib/ai/protocol/request";
 import type { ToolInputJsonSchema } from "@/lib/ai/protocol/tools";
 import { finishPendingToolCall, malformedStreamError, type PendingToolCall } from "./mapper-events";
@@ -44,7 +47,58 @@ interface AnthropicToolResultBlock {
 	is_error?: boolean;
 }
 
-type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock | AnthropicToolResultBlock;
+type AnthropicAssistantBlock =
+	| AnthropicTextBlock
+	| AnthropicToolUseBlock
+	| { type: "thinking"; thinking: string; signature: string }
+	| { type: "redacted_thinking"; data: string };
+type AnthropicContentBlock = AnthropicAssistantBlock | AnthropicToolResultBlock;
+
+const assistantContentSchema = z.array(
+	z.discriminatedUnion("type", [
+		z.object({ type: z.literal("text"), text: z.string() }),
+		z.object({
+			type: z.literal("tool_use"),
+			id: z.string().min(1),
+			name: z.string().min(1),
+			input: z.unknown(),
+		}),
+		z.object({ type: z.literal("thinking"), thinking: z.string(), signature: z.string().min(1) }),
+		z.object({ type: z.literal("redacted_thinking"), data: z.string().min(1) }),
+	]),
+);
+
+function replayContent(message: ProtocolMessage): AnthropicAssistantBlock[] {
+	const receipt = message.continuation;
+	const parsed = assistantContentSchema.safeParse(receipt?.output.payload);
+	if (!parsed.success || receipt?.output.provider !== "anthropic" || message.role !== "assistant") {
+		throw new ProtocolException({
+			code: "malformed_stream",
+			message: "The AI continuation could not be validated. Start a new chat.",
+		});
+	}
+	const text = parsed.data
+		.filter((b) => b.type === "text")
+		.map((b) => b.text)
+		.join("");
+	const nativeCalls = parsed.data
+		.filter((b) => b.type === "tool_use")
+		.map((b) => ({ id: b.id, name: b.name, input: b.input }));
+	const calls = message.content
+		.filter((b) => b.type === "tool_call")
+		.map((b) => ({ id: b.id, name: b.name, input: b.input }));
+	if (
+		text !== flattenText(message) ||
+		JSON.stringify(nativeCalls.sort((a, b) => a.id.localeCompare(b.id))) !==
+			JSON.stringify(calls.sort((a, b) => a.id.localeCompare(b.id)))
+	) {
+		throw new ProtocolException({
+			code: "malformed_stream",
+			message: "The AI continuation does not match the reviewed response. Start a new chat.",
+		});
+	}
+	return parsed.data;
+}
 
 interface AnthropicRequestMessage {
 	role: "user" | "assistant";
@@ -103,7 +157,9 @@ export function buildAnthropicRequestBody(request: ProviderChatRequest): Anthrop
 		system: request.system,
 		messages: request.messages.map((message) => ({
 			role: message.role,
-			content: message.content.map(toAnthropicBlock),
+			content: message.continuation
+				? replayContent(message)
+				: message.content.map(toAnthropicBlock),
 		})),
 		stream: true,
 	};
@@ -144,8 +200,8 @@ export function buildAnthropicBrowserHeaders(apiKey: string): Record<string, str
 
 /**
  * Frame payload schemas. Deliberately lenient: only the fields this mapper
- * reads are declared, unknown keys are stripped, and unknown block or delta
- * types fall through to "ignore" — Anthropic documents that clients must
+ * reads are declared, unknown keys are stripped, and unknown progress delta
+ * types fall through to "ignore". Unknown executable blocks fail closed — Anthropic documents that clients must
  * tolerate event shapes added after a client was written.
  */
 const usageSchema = z.object({
@@ -167,6 +223,10 @@ const contentBlockStartSchema = z.object({
 		id: z.string().optional(),
 		name: z.string().optional(),
 		text: z.string().optional(),
+		thinking: z.string().optional(),
+		signature: z.string().optional(),
+		data: z.string().optional(),
+		input: z.unknown().optional(),
 	}),
 });
 
@@ -176,6 +236,8 @@ const contentBlockDeltaSchema = z.object({
 		type: z.string(),
 		text: z.string().optional(),
 		partial_json: z.string().optional(),
+		thinking: z.string().optional(),
+		signature: z.string().optional(),
 	}),
 });
 
@@ -238,20 +300,47 @@ export function createAnthropicStreamMapper(): AnthropicStreamMapper {
 	/** Input tokens arrive on `message_start`; the usage event fires later. */
 	let reportedInputTokens = 0;
 	let stopReason: StopReason | undefined;
+	const blocks = new Map<number, AnthropicAssistantBlock>();
+	const closed = new Set<number>();
+	let invalid = false;
+	let terminal = false;
+	let started = false;
+	function badBlock(): StreamEvent[] {
+		invalid = true;
+		terminal = true;
+		return malformedStreamError("The Anthropic response contained an invalid content block.").map(
+			(event) => (event.type === "error" ? { ...event, terminal: true } : event),
+		);
+	}
 
 	function undecodableFrame(event: string, data: string): StreamEvent[] {
+		terminal = true;
 		return malformedStreamError(
 			`The Anthropic stream sent a "${event}" event that could not be decoded.`,
 			data,
-		);
+		).map((e) => (e.type === "error" ? { ...e, terminal: true } : e));
 	}
 
 	return {
 		mapFrame(frame: SseFrame): StreamEvent[] {
+			if (terminal) return [];
+			if (
+				!started &&
+				[
+					"content_block_start",
+					"content_block_delta",
+					"content_block_stop",
+					"message_delta",
+					"message_stop",
+				].includes(frame.event)
+			)
+				return badBlock();
 			switch (frame.event) {
 				case "message_start": {
 					const payload = decodePayload(messageStartSchema, frame.data);
 					if (payload === undefined) return undecodableFrame(frame.event, frame.data);
+					if (started) return badBlock();
+					started = true;
 					reportedInputTokens = payload.message.usage?.input_tokens ?? 0;
 					return [{ type: "message_start", model: payload.message.model }];
 				}
@@ -260,10 +349,35 @@ export function createAnthropicStreamMapper(): AnthropicStreamMapper {
 					const payload = decodePayload(contentBlockStartSchema, frame.data);
 					if (payload === undefined) return undecodableFrame(frame.event, frame.data);
 					const { index, content_block: block } = payload;
+					if (index < 0 || blocks.has(index)) return badBlock();
+					if (block.type === "thinking") {
+						blocks.set(index, {
+							type: "thinking",
+							thinking: block.thinking ?? "",
+							signature: block.signature ?? "",
+						});
+						return [];
+					}
+					if (block.type === "redacted_thinking" && block.data) {
+						blocks.set(index, { type: "redacted_thinking", data: block.data });
+						return [];
+					}
+					if (block.type === "text") blocks.set(index, { type: "text", text: block.text ?? "" });
+					else if (block.type !== "tool_use") return badBlock();
 					if (block.type === "tool_use") {
-						if (block.id === undefined || block.name === undefined) {
+						if (
+							!block.id ||
+							!block.name ||
+							[...blocks.values()].some((b) => b.type === "tool_use" && b.id === block.id)
+						) {
 							return undecodableFrame(frame.event, frame.data);
 						}
+						blocks.set(index, {
+							type: "tool_use",
+							id: block.id,
+							name: block.name,
+							input: block.input ?? {},
+						});
 						pendingToolCalls.set(index, { id: block.id, name: block.name, fragments: [] });
 						return [{ type: "tool_call_start", id: block.id, name: block.name }];
 					}
@@ -279,8 +393,22 @@ export function createAnthropicStreamMapper(): AnthropicStreamMapper {
 					const payload = decodePayload(contentBlockDeltaSchema, frame.data);
 					if (payload === undefined) return undecodableFrame(frame.event, frame.data);
 					const { index, delta } = payload;
+					const block = blocks.get(index);
+					if (!block || closed.has(index)) return badBlock();
+					if (delta.type === "thinking_delta") {
+						if (block.type !== "thinking" || delta.thinking === undefined) return badBlock();
+						blocks.set(index, { ...block, thinking: block.thinking + delta.thinking });
+						return [];
+					}
+					if (delta.type === "signature_delta") {
+						if (block.type !== "thinking" || delta.signature === undefined) return badBlock();
+						blocks.set(index, { ...block, signature: block.signature + delta.signature });
+						return [];
+					}
 					if (delta.type === "text_delta") {
-						if (delta.text === undefined || delta.text === "") return [];
+						if (block.type !== "text" || delta.text === undefined) return badBlock();
+						blocks.set(index, { ...block, text: block.text + delta.text });
+						if (delta.text === "") return [];
 						return [{ type: "text_delta", text: delta.text }];
 					}
 					if (delta.type === "input_json_delta") {
@@ -289,27 +417,43 @@ export function createAnthropicStreamMapper(): AnthropicStreamMapper {
 						if (pending === undefined) {
 							// A fragment with no open call means an argument was lost; saying
 							// so beats silently completing a truncated tool call later.
-							return malformedStreamError(
-								"The Anthropic stream sent tool arguments for a tool call that never started.",
-							);
+							return badBlock();
 						}
 						pending.fragments.push(delta.partial_json);
 						return [
 							{ type: "tool_call_input_delta", id: pending.id, partialJson: delta.partial_json },
 						];
 					}
-					// `thinking_delta`, `signature_delta`, and future delta types.
+					// Future delta types carry no executable content.
 					return [];
 				}
 
 				case "content_block_stop": {
 					const payload = decodePayload(contentBlockStopSchema, frame.data);
 					if (payload === undefined) return undecodableFrame(frame.event, frame.data);
+					if (!blocks.has(payload.index) || closed.has(payload.index)) return badBlock();
+					closed.add(payload.index);
 					const pending = pendingToolCalls.get(payload.index);
-					// Text blocks are not tracked by index; only tool calls finish here.
+					// Only tool blocks produce a completed call.
 					if (pending === undefined) return [];
 					pendingToolCalls.delete(payload.index);
-					return finishPendingToolCall(pending);
+					const initial = blocks.get(payload.index);
+					if (pending.fragments.length === 0 && initial?.type === "tool_use")
+						pending.fragments.push(JSON.stringify(initial.input));
+					const events = finishPendingToolCall(pending);
+					const completed = events.find((e) => e.type === "tool_call_complete");
+					if (completed?.type !== "tool_call_complete") {
+						invalid = true;
+						terminal = true;
+						return events.map((e) => (e.type === "error" ? { ...e, terminal: true } : e));
+					}
+					blocks.set(payload.index, {
+						type: "tool_use",
+						id: completed.id,
+						name: completed.name,
+						input: completed.input,
+					});
+					return events;
 				}
 
 				case "message_delta": {
@@ -334,13 +478,24 @@ export function createAnthropicStreamMapper(): AnthropicStreamMapper {
 					];
 				}
 
-				case "message_stop":
-					// Carries no payload this protocol reads. `message_delta` precedes it
-					// in the documented protocol; "unknown" covers a stream that never
-					// reported a stop reason.
-					return [{ type: "message_stop", stopReason: stopReason ?? "unknown" }];
+				case "message_stop": {
+					terminal = true;
+					const content = [...blocks.entries()].sort(([a], [b]) => a - b).map(([, block]) => block);
+					if (
+						invalid ||
+						blocks.size !== closed.size ||
+						!assistantContentSchema.safeParse(content).success ||
+						pendingToolCalls.size
+					)
+						return badBlock();
+					return [
+						{ type: "continuation", output: { provider: "anthropic", payload: content } },
+						{ type: "message_stop", stopReason: stopReason ?? "unknown" },
+					];
+				}
 
 				case "error": {
+					terminal = true;
 					const payload = decodePayload(errorEventSchema, frame.data);
 					if (payload === undefined) return undecodableFrame(frame.event, frame.data);
 					const providerType = payload.error?.type ?? "";

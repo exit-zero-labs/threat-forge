@@ -98,7 +98,8 @@ pub async fn start_ai_stream(
     stream_id: String,
 ) -> Result<(), String> {
     providers::validate_stream_id(&stream_id).map_err(|e| e.to_string())?;
-    let body_bytes = providers::validate_body(&body).map_err(|e| e.to_string())?;
+    let body_bytes =
+        providers::validate_provider_body(&provider, &body).map_err(|e| e.to_string())?;
 
     // Extract the key and build headers before any .await, then drop the key:
     // the headers are the only place it may live from here on.

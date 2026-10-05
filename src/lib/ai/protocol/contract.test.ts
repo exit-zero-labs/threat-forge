@@ -10,7 +10,8 @@
  * shared `EXPECTED_*` sequences across the two providers are the
  * provider-neutrality proof.
  *
- * Assertions check the whole emitted event sequence, never merely that no
+ * Assertions check every visible/progress event; provider-specific continuation receipts
+ * have separate request replay tests. The corpus never merely checks that no
  * exception was thrown — a truncated stream that produced a silent `message_stop`
  * would pass a "no throw" check while being exactly the success-shaped failure
  * this corpus exists to catch.
@@ -134,7 +135,14 @@ function request(provider: AiProvider): ConversationRequest {
 
 function collect(): { events: StreamEvent[]; onEvent: (event: StreamEvent) => void } {
 	const events: StreamEvent[] = [];
-	return { events, onEvent: (event) => events.push(event) };
+	// The visible/progress vocabulary is equal across providers; native receipts
+	// intentionally differ and are exercised by provider-http.test.ts.
+	return {
+		events,
+		onEvent: (event) => {
+			if (event.type !== "continuation") events.push(event);
+		},
+	};
 }
 
 /** Every `start_ai_stream` argument the fake relay has been invoked with, in order. */
@@ -342,9 +350,14 @@ describe("partial streams split at arbitrary byte boundaries (browser)", () => {
 	const MULTIBYTE_FRAMES: SseFrame[] = [
 		{ event: "message_start", data: JSON.stringify({ message: { model: FIXTURE_MODEL } }) },
 		{
+			event: "content_block_start",
+			data: JSON.stringify({ index: 0, content_block: { type: "text", text: "" } }),
+		},
+		{
 			event: "content_block_delta",
 			data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "café ☕ review" } }),
 		},
+		{ event: "content_block_stop", data: JSON.stringify({ index: 0 }) },
 		{ event: "message_stop", data: JSON.stringify({ type: "message_stop" }) },
 	];
 	const MULTIBYTE_EXPECTED: StreamEvent[] = [
@@ -392,22 +405,25 @@ describe("truncated stream — ends without a terminal event", () => {
 	});
 
 	it.each([["browser", runBrowser] as const, ["desktop", runTauri] as const])(
-		"still reports truncation after a non-terminal malformed_stream notice on %s",
+		"reports a corrupt response once without a normal completion on %s",
 		async (_t, run) => {
-			// A malformed_stream notice is non-terminal (see events.ts). A close with no
-			// message_stop after one is still a truncation, so the turn ends with a second,
-			// terminal malformed_stream — the notice must not suppress it.
+			// Corrupt signed history cannot safely continue; its error is terminal.
 			const events = await run("anthropic", ANTHROPIC_NOTICE_THEN_TRUNCATED_STREAM);
 			expect(events).toEqual(EXPECTED_NOTICE_THEN_TRUNCATED_EVENTS);
 			expect(events[events.length - 1]).toEqual({
 				type: "error",
-				error: { code: "malformed_stream", message: expect.stringContaining("ended before") },
+				terminal: true,
+				error: {
+					code: "malformed_stream",
+					message: expect.any(String),
+					providerDetail: expect.any(String),
+				},
 			});
 		},
 	);
 });
 
-describe("malformed events are reported without aborting the turn", () => {
+describe("malformed events fail closed", () => {
 	it.each([
 		[
 			"browser Anthropic invalid JSON",
@@ -473,7 +489,7 @@ describe("malformed events are reported without aborting the turn", () => {
 			EXPECTED_OPENAI_ORPHAN_FRAGMENT_EVENTS,
 		] as const,
 	])(
-		"maps %s to a malformed_stream notice and still finishes",
+		"fails closed for %s with one terminal malformed_stream error",
 		async (_label, run, provider, frames, expected) => {
 			expect(await run(provider, frames)).toEqual(expected);
 		},
@@ -574,7 +590,7 @@ describe("cancellation is a terminal aborted, with no events afterward", () => {
 			controller.signal,
 		);
 		provider.push(
-			'event: content_block_delta\ndata: {"index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n',
+			`event: message_start\ndata: ${JSON.stringify({ message: { model: FIXTURE_MODEL } })}\n\nevent: content_block_start\ndata: {"index":0,"content_block":{"type":"text","text":""}}\n\nevent: content_block_delta\ndata: {"index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n`,
 		);
 		await vi.waitFor(() => {
 			expect(events.some((event) => event.type === "text_delta")).toBe(true);
@@ -583,11 +599,15 @@ describe("cancellation is a terminal aborted, with no events afterward", () => {
 		controller.abort();
 		await open;
 
-		expect(events).toEqual([{ type: "text_delta", text: "partial" }, { type: "aborted" }]);
+		expect(events).toEqual([
+			{ type: "message_start", model: FIXTURE_MODEL },
+			{ type: "text_delta", text: "partial" },
+			{ type: "aborted" },
+		]);
 		expect(provider.cancelled()).toBe(true);
 		// The reader is released, so the provider has nowhere left to deliver.
 		expect(provider.push("data: after-abort\n\n")).toBe(false);
-		expect(events).toHaveLength(2);
+		expect(events).toHaveLength(3);
 	});
 
 	it("aborts a desktop stream, cancels the matching id, and drops later frames", async () => {
@@ -603,6 +623,16 @@ describe("cancellation is a terminal aborted, with no events afterward", () => {
 		const streamId = await nthStreamId(1);
 		relay.emit("ai:stream-frame", {
 			streamId,
+			event: "message_start",
+			data: JSON.stringify({ message: { model: FIXTURE_MODEL } }),
+		});
+		relay.emit("ai:stream-frame", {
+			streamId,
+			event: "content_block_start",
+			data: JSON.stringify({ index: 0, content_block: { type: "text", text: "" } }),
+		});
+		relay.emit("ai:stream-frame", {
+			streamId,
 			event: "content_block_delta",
 			data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "partial" } }),
 		});
@@ -610,7 +640,11 @@ describe("cancellation is a terminal aborted, with no events afterward", () => {
 		controller.abort();
 		await open;
 
-		expect(events).toEqual([{ type: "text_delta", text: "partial" }, { type: "aborted" }]);
+		expect(events).toEqual([
+			{ type: "message_start", model: FIXTURE_MODEL },
+			{ type: "text_delta", text: "partial" },
+			{ type: "aborted" },
+		]);
 		const cancelCalls = relay.invoke.mock.calls
 			.filter((call) => call[0] === "cancel_ai_stream")
 			.map((call) => call[1]);
@@ -618,7 +652,7 @@ describe("cancellation is a terminal aborted, with no events afterward", () => {
 
 		// A frame the relay emits after the stop is ignored, not appended.
 		relay.emit("ai:stream-frame", { streamId, event: "message", data: "late" });
-		expect(events).toHaveLength(2);
+		expect(events).toHaveLength(3);
 	});
 });
 
@@ -722,7 +756,7 @@ describe("retry only before the first event, only for transient failures", () =>
 			start(controller) {
 				controller.enqueue(
 					encoder.encode(
-						'event: content_block_delta\ndata: {"index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n',
+						`event: message_start\ndata: ${JSON.stringify({ message: { model: FIXTURE_MODEL } })}\n\nevent: content_block_start\ndata: {"index":0,"content_block":{"type":"text","text":""}}\n\nevent: content_block_delta\ndata: {"index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n`,
 					),
 				);
 			},
@@ -741,6 +775,7 @@ describe("retry only before the first event, only for transient failures", () =>
 		);
 
 		expect(events).toEqual([
+			{ type: "message_start", model: FIXTURE_MODEL },
 			{ type: "text_delta", text: "partial" },
 			{ type: "error", error: { code: "transport", message: expect.any(String) } },
 		]);

@@ -1,289 +1,131 @@
-/**
- * Hand-authored OpenAI Chat Completions streaming fixtures.
- *
- * Each transcript is written from OpenAI's documented `chat.completion.chunk`
- * shape, not recorded from a live account, and stored as a frame array — OpenAI
- * streams bare `data:` lines, so every frame's event is the SSE default
- * `"message"` and the terminal frame is the `[DONE]` sentinel.
- *
- * The complete-response fixtures deliberately mirror the matching Anthropic
- * fixtures in `./anthropic-fixtures.ts` — same model id, same text, same token
- * counts — so both decode to the shared `EXPECTED_TEXT_EVENTS` /
- * `EXPECTED_TOOL_EVENTS` / `EXPECTED_TRUNCATED_EVENTS` exported there. That shared
- * expectation is the provider-neutrality contract. Fixtures whose failure detail
- * is provider-specific carry their own expected sequence here.
- */
-
+/** Hand-authored Responses transcripts; no live accounts or captured credentials. */
 import type { StreamEvent } from "@/lib/ai/protocol/events";
 import type { SseFrame } from "@/lib/ai/providers/sse";
 import { FIXTURE_MODEL } from "./anthropic-fixtures";
 
-/** Author one OpenAI chunk frame; OpenAI never names its SSE events. */
-function chunk(payload: unknown): SseFrame {
-	return { event: "message", data: JSON.stringify(payload) };
+function frame(type: string, data: object = {}): SseFrame {
+	return { event: type, data: JSON.stringify({ type, ...data }) };
 }
-
-/** OpenAI's terminal sentinel frame. */
-const DONE: SseFrame = { event: "message", data: "[DONE]" };
-
-// ---------------------------------------------------------------------------
-// Complete text response — mirrors ANTHROPIC_TEXT_STREAM
-// ---------------------------------------------------------------------------
+const created = () => frame("response.created", { response: { model: FIXTURE_MODEL } });
+const textItem = (text: string) => ({
+	id: "msg_1",
+	type: "message",
+	role: "assistant",
+	status: "completed",
+	content: [{ type: "output_text", text, annotations: [] }],
+});
+const callItem = (id: string, name: string, args: string) => ({
+	id: "fc_1",
+	type: "function_call",
+	call_id: id,
+	name,
+	arguments: args,
+	status: "completed",
+});
+const textStart = () =>
+	frame("response.output_item.added", {
+		output_index: 0,
+		item: { ...textItem(""), content: [], status: "in_progress" },
+	});
+const completed = (output: unknown[], inputTokens: number, outputTokens: number) =>
+	frame("response.completed", {
+		response: {
+			model: FIXTURE_MODEL,
+			status: "completed",
+			output,
+			usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+		},
+	});
 
 export const OPENAI_TEXT_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { content: "Review " }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { content: "the gateway." }, finish_reason: null }],
-	}),
-	chunk({ model: FIXTURE_MODEL, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
-	chunk({ model: FIXTURE_MODEL, choices: [], usage: { prompt_tokens: 12, completion_tokens: 9 } }),
-	DONE,
+	created(),
+	textStart(),
+	frame("response.output_text.delta", { output_index: 0, delta: "Review " }),
+	frame("response.output_text.delta", { output_index: 0, delta: "the gateway." }),
+	completed([textItem("Review the gateway.")], 12, 9),
 ];
-
-// ---------------------------------------------------------------------------
-// Complete tool-call response — mirrors ANTHROPIC_TOOL_STREAM
-// ---------------------------------------------------------------------------
-
 export const OPENAI_TOOL_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+	created(),
+	textStart(),
+	frame("response.output_text.delta", { output_index: 0, delta: "Adding it." }),
+	frame("response.output_item.added", {
+		output_index: 1,
+		item: callItem("call_1", "add_element", ""),
 	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { content: "Adding it." }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [
-			{
-				index: 0,
-				delta: {
-					tool_calls: [
-						{
-							index: 0,
-							id: "call_1",
-							type: "function",
-							function: { name: "add_element", arguments: "" },
-						},
-					],
-				},
-				finish_reason: null,
-			},
+	frame("response.function_call_arguments.delta", { output_index: 1, delta: '{"type":"process",' }),
+	frame("response.function_call_arguments.delta", { output_index: 1, delta: '"name":"Gateway"}' }),
+	completed(
+		[
+			textItem("Adding it."),
+			callItem("call_1", "add_element", '{"type":"process","name":"Gateway"}'),
 		],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [
-			{
-				index: 0,
-				delta: { tool_calls: [{ index: 0, function: { arguments: '{"type":"process",' } }] },
-				finish_reason: null,
-			},
-		],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [
-			{
-				index: 0,
-				delta: { tool_calls: [{ index: 0, function: { arguments: '"name":"Gateway"}' } }] },
-				finish_reason: null,
-			},
-		],
-	}),
-	chunk({ model: FIXTURE_MODEL, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
-	chunk({ model: FIXTURE_MODEL, choices: [], usage: { prompt_tokens: 20, completion_tokens: 15 } }),
-	DONE,
+		20,
+		15,
+	),
 ];
-
-// ---------------------------------------------------------------------------
-// Complete tool-call response with empty (`{}`) arguments — mirrors
-// ANTHROPIC_EMPTY_ARGS_TOOL_STREAM
-// ---------------------------------------------------------------------------
-
 export const OPENAI_EMPTY_ARGS_TOOL_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+	created(),
+	textStart(),
+	frame("response.output_text.delta", { output_index: 0, delta: "Summarizing." }),
+	frame("response.output_item.added", {
+		output_index: 1,
+		item: callItem("call_2", "get_document_summary", ""),
 	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { content: "Summarizing." }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [
-			{
-				index: 0,
-				delta: {
-					tool_calls: [
-						{
-							index: 0,
-							id: "call_2",
-							type: "function",
-							function: { name: "get_document_summary", arguments: "" },
-						},
-					],
-				},
-				finish_reason: null,
-			},
-		],
-	}),
-	chunk({ model: FIXTURE_MODEL, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
-	chunk({ model: FIXTURE_MODEL, choices: [], usage: { prompt_tokens: 20, completion_tokens: 8 } }),
-	DONE,
+	completed([textItem("Summarizing."), callItem("call_2", "get_document_summary", "{}")], 20, 8),
 ];
-
-// ---------------------------------------------------------------------------
-// Truncated stream — no [DONE] — mirrors ANTHROPIC_TRUNCATED_STREAM
-// ---------------------------------------------------------------------------
-
 export const OPENAI_TRUNCATED_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { content: "Half a thou" }, finish_reason: null }],
-	}),
+	created(),
+	textStart(),
+	frame("response.output_text.delta", { output_index: 0, delta: "Half a thou" }),
 ];
 
-// ---------------------------------------------------------------------------
-// Malformed events
-// ---------------------------------------------------------------------------
-
-/** A data line that is not valid JSON, between valid chunks. */
+const fatal: StreamEvent = {
+	type: "error",
+	terminal: true,
+	error: { code: "malformed_stream", message: "The OpenAI response could not be decoded safely." },
+};
 export const OPENAI_INVALID_JSON_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
-	}),
-	{ event: "message", data: '{"choices":[{"del' },
-	chunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
-	DONE,
+	created(),
+	{ event: "response.output_text.delta", data: '{"delta":' },
+	completed([], 0, 0),
 ];
-
 export const EXPECTED_OPENAI_INVALID_JSON_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
-	{
-		type: "error",
-		error: {
-			code: "malformed_stream",
-			message: "The OpenAI stream sent a chunk that could not be decoded.",
-			providerDetail: '{"choices":[{"del',
-		},
-	},
-	{ type: "message_stop", stopReason: "end_turn" },
+	fatal,
 ];
-
-/** A `tool_calls` first fragment whose accumulated arguments never parse. */
 export const OPENAI_BAD_TOOL_ARGS_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
+	created(),
+	frame("response.output_item.added", {
+		output_index: 0,
+		item: callItem("call_bad", "add_element", ""),
 	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [
-			{
-				index: 0,
-				delta: {
-					tool_calls: [
-						{
-							index: 0,
-							id: "call_bad",
-							type: "function",
-							function: { name: "add_element", arguments: '{"type": ' },
-						},
-					],
-				},
-				finish_reason: null,
-			},
-		],
-	}),
-	chunk({ model: FIXTURE_MODEL, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }),
-	DONE,
+	frame("response.function_call_arguments.delta", { output_index: 0, delta: '{"type": ' }),
+	completed([callItem("call_bad", "add_element", '{"type": ')], 0, 0),
 ];
-
 export const EXPECTED_OPENAI_BAD_TOOL_ARGS_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
 	{ type: "tool_call_start", id: "call_bad", name: "add_element" },
 	{ type: "tool_call_input_delta", id: "call_bad", partialJson: '{"type": ' },
-	{
-		type: "error",
-		error: {
-			code: "malformed_stream",
-			message: "A tool call sent arguments that were not valid JSON, so the call was dropped.",
-			providerDetail: "add_element",
-		},
-	},
-	{ type: "message_stop", stopReason: "tool_use" },
+	fatal,
 ];
-
-/** A tool-call fragment that arrives before the call is named — no id, no name. */
 export const OPENAI_ORPHAN_FRAGMENT_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [
-			{
-				index: 0,
-				delta: { tool_calls: [{ index: 0, function: { arguments: '{"a":1}' } }] },
-				finish_reason: null,
-			},
-		],
-	}),
-	chunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }),
-	DONE,
+	created(),
+	frame("response.function_call_arguments.delta", { output_index: 0, delta: '{"a":1}' }),
+	completed([], 0, 0),
 ];
-
 export const EXPECTED_OPENAI_ORPHAN_FRAGMENT_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
-	{
-		type: "error",
-		error: {
-			code: "malformed_stream",
-			message: "The OpenAI stream sent a tool-call fragment before naming the call.",
-		},
-	},
-	{ type: "message_stop", stopReason: "end_turn" },
+	fatal,
 ];
-
-// ---------------------------------------------------------------------------
-// In-stream rate limit (an `error` chunk, distinct from an HTTP 429 response)
-// ---------------------------------------------------------------------------
-
 export const OPENAI_INSTREAM_RATE_LIMIT_STREAM: SseFrame[] = [
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }],
-	}),
-	chunk({
-		model: FIXTURE_MODEL,
-		choices: [{ index: 0, delta: { content: "Start" }, finish_reason: null }],
-	}),
-	chunk({
-		error: {
-			message: "Rate limit reached for key sk-proj-abc123",
-			type: "requests",
-			code: "rate_limit_exceeded",
-		},
+	created(),
+	textStart(),
+	frame("response.output_text.delta", { output_index: 0, delta: "Start" }),
+	frame("error", {
+		message: "Rate limit reached for key sk-proj-abc123",
+		code: "rate_limit_exceeded",
 	}),
 ];
-
 export const EXPECTED_OPENAI_INSTREAM_RATE_LIMIT_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
 	{ type: "text_delta", text: "Start" },
@@ -292,16 +134,10 @@ export const EXPECTED_OPENAI_INSTREAM_RATE_LIMIT_EVENTS: StreamEvent[] = [
 		error: {
 			code: "rate_limited",
 			message: "OpenAI rate limit or quota exceeded — wait and try again.",
-			providerDetail: "requests: rate_limit_exceeded: Rate limit reached for key [redacted-key]",
+			providerDetail: "Rate limit reached for key [redacted-key]",
 		},
 	},
 ];
-
-/**
- * An OpenAI 429 error body: an HTTP response, not a stream. The embedded
- * `sk-proj-…RL429SECRET` token exercises the transport's unconditional redaction
- * of provider text before it becomes `providerDetail`.
- */
 export const OPENAI_429_BODY = JSON.stringify({
 	error: {
 		message: "Rate limit reached for key sk-proj-RL429SECRET; contact us if this persists",

@@ -1,403 +1,414 @@
-/**
- * OpenAI Chat Completions mapper: request building and stream-chunk decoding.
- *
- * This module and `./anthropic.ts` are the only places OpenAI's wire shapes may
- * appear; everything downstream speaks the protocol types in
- * `src/lib/ai/protocol/`. Two logically identical responses from the two
- * providers must map to identical `StreamEvent` sequences — the cross-provider
- * equality test in `./openai.test.ts` is the proof.
- *
- * Tool results serialize as `role: "tool"` messages keyed by `tool_call_id`,
- * which is OpenAI's shape; Anthropic's `tool_result`-block divergence lives
- * wholly in `./anthropic.ts`.
- *
- * Tool definitions are emitted without `strict`. Strict mode additionally
- * constrains optional fields (every property must be listed in `required`), so
- * enabling it is a schema-shape decision deferred to issue #64 alongside the
- * native graph tools.
- */
-
+/** OpenAI Responses request shaping and decoding; all output remains untrusted. */
 import { z } from "zod";
-import type { ProtocolError } from "@/lib/ai/protocol/errors";
-import { redactProviderDetail } from "@/lib/ai/protocol/errors";
-import type { StopReason, StreamEvent } from "@/lib/ai/protocol/events";
-import type { ProtocolMessage } from "@/lib/ai/protocol/messages";
+import { ProtocolException, redactProviderDetail } from "@/lib/ai/protocol/errors";
+import type { StreamEvent } from "@/lib/ai/protocol/events";
+import { flattenText, type ProtocolMessage } from "@/lib/ai/protocol/messages";
 import type { ProviderChatRequest } from "@/lib/ai/protocol/request";
 import type { ToolInputJsonSchema } from "@/lib/ai/protocol/tools";
-import { finishPendingToolCall, malformedStreamError, type PendingToolCall } from "./mapper-events";
+import { resolveCapabilities } from "@/lib/ai-models";
+import { malformedStreamError } from "./mapper-events";
 import type { SseFrame } from "./sse";
 
-// ---------------------------------------------------------------------------
-// Request building
-// ---------------------------------------------------------------------------
+const functionItemSchema = z.object({
+	type: z.literal("function_call"),
+	id: z.string().optional(),
+	call_id: z.string().min(1),
+	name: z.string().min(1),
+	arguments: z.string(),
+	status: z.enum(["in_progress", "completed", "incomplete"]).optional(),
+});
+const annotationSchema = z.discriminatedUnion("type", [
+	z.object({
+		type: z.literal("url_citation"),
+		url: z.string(),
+		title: z.string(),
+		start_index: z.number(),
+		end_index: z.number(),
+	}),
+	z.object({
+		type: z.literal("file_citation"),
+		file_id: z.string(),
+		filename: z.string(),
+		index: z.number(),
+	}),
+	z.object({ type: z.literal("file_path"), file_id: z.string(), index: z.number() }),
+	z.object({
+		type: z.literal("container_file_citation"),
+		container_id: z.string(),
+		file_id: z.string(),
+		filename: z.string(),
+		start_index: z.number(),
+		end_index: z.number(),
+	}),
+]);
+const outputTextSchema = z.object({
+	type: z.literal("output_text"),
+	text: z.string(),
+	annotations: z.array(annotationSchema).optional(),
+});
+const messageItemSchema = z.object({
+	type: z.literal("message"),
+	id: z.string(),
+	role: z.literal("assistant"),
+	status: z.enum(["in_progress", "completed", "incomplete"]),
+	phase: z.enum(["commentary", "final_answer"]).nullish(),
+	content: z.array(
+		z.discriminatedUnion("type", [
+			outputTextSchema,
+			z.object({ type: z.literal("refusal"), refusal: z.string() }),
+		]),
+	),
+});
+const reasoningItemSchema = z.object({
+	type: z.literal("reasoning"),
+	id: z.string(),
+	summary: z.array(z.object({ type: z.literal("summary_text"), text: z.string() })),
+	encrypted_content: z.string().nullish(),
+	status: z.enum(["in_progress", "completed", "incomplete"]).optional(),
+});
+const outputItemSchema = z.discriminatedUnion("type", [
+	functionItemSchema,
+	messageItemSchema,
+	reasoningItemSchema,
+]);
+const outputSchema = z.array(outputItemSchema);
+type OutputItem = z.infer<typeof outputItemSchema>;
+type InputItem =
+	| OutputItem
+	| { role: "user" | "assistant"; content: string }
+	| { type: "function_call_output"; call_id: string; output: string };
 
-interface OpenAiSystemMessage {
-	role: "system";
-	content: string;
-}
-
-interface OpenAiUserMessage {
-	role: "user";
-	content: string;
-}
-
-interface OpenAiToolMessage {
-	role: "tool";
-	tool_call_id: string;
-	content: string;
-}
-
-interface OpenAiAssistantToolCall {
-	id: string;
-	type: "function";
-	function: { name: string; arguments: string };
-}
-
-interface OpenAiAssistantMessage {
-	role: "assistant";
-	content: string | null;
-	tool_calls?: OpenAiAssistantToolCall[];
-}
-
-type OpenAiRequestMessage =
-	| OpenAiSystemMessage
-	| OpenAiUserMessage
-	| OpenAiToolMessage
-	| OpenAiAssistantMessage;
-
-interface OpenAiToolPayload {
-	type: "function";
-	function: { name: string; description: string; parameters: ToolInputJsonSchema };
-}
-
-/** The body posted to `POST /v1/chat/completions`. */
+/** Stateless Responses body. Optional tool parameters require explicit strict:false. */
 export interface OpenAiRequestBody {
 	model: string;
-	max_completion_tokens: number;
-	messages: OpenAiRequestMessage[];
+	instructions: string;
+	input: InputItem[];
+	max_output_tokens: number;
 	stream: true;
-	stream_options: { include_usage: true };
-	tools?: OpenAiToolPayload[];
+	store: false;
+	include: ["reasoning.encrypted_content"];
+	reasoning?: { effort: "medium" };
+	tools?: {
+		type: "function";
+		name: string;
+		description: string;
+		parameters: ToolInputJsonSchema;
+		strict: false;
+	}[];
 }
 
-/**
- * A protocol user message becomes up to several OpenAI messages: one
- * `role: "tool"` message per `tool_result` block, then the user's text.
- *
- * Tool messages come first because OpenAI requires them to directly follow the
- * assistant message that made the calls. OpenAI has no `is_error` flag on tool
- * messages, so a failed result relies on its `content` describing the failure —
- * which `ToolResultBlock.content` is documented to do.
- */
-function serializeUserMessage(message: ProtocolMessage): OpenAiRequestMessage[] {
-	const serialized: OpenAiRequestMessage[] = [];
-	let text = "";
-	for (const block of message.content) {
-		if (block.type === "text") {
-			text += block.text;
-		} else if (block.type === "tool_result") {
-			serialized.push({ role: "tool", tool_call_id: block.toolCallId, content: block.content });
+function invalidContinuation(): never {
+	throw new ProtocolException({
+		code: "malformed_stream",
+		message: "The AI continuation could not be validated. Start a new chat.",
+	});
+}
+
+function validateOutput(payload: unknown): OutputItem[] {
+	const parsed = outputSchema.safeParse(payload);
+	if (!parsed.success) return invalidContinuation();
+	const calls = new Set<string>();
+	for (const item of parsed.data) {
+		if (item.status !== undefined && item.status !== "completed") return invalidContinuation();
+		if (item.type === "reasoning" && !item.encrypted_content) return invalidContinuation();
+		if (item.type === "function_call") {
+			if (calls.has(item.call_id)) return invalidContinuation();
+			calls.add(item.call_id);
+			try {
+				JSON.parse(item.arguments);
+			} catch {
+				return invalidContinuation();
+			}
 		}
-		// A `tool_call` block in a user message violates the protocol contract
-		// (calls are assistant-authored); serializing it would fabricate a turn
-		// the model never took, so it is dropped.
+		if (item.type === "message" && item.content.some((c) => c.type === "refusal"))
+			return invalidContinuation();
 	}
-	if (text !== "" || serialized.length === 0) {
-		serialized.push({ role: "user", content: text });
-	}
-	return serialized;
+	return parsed.data;
 }
 
-function serializeAssistantMessage(message: ProtocolMessage): OpenAiAssistantMessage {
-	let text = "";
-	const toolCalls: OpenAiAssistantToolCall[] = [];
-	for (const block of message.content) {
-		if (block.type === "text") {
-			text += block.text;
-		} else if (block.type === "tool_call") {
-			toolCalls.push({
-				id: block.id,
-				type: "function",
-				// `input` came from JSON, so this only yields `undefined` for a
-				// hand-built non-JSON value; `{}` keeps the history serializable.
-				function: { name: block.name, arguments: JSON.stringify(block.input) ?? "{}" },
-			});
-		}
-		// A `tool_result` block in an assistant message violates the protocol
-		// contract (results answer the assistant) and is dropped.
-	}
-	const serialized: OpenAiAssistantMessage = {
-		role: "assistant",
-		// OpenAI rejects a null-content assistant message unless it carries tool
-		// calls, and a text-less tool-call turn is exactly the null-content case.
-		content: text === "" && toolCalls.length > 0 ? null : text,
-	};
-	if (toolCalls.length > 0) {
-		serialized.tool_calls = toolCalls;
-	}
-	return serialized;
+function outputText(items: readonly OutputItem[]): string {
+	return items
+		.flatMap((item) =>
+			item.type === "message"
+				? item.content.map((c) => (c.type === "output_text" ? c.text : ""))
+				: [],
+		)
+		.join("");
 }
 
-/**
- * Build the streaming request body for the OpenAI Chat Completions API.
- *
- * Tool-call/result pairing and block placement are the caller's contract,
- * enforced upstream by `assertToolPairing` and the budgeter; a history that
- * violates them serializes to whatever the provider makes of it (here,
- * misplaced blocks are dropped — see the serializers). Only
- * contract-conforming histories are guaranteed to serialize equivalently
- * across the two builders.
- */
+function replayOutput(message: ProtocolMessage): OutputItem[] {
+	const receipt = message.continuation;
+	if (receipt?.output.provider !== "openai" || message.role !== "assistant")
+		return invalidContinuation();
+	const items = validateOutput(receipt.output.payload);
+	const nativeCalls = items
+		.filter((item) => item.type === "function_call")
+		.map((item) => ({ id: item.call_id, name: item.name, input: JSON.parse(item.arguments) }));
+	const calls = message.content
+		.filter((b) => b.type === "tool_call")
+		.map((b) => ({ id: b.id, name: b.name, input: b.input }));
+	if (
+		JSON.stringify(nativeCalls) !== JSON.stringify(calls) ||
+		outputText(items) !== flattenText(message)
+	)
+		return invalidContinuation();
+	return items;
+}
+
+/** Remove stale encrypted reasoning while retaining reviewed calls and assistant phase.
+ * The caller uses an outgoing projection; saved history and approval data are unchanged. */
+export function stripOpenAiReasoning(message: ProtocolMessage): ProtocolMessage {
+	const receipt = message.continuation;
+	if (!receipt) return message;
+	const payload = replayOutput(message).filter((item) => item.type !== "reasoning");
+	return { ...message, continuation: { ...receipt, output: { provider: "openai", payload } } };
+}
+
+/** Build one direct, locally retained conversation; no remote response ID is used. */
 export function buildOpenAiRequestBody(request: ProviderChatRequest): OpenAiRequestBody {
-	const messages: OpenAiRequestMessage[] = [{ role: "system", content: request.system }];
+	const input: InputItem[] = [];
 	for (const message of request.messages) {
-		if (message.role === "assistant") {
-			messages.push(serializeAssistantMessage(message));
-		} else {
-			messages.push(...serializeUserMessage(message));
+		if (message.continuation) {
+			input.push(...replayOutput(message));
+			continue;
+		}
+		for (const block of message.content) {
+			switch (block.type) {
+				case "text":
+					if (block.text) input.push({ role: message.role, content: block.text });
+					break;
+				case "tool_call":
+					input.push({
+						type: "function_call",
+						call_id: block.id,
+						name: block.name,
+						arguments: JSON.stringify(block.input),
+					});
+					break;
+				case "tool_result":
+					input.push({
+						type: "function_call_output",
+						call_id: block.toolCallId,
+						output: block.content,
+					});
+					break;
+			}
 		}
 	}
-
 	const body: OpenAiRequestBody = {
 		model: request.modelId,
-		max_completion_tokens: request.maxOutputTokens,
-		messages,
+		instructions: request.system,
+		input,
+		max_output_tokens: request.maxOutputTokens,
 		stream: true,
-		// Without this opt-in the stream never reports usage: the final usage
-		// chunk (empty `choices`) is only sent when the request asks for it.
-		stream_options: { include_usage: true },
+		store: false,
+		include: ["reasoning.encrypted_content"],
 	};
-	if (request.tools.length > 0) {
-		// `strict` is deliberately unset; see the module doc.
+	if (resolveCapabilities("openai", request.modelId).known) body.reasoning = { effort: "medium" };
+	if (request.tools.length)
 		body.tools = request.tools.map((tool) => ({
 			type: "function",
-			function: {
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.jsonSchema(),
-			},
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.jsonSchema(),
+			strict: false,
 		}));
-	}
 	return body;
 }
 
-/**
- * Headers for a direct browser call to the Chat Completions API.
- *
- * Browser-only. On desktop the equivalent set is built by `auth_headers` in
- * `src-tauri/src/ai/providers.rs` so that the key never enters the webview.
- */
+/** Browser-only auth; desktop builds its headers in Rust. */
 export function buildOpenAiBrowserHeaders(apiKey: string): Record<string, string> {
-	return {
-		"Content-Type": "application/json",
-		Authorization: `Bearer ${apiKey}`,
-	};
+	return { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
 }
 
-// ---------------------------------------------------------------------------
-// Stream mapping
-// ---------------------------------------------------------------------------
-
-/** OpenAI's terminal sentinel; it is not JSON and marks the end of the stream. */
-const DONE_SENTINEL = "[DONE]";
-
-/**
- * Chunk schema, deliberately lenient: only the fields this mapper reads are
- * declared and unknown keys are stripped, so fields OpenAI adds later cannot
- * break decoding. An in-stream failure arrives as an `error` object instead of
- * a chunk, which the same schema admits because every field is optional.
- */
-const chunkSchema = z.object({
-	model: z.string().nullish(),
-	choices: z
-		.array(
-			z.object({
-				delta: z
-					.object({
-						content: z.string().nullish(),
-						tool_calls: z
-							.array(
-								z.object({
-									index: z.number().int(),
-									id: z.string().nullish(),
-									function: z
-										.object({
-											name: z.string().nullish(),
-											arguments: z.string().nullish(),
-										})
-										.nullish(),
-								}),
-							)
-							.nullish(),
-					})
-					.nullish(),
-				finish_reason: z.string().nullish(),
-			}),
-		)
-		.nullish(),
+const envelopeSchema = z.object({
+	type: z.string(),
+	output_index: z.number().int().nonnegative().optional(),
+	item_id: z.string().optional(),
+	item: z.unknown().optional(),
+	delta: z.string().optional(),
+	response: z.unknown().optional(),
+	code: z.string().nullish(),
+	message: z.string().optional(),
+});
+const responseSchema = z.object({
+	model: z.string(),
+	status: z.string(),
+	output: z.array(z.unknown()),
 	usage: z
-		.object({
-			prompt_tokens: z.number().nullish(),
-			completion_tokens: z.number().nullish(),
-		})
+		.object({ input_tokens: z.number().nonnegative(), output_tokens: z.number().nonnegative() })
 		.nullish(),
-	error: z
-		.object({
-			message: z.string().nullish(),
-			type: z.string().nullish(),
-			code: z.string().nullish(),
-		})
-		.nullish(),
+	error: z.object({ code: z.string().nullish(), message: z.string().nullish() }).nullish(),
+});
+const addedSchema = z.object({
+	type: z.string(),
+	id: z.string(),
+	call_id: z.string().optional(),
+	name: z.string().optional(),
 });
 
-type OpenAiStreamError = NonNullable<z.infer<typeof chunkSchema>["error"]>;
-
-const FINISH_REASONS = new Map<string, StopReason>([
-	["stop", "end_turn"],
-	["tool_calls", "tool_use"],
-	["length", "max_tokens"],
-]);
-
-function mapFinishReason(raw: string): StopReason {
-	return FINISH_REASONS.get(raw) ?? "unknown";
-}
-
-function providerStreamError(error: OpenAiStreamError): StreamEvent[] {
-	const providerType = error.type ?? "";
-	const providerCode = error.code ?? "";
-	const providerMessage = error.message ?? "";
-	const rateLimited =
-		`${providerType} ${providerCode}`.includes("rate_limit") ||
-		`${providerType} ${providerCode}`.includes("insufficient_quota");
-	const mapped: ProtocolError = rateLimited
-		? {
-				code: "rate_limited",
-				message: "OpenAI rate limit or quota exceeded — wait and try again.",
-			}
-		: {
-				code: "http_status",
-				message: "OpenAI reported an error while streaming the response.",
-			};
-	const detailParts = [providerType, providerCode, providerMessage].filter((part) => part !== "");
-	if (detailParts.length > 0) {
-		mapped.providerDetail = redactProviderDetail(detailParts.join(": "));
-	}
-	return [{ type: "error", error: mapped }];
-}
-
-export interface OpenAiStreamMapper {
-	/** Map one decoded frame onto zero or more protocol events. */
-	mapFrame(frame: SseFrame): StreamEvent[];
-}
-
-/** Create a mapper holding the per-turn state of one OpenAI stream. */
-export function createOpenAiStreamMapper(): OpenAiStreamMapper {
-	/**
-	 * Calls in flight, keyed by `tool_calls[].index` — the id and name arrive on
-	 * the first fragment only, so later fragments resolve through this map.
-	 * Insertion order is arrival order, which completion preserves.
-	 */
-	const pendingToolCalls = new Map<number, PendingToolCall>();
+/** One mapper per HTTP response. Completed output is checked before any call can execute. */
+export function createOpenAiStreamMapper(): { mapFrame(frame: SseFrame): StreamEvent[] } {
 	let started = false;
-	let stopReason: StopReason | undefined;
-
+	let terminal = false;
+	let emittedText = "";
+	const pending = new Map<
+		number,
+		{ id: string; type: string; callId?: string; name?: string; arguments: string }
+	>();
+	function malformed(): StreamEvent[] {
+		terminal = true;
+		return malformedStreamError("The OpenAI response could not be decoded safely.").map((event) =>
+			event.type === "error" ? { ...event, terminal: true } : event,
+		);
+	}
+	function begin(model: string): StreamEvent[] {
+		if (started) return [];
+		started = true;
+		return [{ type: "message_start", model }];
+	}
+	function failure(code?: string | null, message?: string | null): StreamEvent[] {
+		terminal = true;
+		const limited = code === "rate_limit_exceeded" || code === "insufficient_quota";
+		return [
+			{
+				type: "error",
+				error: {
+					code: limited ? "rate_limited" : "http_status",
+					message: limited
+						? "OpenAI rate limit or quota exceeded — wait and try again."
+						: "OpenAI could not complete the response.",
+					...(message ? { providerDetail: redactProviderDetail(message) } : {}),
+				},
+			},
+		];
+	}
 	return {
-		// OpenAI streams never name their events — every frame arrives as the SSE
-		// default "message" — so the frame's event field is not consulted.
-		mapFrame(frame: SseFrame): StreamEvent[] {
-			if (frame.data === DONE_SENTINEL) {
-				return [{ type: "message_stop", stopReason: stopReason ?? "unknown" }];
-			}
-
-			let payload: unknown;
+		mapFrame(frame): StreamEvent[] {
+			if (terminal) return [];
+			let raw: unknown;
 			try {
-				payload = JSON.parse(frame.data);
+				raw = JSON.parse(frame.data);
 			} catch {
-				return malformedStreamError(
-					"The OpenAI stream sent a chunk that could not be decoded.",
-					frame.data,
-				);
+				return malformed();
 			}
-			const parsed = chunkSchema.safeParse(payload);
-			if (!parsed.success) {
-				return malformedStreamError(
-					"The OpenAI stream sent a chunk that could not be decoded.",
-					frame.data,
-				);
+			const parsed = envelopeSchema.safeParse(raw);
+			if (!parsed.success) return malformed();
+			const event = parsed.data;
+			if (event.type === "response.created" || event.type === "response.in_progress") {
+				const response = z.object({ model: z.string() }).safeParse(event.response);
+				return response.success ? begin(response.data.model) : malformed();
 			}
-			const chunk = parsed.data;
-
-			if (chunk.error) {
-				return providerStreamError(chunk.error);
-			}
-
-			const events: StreamEvent[] = [];
-
-			if (!started && typeof chunk.model === "string" && chunk.model !== "") {
-				started = true;
-				events.push({ type: "message_start", model: chunk.model });
-			}
-
-			const choice = chunk.choices?.[0];
-			const delta = choice?.delta;
-
-			if (typeof delta?.content === "string" && delta.content !== "") {
-				events.push({ type: "text_delta", text: delta.content });
-			}
-
-			for (const fragment of delta?.tool_calls ?? []) {
-				const existing = pendingToolCalls.get(fragment.index);
-				const args = fragment.function?.arguments;
-				if (existing === undefined) {
-					const id = fragment.id;
-					const name = fragment.function?.name;
-					if (typeof id !== "string" || id === "" || typeof name !== "string" || name === "") {
-						// A first fragment must carry the id and name; without them the
-						// call can never be attributed, so say so instead of guessing.
-						events.push(
-							...malformedStreamError(
-								"The OpenAI stream sent a tool-call fragment before naming the call.",
-							),
-						);
-						continue;
-					}
-					const call: PendingToolCall = { id, name, fragments: [] };
-					pendingToolCalls.set(fragment.index, call);
-					events.push({ type: "tool_call_start", id, name });
-					if (typeof args === "string" && args !== "") {
-						call.fragments.push(args);
-						events.push({ type: "tool_call_input_delta", id, partialJson: args });
-					}
-					continue;
-				}
-				if (typeof args === "string" && args !== "") {
-					existing.fragments.push(args);
-					events.push({ type: "tool_call_input_delta", id: existing.id, partialJson: args });
-				}
-			}
-
-			const finishReason = choice?.finish_reason;
-			if (typeof finishReason === "string") {
-				stopReason = mapFinishReason(finishReason);
-				// The choice is finished, so every accumulated argument string is
-				// complete; parse each call exactly once, in arrival order.
-				for (const call of pendingToolCalls.values()) {
-					events.push(...finishPendingToolCall(call));
-				}
-				pendingToolCalls.clear();
-			}
-
-			if (chunk.usage) {
-				events.push({
-					type: "usage",
-					usage: {
-						inputTokens: chunk.usage.prompt_tokens ?? 0,
-						outputTokens: chunk.usage.completion_tokens ?? 0,
-					},
+			if (event.type === "error") return failure(event.code, event.message);
+			if (event.type === "response.output_item.added") {
+				const item = addedSchema.safeParse(event.item);
+				if (!item.success || event.output_index === undefined || pending.has(event.output_index))
+					return malformed();
+				const p = item.data;
+				if (!["message", "reasoning", "function_call"].includes(p.type)) return malformed();
+				if (p.type === "function_call" && (!p.call_id || !p.name)) return malformed();
+				pending.set(event.output_index, {
+					id: p.id,
+					type: p.type,
+					callId: p.call_id,
+					name: p.name,
+					arguments: "",
 				});
+				return p.type === "function_call" && p.call_id && p.name
+					? [{ type: "tool_call_start", id: p.call_id, name: p.name }]
+					: [];
 			}
-
-			return events;
+			if (event.type === "response.output_text.delta") {
+				if (
+					event.delta === undefined ||
+					event.output_index === undefined ||
+					pending.get(event.output_index)?.type !== "message"
+				)
+					return malformed();
+				emittedText += event.delta;
+				return event.delta ? [{ type: "text_delta", text: event.delta }] : [];
+			}
+			if (event.type === "response.function_call_arguments.delta") {
+				const p = event.output_index === undefined ? undefined : pending.get(event.output_index);
+				if (
+					!p?.callId ||
+					p.type !== "function_call" ||
+					event.delta === undefined ||
+					(event.item_id && event.item_id !== p.id)
+				)
+					return malformed();
+				p.arguments += event.delta;
+				return event.delta
+					? [{ type: "tool_call_input_delta", id: p.callId, partialJson: event.delta }]
+					: [];
+			}
+			if (
+				event.type === "response.completed" ||
+				event.type === "response.incomplete" ||
+				event.type === "response.failed"
+			) {
+				const parsedResponse = responseSchema.safeParse(event.response);
+				if (!parsedResponse.success) return malformed();
+				const response = parsedResponse.data;
+				if (event.type !== "response.completed" || response.status !== "completed")
+					return failure(response.error?.code, response.error?.message);
+				let items: OutputItem[];
+				try {
+					items = validateOutput(response.output);
+				} catch {
+					terminal = true;
+					return malformed();
+				}
+				for (const [index, p] of pending) {
+					const item = items[index];
+					if (
+						!item ||
+						item.type !== p.type ||
+						item.id !== p.id ||
+						(item.type === "function_call" &&
+							(item.call_id !== p.callId ||
+								item.name !== p.name ||
+								(p.arguments && p.arguments !== item.arguments)))
+					) {
+						terminal = true;
+						return malformed();
+					}
+				}
+				const finalText = outputText(items);
+				if (!finalText.startsWith(emittedText)) {
+					terminal = true;
+					return malformed();
+				}
+				const events: StreamEvent[] = begin(response.model);
+				if (finalText.length > emittedText.length)
+					events.push({ type: "text_delta", text: finalText.slice(emittedText.length) });
+				for (const item of items)
+					if (item.type === "function_call")
+						events.push({
+							type: "tool_call_complete",
+							id: item.call_id,
+							name: item.name,
+							input: JSON.parse(item.arguments),
+						});
+				events.push({ type: "continuation", output: { provider: "openai", payload: items } });
+				if (response.usage)
+					events.push({
+						type: "usage",
+						usage: {
+							inputTokens: response.usage.input_tokens,
+							outputTokens: response.usage.output_tokens,
+						},
+					});
+				events.push({
+					type: "message_stop",
+					stopReason: items.some((i) => i.type === "function_call") ? "tool_use" : "end_turn",
+				});
+				terminal = true;
+				return events;
+			}
+			// Reasoning summaries, item.done and argument.done are notifications.
+			// Only the validated final output array authorizes completed tool calls.
+			return [];
 		},
 	};
 }

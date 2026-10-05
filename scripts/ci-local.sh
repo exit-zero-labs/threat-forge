@@ -70,6 +70,10 @@ step "E2E TypeScript type check"
 npm run check:e2e-types || fail "E2E TypeScript type check failed"
 pass "E2E tsc"
 
+step "Provider smoke TypeScript type check"
+npm run check:provider-smoke-types || fail "Provider smoke TypeScript type check failed"
+pass "Provider smoke tsc"
+
 step "Cloudflare Worker type check"
 npm run check:worker-types || fail "Cloudflare Worker type check failed"
 pass "Worker tsc"

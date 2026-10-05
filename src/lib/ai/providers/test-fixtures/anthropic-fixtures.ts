@@ -173,8 +173,7 @@ export const EXPECTED_TRUNCATED_EVENTS: StreamEvent[] = [
 
 /**
  * A valid `message_start`, then a known event type whose `data:` is not valid
- * JSON. The mapper emits one non-terminal `malformed_stream` notice and keeps
- * going, so the terminal `message_stop` still arrives.
+ * JSON. The mapper emits one terminal `malformed_stream` error and drops later frames.
  */
 export const ANTHROPIC_INVALID_JSON_STREAM: SseFrame[] = [
 	frame("message_start", { message: { model: FIXTURE_MODEL } }),
@@ -187,6 +186,7 @@ export const EXPECTED_INVALID_JSON_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
 	{
 		type: "error",
+		terminal: true,
 		error: {
 			code: "malformed_stream",
 			message: 'The Anthropic stream sent a "content_block_delta" event that could not be decoded.',
@@ -194,14 +194,11 @@ export const EXPECTED_INVALID_JSON_EVENTS: StreamEvent[] = [
 			providerDetail: '{"index":0,"delta":{"type":"text_de',
 		},
 	},
-	{ type: "message_stop", stopReason: "end_turn" },
 ];
 
 /**
- * A `malformed_stream` notice followed by a close with no `message_stop`. The
- * notice is non-terminal, so the truncation must still be reported: the client
- * emits a second, terminal `malformed_stream` for the cut-off turn. This is the
- * discriminator that a non-terminal notice does not suppress truncation.
+ * A malformed frame followed by a close without message_stop. The terminal
+ * corruption error is reported once; the close must not add a redundant error.
  */
 export const ANTHROPIC_NOTICE_THEN_TRUNCATED_STREAM: SseFrame[] = [
 	frame("message_start", { message: { model: FIXTURE_MODEL } }),
@@ -212,17 +209,11 @@ export const EXPECTED_NOTICE_THEN_TRUNCATED_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
 	{
 		type: "error",
+		terminal: true,
 		error: {
 			code: "malformed_stream",
 			message: 'The Anthropic stream sent a "content_block_delta" event that could not be decoded.',
 			providerDetail: '{"index":0,"delta":{"type":"text_de',
-		},
-	},
-	{
-		type: "error",
-		error: {
-			code: "malformed_stream",
-			message: "The AI response ended before it was complete. Please try again.",
 		},
 	},
 ];
@@ -251,9 +242,8 @@ export const EXPECTED_UNKNOWN_EVENT_EVENTS: StreamEvent[] = [
 
 /**
  * A `tool_use` block whose accumulated `input_json_delta` fragments never parse.
- * The mapper drops that one call with a `malformed_stream` notice — the failed
- * call's name travels only as redacted `providerDetail` — and the turn still ends
- * cleanly.
+ * The mapper terminates the turn with `malformed_stream`; the failed call's
+ * name travels only as redacted provider detail. No normal stop follows.
  */
 export const ANTHROPIC_BAD_TOOL_ARGS_STREAM: SseFrame[] = [
 	frame("message_start", { message: { model: FIXTURE_MODEL } }),
@@ -276,19 +266,19 @@ export const EXPECTED_BAD_TOOL_ARGS_EVENTS: StreamEvent[] = [
 	{ type: "tool_call_input_delta", id: "call_bad", partialJson: '{"type": "never closed' },
 	{
 		type: "error",
+		terminal: true,
 		error: {
 			code: "malformed_stream",
 			message: "A tool call sent arguments that were not valid JSON, so the call was dropped.",
 			providerDetail: "add_element",
 		},
 	},
-	{ type: "message_stop", stopReason: "tool_use" },
 ];
 
 /**
  * An `input_json_delta` whose content-block index names a `tool_use` that never
  * started — the stream-level analog of a tool result with no matching call. The
- * mapper reports it as `malformed_stream` and continues.
+ * mapper reports terminal `malformed_stream` and drops subsequent frames.
  */
 export const ANTHROPIC_ORPHAN_TOOL_INPUT_STREAM: SseFrame[] = [
 	frame("message_start", { message: { model: FIXTURE_MODEL } }),
@@ -304,12 +294,12 @@ export const EXPECTED_ORPHAN_TOOL_INPUT_EVENTS: StreamEvent[] = [
 	{ type: "message_start", model: FIXTURE_MODEL },
 	{
 		type: "error",
+		terminal: true,
 		error: {
 			code: "malformed_stream",
-			message: "The Anthropic stream sent tool arguments for a tool call that never started.",
+			message: "The Anthropic response contained an invalid content block.",
 		},
 	},
-	{ type: "message_stop", stopReason: "end_turn" },
 ];
 
 // ---------------------------------------------------------------------------

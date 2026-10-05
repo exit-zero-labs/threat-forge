@@ -2,11 +2,12 @@
  * Streaming vocabulary for one assistant turn.
  *
  * Every provider mapper produces this union and nothing else, so a consumer can
- * never branch on a provider-specific payload shape. Two logically identical
- * responses from Anthropic and OpenAI must produce the same event sequence.
+ * never branch on a provider-specific payload shape. Provider-neutral visible events agree across providers; opaque continuation
+ * receipts are validated by their owning provider.
  */
 
 import type { ProtocolError } from "./errors";
+import type { ContinuationBinding, ContinuationOutput } from "./messages";
 
 /** Why the model stopped producing output. */
 export type StopReason =
@@ -82,24 +83,14 @@ export interface MessageStopEvent {
 	stopReason: StopReason;
 }
 
-/**
- * A failure was detected. The terminality rule is exact: a `malformed_stream`
- * error emitted by a mapper is a non-terminal notice scoped to the one piece
- * of the stream it reports — an undecodable frame, an orphan argument
- * fragment, or a dropped tool call — and the mapper keeps mapping the frames
- * that follow. An error with any other code reports the turn itself and is
- * terminal; provider-reported failures (`http_status`, `rate_limited`) end
- * the turn because the provider closes the stream after sending them. A
- * client must not treat a `malformed_stream` notice as the end of the turn
- * (issue #61 step 6).
- *
- * A *thrown* `malformed_stream` `ProtocolException` — the SSE decoder's
- * buffer-cap breach is one — is terminal on that channel and must not be
- * re-emitted as a stream notice: the non-terminal reading above applies only
- * to events a mapper emitted.
+/** A failure. Corrupt executable output sets `terminal`; legacy notices may omit it.
+ * Errors with other codes are always terminal. Thrown protocol exceptions are
+ * terminal regardless of code. Consumers retain partial text and refuse execution.
  */
 export interface ErrorEvent {
 	type: "error";
+	/** A corrupt response cannot be safely resumed; no normal stop follows. */
+	terminal?: boolean;
 	error: ProtocolError;
 }
 
@@ -113,6 +104,7 @@ export interface AbortedEvent {
 }
 
 export type StreamEvent =
+	| { type: "continuation"; output: ContinuationOutput; binding?: ContinuationBinding }
 	| MessageStartEvent
 	| TextDeltaEvent
 	| ToolCallStartEvent

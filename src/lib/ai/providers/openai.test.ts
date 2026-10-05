@@ -1,470 +1,369 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { StreamEvent } from "@/lib/ai/protocol/events";
 import type { ProtocolMessage } from "@/lib/ai/protocol/messages";
 import type { ProviderChatRequest } from "@/lib/ai/protocol/request";
 import { defineTool } from "@/lib/ai/protocol/tools";
-import { createAnthropicStreamMapper } from "./anthropic";
 import { buildOpenAiRequestBody, createOpenAiStreamMapper } from "./openai";
-import { createSseDecoder, type SseFrame } from "./sse";
+import type { SseFrame } from "./sse";
 
-const addNoteTool = defineTool({
-	name: "add_note",
-	description: "Attach a note to the model.",
-	input: { text: z.string() },
-});
-
-const baseRequest: ProviderChatRequest = {
-	modelId: "gpt-4o",
-	system: "You are a threat modeling assistant.",
-	messages: [{ role: "user", content: [{ type: "text", text: "Review the gateway." }] }],
+const request: ProviderChatRequest = {
+	modelId: "gpt-6.1-sol",
+	system: "Review threats.",
+	messages: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
 	tools: [],
 	maxOutputTokens: 4096,
 };
-
-/** Author one frame the way the decoder would deliver an OpenAI data line. */
-function frame(payload: unknown): SseFrame {
-	return { event: "message", data: JSON.stringify(payload) };
-}
-
-describe("buildOpenAiRequestBody", () => {
-	it("places the system prompt as the first message and requests streamed usage", () => {
-		const body = buildOpenAiRequestBody(baseRequest);
-		expect(body.model).toBe("gpt-4o");
-		expect(body.max_completion_tokens).toBe(4096);
-		expect(body.stream).toBe(true);
-		expect(body.stream_options).toEqual({ include_usage: true });
-		expect(body.messages).toEqual([
-			{ role: "system", content: "You are a threat modeling assistant." },
-			{ role: "user", content: "Review the gateway." },
-		]);
+const tool = defineTool({
+	name: "lookup",
+	description: "Look up a component",
+	input: { name: z.string().optional() },
+});
+const frame = (type: string, data: object = {}): SseFrame => ({
+	event: type,
+	data: JSON.stringify({ type, ...data }),
+});
+const message = (text: string, phase: "commentary" | "final_answer" = "final_answer") => ({
+	type: "message",
+	id: "msg_1",
+	role: "assistant",
+	status: "completed",
+	phase,
+	content: [{ type: "output_text", text, annotations: [] }],
+});
+const call = (callId = "call_1", args = "{}", id = "fc_1") => ({
+	type: "function_call",
+	id,
+	call_id: callId,
+	name: "lookup",
+	arguments: args,
+	status: "completed",
+});
+const reasoning = {
+	type: "reasoning",
+	id: "rs_1",
+	summary: [],
+	encrypted_content: "encrypted-reasoning",
+};
+const complete = (output: unknown[], overrides: object = {}) =>
+	frame("response.completed", {
+		response: {
+			model: "gpt-6.1-sol",
+			status: "completed",
+			output,
+			usage: { input_tokens: 20, output_tokens: 8 },
+			...overrides,
+		},
 	});
+const begin = () => frame("response.created", { response: { model: "gpt-6.1-sol" } });
 
-	it("serializes tool results as role tool messages keyed by tool_call_id", () => {
+describe("Responses serialization", () => {
+	it("keeps the full history local and omits all Chat Completions fields", () => {
+		const body = buildOpenAiRequestBody(request);
+		expect(body).toEqual({
+			model: request.modelId,
+			instructions: request.system,
+			input: [{ role: "user", content: "hi" }],
+			stream: true,
+			store: false,
+			include: ["reasoning.encrypted_content"],
+			reasoning: { effort: "medium" },
+			max_output_tokens: 4096,
+		});
+	});
+	it("preserves block order and uses call_id rather than an output item id", () => {
 		const messages: ProtocolMessage[] = [
 			{
 				role: "assistant",
 				content: [
-					{ type: "text", text: "Adding it." },
-					{ type: "tool_call", id: "call_1", name: "add_note", input: { text: "hi" } },
+					{ type: "text", text: "Checking." },
+					{ type: "tool_call", id: "call_a", name: "lookup", input: { name: "Cache" } },
 				],
 			},
 			{
 				role: "user",
 				content: [
-					{ type: "tool_result", toolCallId: "call_1", content: "ok" },
-					{ type: "text", text: "Thanks." },
+					{ type: "tool_result", toolCallId: "call_a", content: "Found", isError: false },
+					{ type: "text", text: "Thanks" },
 				],
 			},
 		];
-		const body = buildOpenAiRequestBody({ ...baseRequest, messages });
-		expect(body.messages).toEqual([
-			{ role: "system", content: "You are a threat modeling assistant." },
-			{
-				role: "assistant",
-				content: "Adding it.",
-				tool_calls: [
-					{
-						id: "call_1",
-						type: "function",
-						function: { name: "add_note", arguments: '{"text":"hi"}' },
-					},
-				],
-			},
-			// The tool message precedes the user's text: OpenAI requires results to
-			// directly follow the assistant message that made the calls.
-			{ role: "tool", tool_call_id: "call_1", content: "ok" },
-			{ role: "user", content: "Thanks." },
+		expect(buildOpenAiRequestBody({ ...request, messages }).input).toEqual([
+			{ role: "assistant", content: "Checking." },
+			{ type: "function_call", call_id: "call_a", name: "lookup", arguments: '{"name":"Cache"}' },
+			{ type: "function_call_output", call_id: "call_a", output: "Found" },
+			{ role: "user", content: "Thanks" },
 		]);
 	});
-
-	it("serializes a text-less tool-call turn with null content", () => {
-		const body = buildOpenAiRequestBody({
-			...baseRequest,
-			messages: [
-				{
-					role: "assistant",
-					content: [{ type: "tool_call", id: "call_1", name: "add_note", input: {} }],
-				},
-			],
-		});
-		expect(body.messages[1]).toEqual({
-			role: "assistant",
-			content: null,
-			tool_calls: [
-				{ id: "call_1", type: "function", function: { name: "add_note", arguments: "{}" } },
-			],
-		});
-	});
-
-	it("advertises tools as function definitions with generated parameters and no strict flag", () => {
-		const withTools = buildOpenAiRequestBody({ ...baseRequest, tools: [addNoteTool] });
-		expect(withTools.tools).toEqual([
+	it("uses flat tools and explicit strict:false so optional arguments stay optional", () => {
+		expect(buildOpenAiRequestBody({ ...request, tools: [tool] }).tools).toEqual([
 			{
 				type: "function",
-				function: {
-					name: "add_note",
-					description: "Attach a note to the model.",
-					parameters: addNoteTool.jsonSchema(),
-				},
+				name: "lookup",
+				description: tool.description,
+				parameters: tool.jsonSchema(),
+				strict: false,
 			},
 		]);
-		// strict mode is deferred to #64; the flag must be absent, not false.
-		expect(withTools.tools?.[0]?.function).not.toHaveProperty("strict");
-
-		const withoutTools = buildOpenAiRequestBody(baseRequest);
-		expect(withoutTools).not.toHaveProperty("tools");
+		expect(tool.jsonSchema()).not.toHaveProperty("required");
+	});
+	it("allows an unknown text model without inventing its reasoning capability", () => {
+		expect(buildOpenAiRequestBody({ ...request, modelId: "custom-text-model" })).not.toHaveProperty(
+			"reasoning",
+		);
+	});
+	it("replays encrypted reasoning, phase and function items unchanged without duplicate blocks", () => {
+		const items = [reasoning, message("Checking.", "commentary"), call()];
+		const assistant: ProtocolMessage = {
+			role: "assistant",
+			content: [
+				{ type: "text", text: "Checking." },
+				{ type: "tool_call", id: "call_1", name: "lookup", input: {} },
+			],
+			continuation: {
+				output: { provider: "openai", payload: items },
+				binding: { modelId: request.modelId, prefixDigest: "bound" },
+			},
+		};
+		const body = buildOpenAiRequestBody({
+			...request,
+			messages: [
+				assistant,
+				{
+					role: "user",
+					content: [{ type: "tool_result", toolCallId: "call_1", content: "Result" }],
+				},
+			],
+		});
+		expect(body.input).toEqual([
+			...items,
+			{ type: "function_call_output", call_id: "call_1", output: "Result" },
+		]);
+	});
+	it.each([
+		null,
+		[{ type: "computer_call" }],
+		[call("unreviewed")],
+		[message("changed")],
+		[call("call_1", "invalid")],
+	])("refuses an invalid or unreviewed continuation %j", (payload) => {
+		expect(() =>
+			buildOpenAiRequestBody({
+				...request,
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "tool_call", id: "call_1", name: "lookup", input: {} }],
+						continuation: {
+							output: { provider: "openai", payload },
+							binding: { modelId: request.modelId, prefixDigest: "x" },
+						},
+					},
+				],
+			}),
+		).toThrow();
 	});
 });
 
-describe("createOpenAiStreamMapper", () => {
-	it("emits message_start once, from the first chunk that names the model", () => {
+describe("Responses streaming", () => {
+	it("starts once, streams text, and preserves the final message without duplicate text", () => {
 		const mapper = createOpenAiStreamMapper();
-		const first = mapper.mapFrame(
-			frame({
-				model: "gpt-4o",
-				choices: [{ delta: { role: "assistant", content: "" }, finish_reason: null }],
+		expect(mapper.mapFrame(begin())).toEqual([{ type: "message_start", model: request.modelId }]);
+		expect(mapper.mapFrame(begin())).toEqual([]);
+		mapper.mapFrame(
+			frame("response.output_item.added", {
+				output_index: 0,
+				item: { ...message(""), status: "in_progress", content: [] },
 			}),
 		);
-		expect(first).toEqual([{ type: "message_start", model: "gpt-4o" }]);
-		const second = mapper.mapFrame(
-			frame({ model: "gpt-4o", choices: [{ delta: { content: "Hi" }, finish_reason: null }] }),
+		expect(
+			mapper.mapFrame(frame("response.output_text.delta", { output_index: 0, delta: "Hi 🌐" })),
+		).toEqual([{ type: "text_delta", text: "Hi 🌐" }]);
+		const events = mapper.mapFrame(complete([message("Hi 🌐")]));
+		expect(events).toEqual([
+			{ type: "continuation", output: { provider: "openai", payload: [message("Hi 🌐")] } },
+			{ type: "usage", usage: { inputTokens: 20, outputTokens: 8 } },
+			{ type: "message_stop", stopReason: "end_turn" },
+		]);
+		expect(mapper.mapFrame(complete([message("late")]))).toEqual([]);
+	});
+	it("finishes tools only after validating the complete response, with separate item/call IDs", () => {
+		const mapper = createOpenAiStreamMapper();
+		mapper.mapFrame(begin());
+		expect(
+			mapper.mapFrame(
+				frame("response.output_item.added", {
+					output_index: 0,
+					item: call("call_a", "", "fc_distinct"),
+				}),
+			),
+		).toEqual([{ type: "tool_call_start", id: "call_a", name: "lookup" }]);
+		expect(
+			mapper.mapFrame(
+				frame("response.function_call_arguments.delta", {
+					output_index: 0,
+					item_id: "fc_distinct",
+					delta: '{"name":',
+				}),
+			),
+		).toEqual([{ type: "tool_call_input_delta", id: "call_a", partialJson: '{"name":' }]);
+		mapper.mapFrame(
+			frame("response.function_call_arguments.delta", {
+				output_index: 0,
+				item_id: "fc_distinct",
+				delta: '"Cache"}',
+			}),
 		);
-		expect(second).toEqual([{ type: "text_delta", text: "Hi" }]);
-	});
-
-	it("skips empty and null content deltas", () => {
-		const mapper = createOpenAiStreamMapper();
-		mapper.mapFrame(frame({ model: "gpt-4o", choices: [] }));
 		expect(
-			mapper.mapFrame(frame({ choices: [{ delta: { content: "" }, finish_reason: null }] })),
+			mapper.mapFrame(
+				frame("response.output_item.done", {
+					output_index: 0,
+					item: call("call_a", '{"name":"Cache"}', "fc_distinct"),
+				}),
+			),
 		).toEqual([]);
-		expect(
-			mapper.mapFrame(frame({ choices: [{ delta: { content: null }, finish_reason: null }] })),
-		).toEqual([]);
+		const events = mapper.mapFrame(complete([call("call_a", '{"name":"Cache"}', "fc_distinct")]));
+		expect(events.filter((e) => e.type === "tool_call_complete")).toEqual([
+			{ type: "tool_call_complete", id: "call_a", name: "lookup", input: { name: "Cache" } },
+		]);
+		expect(events[events.length - 1]).toEqual({ type: "message_stop", stopReason: "tool_use" });
 	});
-
-	it("accumulates tool calls by index when id and name arrive on the first fragment only", () => {
+	it("keeps interleaved parallel call arguments separate", () => {
 		const mapper = createOpenAiStreamMapper();
-		mapper.mapFrame(frame({ model: "gpt-4o", choices: [] }));
-		expect(
+		mapper.mapFrame(begin());
+		for (let i = 0; i < 2; i++)
 			mapper.mapFrame(
-				frame({
-					choices: [
-						{
-							delta: {
-								tool_calls: [
-									{
-										index: 0,
-										id: "call_1",
-										type: "function",
-										function: { name: "add_note", arguments: "" },
-									},
-								],
-							},
-							finish_reason: null,
-						},
-					],
+				frame("response.output_item.added", {
+					output_index: i,
+					item: call(`call_${i}`, "", `fc_${i}`),
 				}),
-			),
-		).toEqual([{ type: "tool_call_start", id: "call_1", name: "add_note" }]);
-		// Later fragments carry neither id nor name; the index resolves them.
-		expect(
+			);
+		for (const i of [1, 0])
 			mapper.mapFrame(
-				frame({
-					choices: [
-						{
-							delta: { tool_calls: [{ index: 0, function: { arguments: '{"text":"h' } }] },
-							finish_reason: null,
-						},
-					],
+				frame("response.function_call_arguments.delta", {
+					output_index: i,
+					delta: `{"name":"${i}"}`,
 				}),
-			),
-		).toEqual([{ type: "tool_call_input_delta", id: "call_1", partialJson: '{"text":"h' }]);
+			);
 		expect(
-			mapper.mapFrame(
-				frame({
-					choices: [
-						{
-							delta: { tool_calls: [{ index: 0, function: { arguments: 'i"}' } }] },
-							finish_reason: null,
-						},
-					],
-				}),
-			),
-		).toEqual([{ type: "tool_call_input_delta", id: "call_1", partialJson: 'i"}' }]);
-		// finish_reason closes the choice: arguments are parsed exactly once here.
-		expect(
-			mapper.mapFrame(frame({ choices: [{ delta: {}, finish_reason: "tool_calls" }] })),
+			mapper
+				.mapFrame(
+					complete([
+						call("call_0", '{"name":"0"}', "fc_0"),
+						call("call_1", '{"name":"1"}', "fc_1"),
+					]),
+				)
+				.filter((e) => e.type === "tool_call_complete"),
 		).toEqual([
-			{ type: "tool_call_complete", id: "call_1", name: "add_note", input: { text: "hi" } },
-		]);
-		expect(mapper.mapFrame({ event: "message", data: "[DONE]" })).toEqual([
-			{ type: "message_stop", stopReason: "tool_use" },
+			{ type: "tool_call_complete", id: "call_0", name: "lookup", input: { name: "0" } },
+			{ type: "tool_call_complete", id: "call_1", name: "lookup", input: { name: "1" } },
 		]);
 	});
-
-	it("keeps two parallel tool calls separate by index", () => {
-		const mapper = createOpenAiStreamMapper();
-		mapper.mapFrame(frame({ model: "gpt-4o", choices: [] }));
-		mapper.mapFrame(
-			frame({
-				choices: [
-					{
-						delta: {
-							tool_calls: [
-								{ index: 0, id: "call_a", function: { name: "add_note", arguments: "" } },
-								{ index: 1, id: "call_b", function: { name: "add_note", arguments: "" } },
-							],
-						},
-						finish_reason: null,
-					},
-				],
-			}),
-		);
-		mapper.mapFrame(
-			frame({
-				choices: [
-					{
-						delta: {
-							tool_calls: [
-								{ index: 1, function: { arguments: '{"text":"b"}' } },
-								{ index: 0, function: { arguments: '{"text":"a"}' } },
-							],
-						},
-						finish_reason: null,
-					},
-				],
-			}),
-		);
-		const completed = mapper.mapFrame(
-			frame({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),
-		);
-		expect(completed).toEqual([
-			{ type: "tool_call_complete", id: "call_a", name: "add_note", input: { text: "a" } },
-			{ type: "tool_call_complete", id: "call_b", name: "add_note", input: { text: "b" } },
-		]);
+	it("uses completed output when no text deltas arrived", () => {
+		expect(
+			createOpenAiStreamMapper()
+				.mapFrame(complete([message("Final.")]))
+				.filter((e) => e.type === "text_delta"),
+		).toEqual([{ type: "text_delta", text: "Final." }]);
 	});
-
-	it("emits malformed_stream for one unparseable tool call while completing the others", () => {
-		const mapper = createOpenAiStreamMapper();
-		mapper.mapFrame(frame({ model: "gpt-4o", choices: [] }));
-		mapper.mapFrame(
-			frame({
-				choices: [
-					{
-						delta: {
-							tool_calls: [
-								{
-									index: 0,
-									id: "call_bad",
-									function: { name: "add_note", arguments: '{"text": ' },
-								},
-								{
-									index: 1,
-									id: "call_good",
-									function: { name: "add_note", arguments: '{"text":"ok"}' },
-								},
-							],
-						},
-						finish_reason: null,
-					},
-				],
-			}),
-		);
-		const events = mapper.mapFrame(
-			frame({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),
-		);
-		expect(events).toHaveLength(2);
-		expect(events[0]).toMatchObject({ type: "error", error: { code: "malformed_stream" } });
-		if (events[0].type !== "error") throw new Error("expected an error event");
-		expect(events[0].error.message).toBe(
-			"A tool call sent arguments that were not valid JSON, so the call was dropped.",
-		);
-		expect(events[0].error.providerDetail).toBe("add_note");
-		expect(events[1]).toEqual({
-			type: "tool_call_complete",
-			id: "call_good",
-			name: "add_note",
-			input: { text: "ok" },
-		});
-		// The turn still terminates normally.
-		expect(mapper.mapFrame({ event: "message", data: "[DONE]" })).toEqual([
-			{ type: "message_stop", stopReason: "tool_use" },
-		]);
-	});
-
-	it("emits malformed_stream for a first fragment that never names its call", () => {
-		const mapper = createOpenAiStreamMapper();
-		const events = mapper.mapFrame(
-			frame({
-				choices: [
-					{
-						delta: { tool_calls: [{ index: 0, function: { arguments: '{"a":1}' } }] },
-						finish_reason: null,
-					},
-				],
-			}),
-		);
-		expect(events).toMatchObject([{ type: "error", error: { code: "malformed_stream" } }]);
-	});
-
 	it.each([
-		["stop", "end_turn"],
-		["tool_calls", "tool_use"],
-		["length", "max_tokens"],
-		["content_filter", "unknown"],
-	] as const)("maps finish_reason %s to stop reason %s at [DONE]", (raw, mapped) => {
-		const mapper = createOpenAiStreamMapper();
-		mapper.mapFrame(frame({ choices: [{ delta: {}, finish_reason: raw }] }));
-		expect(mapper.mapFrame({ event: "message", data: "[DONE]" })).toEqual([
-			{ type: "message_stop", stopReason: mapped },
+		["invalid JSON arguments", [call("call_1", "{")]],
+		["duplicate call IDs", [call(), call("call_1", "{}", "fc_2")]],
+		["unsupported tool output", [{ type: "computer_call", id: "pc_1" }]],
+		["incomplete function", [{ ...call(), status: "incomplete" }]],
+		["refusal", [{ ...message(""), content: [{ type: "refusal", refusal: "No" }] }]],
+		["wrong role", [{ ...message("x"), role: "user" }]],
+	] as const)("fails closed for %s without completing or authorizing tools", (_name, output) => {
+		const events = createOpenAiStreamMapper().mapFrame(complete([...output]));
+		expect(events).toEqual([
+			{
+				type: "error",
+				terminal: true,
+				error: { code: "malformed_stream", message: expect.any(String) },
+			},
 		]);
 	});
-
-	it("reports unknown when [DONE] arrives without any finish_reason", () => {
+	it.each(["response.failed", "response.incomplete"])(
+		"never reports a %s as a completed turn",
+		(type) => {
+			const events = createOpenAiStreamMapper().mapFrame(
+				frame(type, {
+					response: { model: request.modelId, status: type.split(".")[1], output: [call()] },
+				}),
+			);
+			expect(events).toEqual([
+				{ type: "error", error: { code: "http_status", message: expect.any(String) } },
+			]);
+		},
+	);
+	it("redacts a provider error and drops events after it", () => {
 		const mapper = createOpenAiStreamMapper();
-		expect(mapper.mapFrame({ event: "message", data: "[DONE]" })).toEqual([
-			{ type: "message_stop", stopReason: "unknown" },
-		]);
-	});
-
-	it("maps the requested usage chunk to a usage event", () => {
-		const mapper = createOpenAiStreamMapper();
-		mapper.mapFrame(frame({ model: "gpt-4o", choices: [] }));
-		const events = mapper.mapFrame(
-			frame({ choices: [], usage: { prompt_tokens: 42, completion_tokens: 17 } }),
-		);
-		expect(events).toEqual([{ type: "usage", usage: { inputTokens: 42, outputTokens: 17 } }]);
-	});
-
-	it("emits malformed_stream for a data line that is not valid JSON", () => {
-		const mapper = createOpenAiStreamMapper();
-		const events = mapper.mapFrame({ event: "message", data: '{"choices":[{"del' });
-		expect(events).toMatchObject([{ type: "error", error: { code: "malformed_stream" } }]);
-	});
-
-	it("maps an in-stream rate limit error to rate_limited with redacted detail", () => {
-		const mapper = createOpenAiStreamMapper();
-		const events = mapper.mapFrame(
-			frame({
-				error: {
-					message: "Incorrect API key provided: sk-abc123DEF. Rate limit reached.",
-					type: "requests",
-					code: "rate_limit_exceeded",
-				},
-			}),
-		);
-		expect(events).toHaveLength(1);
-		if (events[0].type !== "error") throw new Error("expected an error event");
-		expect(events[0].error.code).toBe("rate_limited");
-		expect(events[0].error.message).toBe(
-			"OpenAI rate limit or quota exceeded — wait and try again.",
-		);
-		expect(events[0].error.providerDetail).toContain("[redacted-key]");
-		expect(events[0].error.providerDetail).not.toContain("sk-abc");
-	});
-
-	it("maps other in-stream errors to http_status with an authored message", () => {
-		const mapper = createOpenAiStreamMapper();
-		const events = mapper.mapFrame(
-			frame({ error: { message: "The server had an error.", type: "server_error", code: null } }),
-		);
-		expect(events).toMatchObject([
+		expect(
+			mapper.mapFrame(
+				frame("error", { code: "rate_limit_exceeded", message: "key sk-proj-fake-secret" }),
+			),
+		).toEqual([
 			{
 				type: "error",
 				error: {
-					code: "http_status",
-					message: "OpenAI reported an error while streaming the response.",
-					providerDetail: "server_error: The server had an error.",
+					code: "rate_limited",
+					message: expect.any(String),
+					providerDetail: "key [redacted-key]",
 				},
 			},
 		]);
+		expect(mapper.mapFrame(complete([call()]))).toEqual([]);
+	});
+	it.each([
+		frame("response.function_call_arguments.delta", { output_index: 1, delta: "{}" }),
+		frame("response.output_text.delta", { output_index: 2, delta: "Hi" }),
+		{ event: "message", data: "[DONE]" },
+		{ event: "response.completed", data: "not json" },
+	])("rejects orphan or malformed data instead of turning it into a short success", (invalid) => {
+		expect(createOpenAiStreamMapper().mapFrame(invalid)).toMatchObject([
+			{ type: "error", terminal: true, error: { code: "malformed_stream" } },
+		]);
+	});
+	it("rejects mismatched final arguments after valid streamed fragments", () => {
+		const mapper = createOpenAiStreamMapper();
+		mapper.mapFrame(frame("response.output_item.added", { output_index: 0, item: call() }));
+		mapper.mapFrame(
+			frame("response.function_call_arguments.delta", { output_index: 0, delta: "{}" }),
+		);
+		expect(mapper.mapFrame(complete([call("call_1", '{"name":"changed"}')]))).toMatchObject([
+			{ type: "error", terminal: true },
+		]);
+	});
+	it("ignores future non-executable notifications", () => {
+		expect(
+			createOpenAiStreamMapper().mapFrame(frame("response.future_usage_hint", { data: 1 })),
+		).toEqual([]);
 	});
 });
 
-/**
- * The provider-neutrality proof: the same logical response, authored in each
- * provider's documented streaming shape, must map to an identical StreamEvent
- * sequence. Provider-assigned identifiers (the echoed model id and the tool
- * call id) are deliberately authored equal across the two transcripts so the
- * sequences can be compared exactly; everything else follows each provider's
- * wire format. Both transcripts are hand-authored from the documented event
- * shapes, not recorded from a live account.
- */
-describe("cross-provider event equality", () => {
-	const ANTHROPIC_TRANSCRIPT =
-		"event: message_start\n" +
-		'data: {"type":"message_start","message":{"id":"msg_1","model":"test-model-1","usage":{"input_tokens":42,"output_tokens":1}}}\n\n' +
-		"event: content_block_start\n" +
-		'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n' +
-		"event: content_block_delta\n" +
-		'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"I will add "}}\n\n' +
-		"event: content_block_delta\n" +
-		'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"a note."}}\n\n' +
-		"event: content_block_stop\n" +
-		'data: {"type":"content_block_stop","index":0}\n\n' +
-		"event: content_block_start\n" +
-		'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_1","name":"add_note","input":{}}}\n\n' +
-		"event: content_block_delta\n" +
-		'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"text\\":\\"Spoofed"}}\n\n' +
-		"event: content_block_delta\n" +
-		'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" client\\"}"}}\n\n' +
-		"event: content_block_stop\n" +
-		'data: {"type":"content_block_stop","index":1}\n\n' +
-		"event: message_delta\n" +
-		'data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":17}}\n\n' +
-		"event: message_stop\n" +
-		'data: {"type":"message_stop"}\n\n';
-
-	const OPENAI_TRANSCRIPT =
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{"content":"I will add "},"finish_reason":null}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{"content":"a note."},"finish_reason":null}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"add_note","arguments":""}}]},"finish_reason":null}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"text\\":\\"Spoofed"}}]},"finish_reason":null}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":" client\\"}"}}]},"finish_reason":null}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n' +
-		'data: {"id":"chatcmpl-1","object":"chat.completion.chunk","model":"test-model-1","choices":[],"usage":{"prompt_tokens":42,"completion_tokens":17}}\n\n' +
-		"data: [DONE]\n\n";
-
-	const EXPECTED_SEQUENCE: StreamEvent[] = [
-		{ type: "message_start", model: "test-model-1" },
-		{ type: "text_delta", text: "I will add " },
-		{ type: "text_delta", text: "a note." },
-		{ type: "tool_call_start", id: "call_1", name: "add_note" },
-		{ type: "tool_call_input_delta", id: "call_1", partialJson: '{"text":"Spoofed' },
-		{ type: "tool_call_input_delta", id: "call_1", partialJson: ' client"}' },
-		{
-			type: "tool_call_complete",
-			id: "call_1",
-			name: "add_note",
-			input: { text: "Spoofed client" },
+// OpenAI's output message phase is explicitly nullable in the official schema.
+it("preserves a nullable assistant phase through stateless replay", () => {
+	const output = { ...message("Hello"), phase: null };
+	const events = createOpenAiStreamMapper().mapFrame(complete([output]));
+	expect(events).toContainEqual({
+		type: "continuation",
+		output: { provider: "openai", payload: [output] },
+	});
+	const msg: ProtocolMessage = {
+		role: "assistant",
+		content: [{ type: "text", text: "Hello" }],
+		continuation: {
+			output: { provider: "openai", payload: [output] },
+			binding: { modelId: request.modelId, prefixDigest: "fixture" },
 		},
-		{ type: "usage", usage: { inputTokens: 42, outputTokens: 17 } },
-		{ type: "message_stop", stopReason: "tool_use" },
-	];
-
-	function decodeAndMap(
-		transcript: string,
-		mapper: { mapFrame(frame: SseFrame): StreamEvent[] },
-	): StreamEvent[] {
-		const decoder = createSseDecoder();
-		const events: StreamEvent[] = [];
-		for (const f of decoder.decode(new TextEncoder().encode(transcript))) {
-			events.push(...mapper.mapFrame(f));
-		}
-		return events;
-	}
-
-	it("maps the same logical response to an identical event sequence on both providers", () => {
-		const anthropicEvents = decodeAndMap(ANTHROPIC_TRANSCRIPT, createAnthropicStreamMapper());
-		const openAiEvents = decodeAndMap(OPENAI_TRANSCRIPT, createOpenAiStreamMapper());
-
-		// Guard against a vacuous pass: both sequences must be the expected one,
-		// not merely equal to each other (two empty sequences are also equal).
-		expect(anthropicEvents).toEqual(EXPECTED_SEQUENCE);
-		expect(openAiEvents).toEqual(EXPECTED_SEQUENCE);
-		expect(openAiEvents).toEqual(anthropicEvents);
-	});
+	};
+	expect(buildOpenAiRequestBody({ ...request, messages: [msg] }).input).toEqual([output]);
 });
+
+it.each([undefined, null, ""])(
+	"refuses unusable stateless reasoning encryption %s",
+	(encrypted_content) => {
+		expect(
+			createOpenAiStreamMapper().mapFrame(complete([{ ...reasoning, encrypted_content }, call()])),
+		).toMatchObject([{ type: "error", terminal: true, error: { code: "malformed_stream" } }]);
+	},
+);

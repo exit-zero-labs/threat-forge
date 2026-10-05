@@ -26,7 +26,7 @@ use tauri::{AppHandle, Emitter};
 use thiserror::Error;
 
 pub const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
-pub const OPENAI_API_URL: &str = "https://api.openai.com/v1/chat/completions";
+pub const OPENAI_API_URL: &str = "https://api.openai.com/v1/responses";
 
 const STREAM_FRAME_EVENT: &str = "ai:stream-frame";
 const STREAM_CLOSED_EVENT: &str = "ai:stream-closed";
@@ -101,6 +101,8 @@ pub enum RelayError {
     BodyTooLarge,
     #[error("the AI request body could not be serialized")]
     BodyUnserializable,
+    #[error("the AI request body does not match the selected provider endpoint")]
+    ProviderBodyMismatch,
     #[error("the stored API key contains characters that cannot be sent in an HTTP header")]
     KeyNotHeaderSafe,
     /// The refusal `start_ai_stream` returns when no credential is stored.
@@ -246,6 +248,142 @@ pub fn validate_body(body: &serde_json::Value) -> Result<Vec<u8>, RelayError> {
         return Err(RelayError::BodyTooLarge);
     }
     Ok(bytes)
+}
+
+/// Validate endpoint-specific fields before any IPC-supplied body reaches a provider.
+/// This protects the fixed Responses endpoint against obsolete Chat Completions bodies.
+pub fn validate_provider_body(
+    provider: &AiProvider,
+    body: &serde_json::Value,
+) -> Result<Vec<u8>, RelayError> {
+    let bytes = validate_body(body)?;
+    let valid = match provider {
+        AiProvider::OpenAi => {
+            body.get("input")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|items| items.iter().all(local_response_input))
+                && body.get("store") == Some(&serde_json::Value::Bool(false))
+                && [
+                    "messages",
+                    "max_completion_tokens",
+                    "reasoning_effort",
+                    "stream_options",
+                    "previous_response_id",
+                    "conversation",
+                    "background",
+                ]
+                .iter()
+                .all(|key| body.get(*key).is_none())
+        }
+        AiProvider::Anthropic => {
+            body.get("messages")
+                .is_some_and(serde_json::Value::is_array)
+                && ["input", "previous_response_id", "max_output_tokens"]
+                    .iter()
+                    .all(|key| body.get(*key).is_none())
+        }
+    };
+    if !valid || !local_tools_only(provider, body) || body.get("tool_choice").is_some() {
+        return Err(RelayError::ProviderBodyMismatch);
+    }
+    Ok(bytes)
+}
+
+/// Responses can execute hosted tools before output reaches local review. Only
+/// the custom-function contract may cross IPC; output validation is too late.
+fn local_tools_only(provider: &AiProvider, body: &serde_json::Value) -> bool {
+    let Some(tools) = body.get("tools") else {
+        return true;
+    };
+    let Some(tools) = tools.as_array() else {
+        return false;
+    };
+    tools.iter().all(|tool| {
+        let Some(fields) = tool.as_object() else {
+            return false;
+        };
+        let name_valid = tool
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|name| !name.trim().is_empty());
+        let (allowed, schema): (&[&str], Option<&serde_json::Value>) = match provider {
+            AiProvider::OpenAi
+                if tool.get("type").and_then(serde_json::Value::as_str) == Some("function")
+                    && tool.get("strict") == Some(&serde_json::Value::Bool(false)) =>
+            {
+                (
+                    &["type", "name", "description", "parameters", "strict"],
+                    tool.get("parameters"),
+                )
+            }
+            AiProvider::Anthropic => (
+                &["name", "description", "input_schema"],
+                tool.get("input_schema"),
+            ),
+            _ => return false,
+        };
+        name_valid
+            && fields.keys().all(|key| allowed.contains(&key.as_str()))
+            && schema.is_some_and(|schema| {
+                schema.is_object()
+                    && schema.get("type").and_then(serde_json::Value::as_str) == Some("object")
+            })
+    })
+}
+
+/// Keep stateless input local: remote references and rich file/image content can
+/// make the provider fetch third-party URLs before any output reaches review.
+fn local_response_input(item: &serde_json::Value) -> bool {
+    if !item.is_object() {
+        return false;
+    }
+    match item.get("type").and_then(serde_json::Value::as_str) {
+        Some("function_call" | "reasoning") => true,
+        Some("function_call_output") => {
+            item.get("output").is_some_and(serde_json::Value::is_string)
+        }
+        None | Some("message") => {
+            let text_type = match item.get("role").and_then(serde_json::Value::as_str) {
+                Some("user") => "input_text",
+                Some("assistant") => "output_text",
+                _ => return false,
+            };
+            match item.get("content") {
+                Some(serde_json::Value::String(_)) => true,
+                Some(serde_json::Value::Array(blocks)) => blocks.iter().all(|block| {
+                    block.get("type").and_then(serde_json::Value::as_str) == Some(text_type)
+                        && block.get("text").is_some_and(serde_json::Value::is_string)
+                }),
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// The production client refuses redirects and bounds connection and idle waits.
+fn relay_client() -> Result<Client, reqwest::Error> {
+    Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .read_timeout(std::time::Duration::from_secs(300))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+}
+
+/// Internal request seam. Production callers supply only `endpoint_for(provider)`;
+/// network tests supply a synthetic loopback endpoint, never through IPC.
+async fn post_stream(
+    client: &Client,
+    endpoint: &str,
+    headers: HeaderMap,
+    body: Vec<u8>,
+) -> Result<Response, reqwest::Error> {
+    client
+        .post(endpoint)
+        .headers(headers)
+        .body(body)
+        .send()
+        .await
 }
 
 /// Validate a frontend-supplied stream id before it keys any state.
@@ -571,12 +709,7 @@ async fn relay(
     // `Authorization` and cookies), so a redirecting middlebox or compromised
     // edge could otherwise exfiltrate the Anthropic key. A 3xx now lands in
     // the non-success branch below as a typed `HttpError`.
-    let client = match Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .read_timeout(std::time::Duration::from_secs(300))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-    {
+    let client = match relay_client() {
         Ok(client) => client,
         Err(_) => {
             return StreamOutcome::TransportError {
@@ -586,13 +719,7 @@ async fn relay(
         }
     };
 
-    let response = match client
-        .post(endpoint_for(provider))
-        .headers(headers)
-        .body(body)
-        .send()
-        .await
-    {
+    let response = match post_stream(&client, endpoint_for(provider), headers, body).await {
         Ok(response) => response,
         Err(e) => {
             return StreamOutcome::TransportError {
@@ -888,7 +1015,7 @@ mod tests {
         );
         assert_eq!(
             endpoint_for(&AiProvider::OpenAi),
-            "https://api.openai.com/v1/chat/completions"
+            "https://api.openai.com/v1/responses"
         );
     }
 
@@ -1242,5 +1369,247 @@ mod tests {
         );
         let body = read_capped_body(response, MAX_ERROR_BODY_BYTES).await;
         assert_eq!(body.len(), MAX_ERROR_BODY_BYTES);
+    }
+    #[test]
+    fn endpoint_body_validation_rejects_cross_provider_and_obsolete_requests() {
+        let openai =
+            serde_json::json!({"model":"gpt-6.1-sol","stream":true,"store":false,"input":[]});
+        let anthropic =
+            serde_json::json!({"model":"claude-sonnet-5-5","stream":true,"messages":[]});
+        assert!(validate_provider_body(&AiProvider::OpenAi, &openai).is_ok());
+        assert!(validate_provider_body(&AiProvider::Anthropic, &anthropic).is_ok());
+        assert_eq!(
+            validate_provider_body(&AiProvider::OpenAi, &anthropic),
+            Err(RelayError::ProviderBodyMismatch)
+        );
+        assert_eq!(
+            validate_provider_body(&AiProvider::Anthropic, &openai),
+            Err(RelayError::ProviderBodyMismatch)
+        );
+        for field in [
+            "messages",
+            "max_completion_tokens",
+            "reasoning_effort",
+            "stream_options",
+            "previous_response_id",
+        ] {
+            let mut invalid = openai.clone();
+            invalid[field] = serde_json::json!("obsolete");
+            assert_eq!(
+                validate_provider_body(&AiProvider::OpenAi, &invalid),
+                Err(RelayError::ProviderBodyMismatch)
+            );
+        }
+        let mut stored = openai.clone();
+        stored["store"] = serde_json::json!(true);
+        assert_eq!(
+            validate_provider_body(&AiProvider::OpenAi, &stored),
+            Err(RelayError::ProviderBodyMismatch)
+        );
+    }
+
+    // Actual TCP/reqwest boundary, with fake auth only. The joined one-shot server
+    // asserts the bytes it received and returns either SSE or a redirect.
+    fn local_http_server(reply: String) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("local bind");
+        let address = listener.local_addr().expect("local address");
+        let task = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().expect("local accept");
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .expect("read timeout");
+            let mut bytes = Vec::new();
+            loop {
+                let mut chunk = [0_u8; 1024];
+                let count = socket.read(&mut chunk).expect("request bytes");
+                if count == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&chunk[..count]);
+                if let Some(end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&bytes[..end]).to_lowercase();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .expect("length header")
+                        .trim()
+                        .parse()
+                        .expect("length");
+                    if bytes.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            socket.write_all(reply.as_bytes()).expect("HTTP reply");
+            String::from_utf8(bytes).expect("UTF-8 request")
+        });
+        (format!("http://{address}"), task)
+    }
+
+    #[tokio::test]
+    async fn actual_http_posts_provider_bodies_and_splits_native_sse() {
+        for provider in [AiProvider::OpenAi, AiProvider::Anthropic] {
+            let path = if provider == AiProvider::OpenAi {
+                "/v1/responses"
+            } else {
+                "/v1/messages"
+            };
+            let event = if provider == AiProvider::OpenAi {
+                "response.completed"
+            } else {
+                "message_stop"
+            };
+            let body = if provider == AiProvider::OpenAi {
+                serde_json::json!({"model":"gpt-6.1-sol","stream":true,"store":false,"input":[]})
+            } else {
+                serde_json::json!({"model":"claude-sonnet-5-5","stream":true,"messages":[]})
+            };
+            let sse = format!("event: {event}\ndata: {{\"unicode\":\"🌐\"}}\n\n");
+            let (url, task) = local_http_server(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{sse}", sse.len()));
+            let response = post_stream(
+                &relay_client().expect("client"),
+                &format!("{url}{path}"),
+                auth_headers(&provider, "sk-native-test-not-a-real-key").expect("headers"),
+                validate_provider_body(&provider, &body).expect("body"),
+            )
+            .await
+            .expect("local HTTP");
+            assert!(response.status().is_success());
+            let mut splitter = SseFrameSplitter::default();
+            let bytes = response.bytes().await.expect("SSE bytes");
+            let frames = splitter.push(&bytes).expect("SSE framing");
+            assert_eq!(
+                frames,
+                vec![SseFrame {
+                    event: event.into(),
+                    data: "{\"unicode\":\"🌐\"}".into()
+                }]
+            );
+            let captured = task.join().expect("server reaped");
+            assert!(captured.starts_with(&format!("POST {path} HTTP/1.1")));
+            assert_eq!(
+                captured.split("\r\n\r\n").nth(1).expect("body"),
+                body.to_string()
+            );
+            let headers = captured.to_lowercase();
+            assert!(headers.contains(if provider == AiProvider::OpenAi {
+                "authorization: bearer sk-native-test-not-a-real-key"
+            } else {
+                "x-api-key: sk-native-test-not-a-real-key"
+            }));
+        }
+    }
+
+    #[tokio::test]
+    async fn actual_http_refuses_redirects_before_forwarding_auth() {
+        let (url, task) = local_http_server("HTTP/1.1 307 Temporary Redirect\r\nLocation: http://127.0.0.1:1/credential-trap\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into());
+        let response = post_stream(
+            &relay_client().expect("client"),
+            &url,
+            auth_headers(&AiProvider::Anthropic, "sk-native-test-not-a-real-key").expect("headers"),
+            b"{}".to_vec(),
+        )
+        .await
+        .expect("redirect remains a response");
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        task.join().expect("server reaped");
+    }
+    #[test]
+    fn ipc_accepts_text_continuations_and_refuses_remote_content() {
+        let mut body =
+            serde_json::json!({"model":"gpt-6.1-sol","stream":true,"store":false,"input":[]});
+        for item in [
+            serde_json::json!({"role":"user","content":"hello"}),
+            serde_json::json!({"role":"assistant","content":"hello"}),
+            serde_json::json!({"role":"user","content":[{"type":"input_text","text":"hello"}]}),
+            serde_json::json!({"type":"message","id":"msg_1","role":"assistant","status":"completed","phase":"commentary","content":[{"type":"output_text","text":"hello","annotations":[{"type":"url_citation","url":"https://example.com","title":"Reference","start_index":0,"end_index":5}]}]}),
+            serde_json::json!({"type":"message","id":"msg_2","role":"assistant","status":"completed","phase":null,"content":[{"type":"output_text","text":"hello","annotations":[]}]}),
+            serde_json::json!({"type":"function_call_output","call_id":"call_1","output":"local result"}),
+        ] {
+            body["input"] = serde_json::json!([item]);
+            assert!(validate_provider_body(&AiProvider::OpenAi, &body).is_ok());
+        }
+        for content in [
+            serde_json::json!([{"type":"input_file","file_url":"https://attacker.example/probe.pdf?data=private-document"}]),
+            serde_json::json!([{"type":"input_file","file_id":"file_private"}]),
+            serde_json::json!([{"type":"input_image","image_url":"https://attacker.example/image.png"}]),
+            serde_json::json!([{"type":"input_audio","data":"audio","format":"wav"}]),
+            serde_json::json!([{"type":"input_text","text":42}]),
+            serde_json::json!([{"type":"output_text","text":42}]),
+            serde_json::json!([{"type":"future_remote","url":"https://attacker.example"}]),
+            serde_json::json!([null]),
+            serde_json::json!({"type":"input_text","text":"hello"}),
+            serde_json::json!(null),
+        ] {
+            for role in ["user", "assistant"] {
+                body["input"] = serde_json::json!([{"role":role,"content":content}]);
+                assert_eq!(
+                    validate_provider_body(&AiProvider::OpenAi, &body),
+                    Err(RelayError::ProviderBodyMismatch)
+                );
+            }
+            body["input"] = serde_json::json!([{"type":"function_call_output","call_id":"call_1","output":content}]);
+            assert_eq!(
+                validate_provider_body(&AiProvider::OpenAi, &body),
+                Err(RelayError::ProviderBodyMismatch)
+            );
+        }
+    }
+    #[test]
+    fn ipc_refuses_hosted_tools_before_stored_key_access() {
+        let body =
+            serde_json::json!({"model":"gpt-6.1-sol","stream":true,"store":false,"input":[]});
+        for hosted in [
+            "mcp",
+            "web_search",
+            "code_interpreter",
+            "computer_use_preview",
+            "file_search",
+            "image_generation",
+        ] {
+            let mut invalid = body.clone();
+            invalid["tools"] = serde_json::json!([{"type":hosted,"server_url":"https://attacker.example/mcp","require_approval":"never"}]);
+            assert_eq!(
+                validate_provider_body(&AiProvider::OpenAi, &invalid),
+                Err(RelayError::ProviderBodyMismatch)
+            );
+        }
+        for malformed in [
+            serde_json::json!(null),
+            serde_json::json!({}),
+            serde_json::json!([null]),
+            serde_json::json!([{"type":"function","name":"lookup","strict":false,"parameters":{"type":"object"},"server_url":"https://attacker.example"}]),
+        ] {
+            let mut invalid = body.clone();
+            invalid["tools"] = malformed;
+            assert_eq!(
+                validate_provider_body(&AiProvider::OpenAi, &invalid),
+                Err(RelayError::ProviderBodyMismatch)
+            );
+        }
+        let mut valid = body.clone();
+        valid["tools"] = serde_json::json!([{"type":"function","name":"lookup","description":"Read","strict":false,"parameters":{"type":"object","properties":{}}}]);
+        assert!(validate_provider_body(&AiProvider::OpenAi, &valid).is_ok());
+        for remote in [
+            "item_reference",
+            "mcp_approval_response",
+            "mcp_call",
+            "web_search_call",
+        ] {
+            let mut invalid = body.clone();
+            invalid["input"] = serde_json::json!([{"type":remote,"id":"remote-id"}]);
+            assert_eq!(
+                validate_provider_body(&AiProvider::OpenAi, &invalid),
+                Err(RelayError::ProviderBodyMismatch)
+            );
+        }
+        let mut anthropic = serde_json::json!({"model":"claude-sonnet-5-5","stream":true,"messages":[],"tools":[{"name":"lookup","input_schema":{"type":"object","properties":{}}}]});
+        assert!(validate_provider_body(&AiProvider::Anthropic, &anthropic).is_ok());
+        anthropic["tools"][0]["type"] = serde_json::json!("web_search_20250305");
+        assert_eq!(
+            validate_provider_body(&AiProvider::Anthropic, &anthropic),
+            Err(RelayError::ProviderBodyMismatch)
+        );
     }
 }

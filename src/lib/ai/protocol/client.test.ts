@@ -104,10 +104,12 @@ function streamedResponse(body: string): Response {
 	return new Response(stream);
 }
 
-const TEXT_FRAME = `event: content_block_delta\ndata: ${JSON.stringify({
-	index: 0,
-	delta: { type: "text_delta", text: "hi" },
-})}\n\n`;
+const TEXT_FRAME = `event: content_block_start\ndata: {"index":0,"content_block":{"type":"text","text":""}}\n\nevent: content_block_delta\ndata: ${JSON.stringify(
+	{
+		index: 0,
+		delta: { type: "text_delta", text: "hi" },
+	},
+)}\n\n`;
 
 beforeEach(() => {
 	relay.reset();
@@ -133,6 +135,10 @@ describe("streamConversation orchestration", () => {
 					data: JSON.stringify({ message: { model: KNOWN_MODEL, usage: { input_tokens: 3 } } }),
 				});
 				cb.onFrame({
+					event: "content_block_start",
+					data: JSON.stringify({ index: 0, content_block: { type: "text", text: "" } }),
+				});
+				cb.onFrame({
 					event: "content_block_delta",
 					data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "hello" } }),
 				});
@@ -140,6 +146,7 @@ describe("streamConversation orchestration", () => {
 					event: "message_delta",
 					data: JSON.stringify({ delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } }),
 				});
+				cb.onFrame({ event: "content_block_stop", data: JSON.stringify({ index: 0 }) });
 				cb.onFrame({ event: "message_stop", data: "{}" });
 				cb.onClose("done");
 			}),
@@ -150,6 +157,15 @@ describe("streamConversation orchestration", () => {
 			{ type: "message_start", model: KNOWN_MODEL },
 			{ type: "text_delta", text: "hello" },
 			{ type: "usage", usage: { inputTokens: 3, outputTokens: 5 } },
+			{
+				type: "continuation",
+				output: { provider: "anthropic", payload: [{ type: "text", text: "hello" }] },
+				binding: {
+					modelId: KNOWN_MODEL,
+					prefixDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+					turnId: undefined,
+				},
+			},
 			{ type: "message_stop", stopReason: "end_turn" },
 		]);
 	});
@@ -160,6 +176,10 @@ describe("streamConversation orchestration", () => {
 		await streamConversation(
 			anthropicRequest({ tools: [sampleTool] }),
 			scriptedTransport((cb) => {
+				cb.onFrame({
+					event: "message_start",
+					data: JSON.stringify({ message: { model: KNOWN_MODEL } }),
+				});
 				cb.onFrame({
 					event: "content_block_start",
 					data: JSON.stringify({
@@ -188,6 +208,7 @@ describe("streamConversation orchestration", () => {
 		);
 
 		expect(events).toEqual([
+			{ type: "message_start", model: KNOWN_MODEL },
 			{ type: "tool_call_start", id: "toolu_1", name: "add_element" },
 			{ type: "tool_call_input_delta", id: "toolu_1", partialJson: '{"action":"add_element"}' },
 			{
@@ -195,6 +216,25 @@ describe("streamConversation orchestration", () => {
 				id: "toolu_1",
 				name: "add_element",
 				input: { action: "add_element" },
+			},
+			{
+				type: "continuation",
+				output: {
+					provider: "anthropic",
+					payload: [
+						{
+							type: "tool_use",
+							id: "toolu_1",
+							name: "add_element",
+							input: { action: "add_element" },
+						},
+					],
+				},
+				binding: {
+					modelId: KNOWN_MODEL,
+					prefixDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+					turnId: undefined,
+				},
 			},
 			{ type: "message_stop", stopReason: "tool_use" },
 		]);
@@ -210,6 +250,14 @@ describe("streamConversation orchestration", () => {
 			anthropicRequest(),
 			scriptedTransport((cb) => {
 				cb.onFrame({
+					event: "message_start",
+					data: JSON.stringify({ message: { model: KNOWN_MODEL } }),
+				});
+				cb.onFrame({
+					event: "content_block_start",
+					data: JSON.stringify({ index: 0, content_block: { type: "text", text: "" } }),
+				});
+				cb.onFrame({
 					event: "content_block_delta",
 					data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "half a th" } }),
 				});
@@ -219,6 +267,7 @@ describe("streamConversation orchestration", () => {
 		);
 
 		expect(events).toEqual([
+			{ type: "message_start", model: KNOWN_MODEL },
 			{ type: "text_delta", text: "half a th" },
 			{
 				type: "error",
@@ -301,6 +350,14 @@ describe("streamConversation terminal semantics", () => {
 			anthropicRequest(),
 			scriptedTransport((cb) => {
 				cb.onFrame({
+					event: "message_start",
+					data: JSON.stringify({ message: { model: KNOWN_MODEL } }),
+				});
+				cb.onFrame({
+					event: "content_block_start",
+					data: JSON.stringify({ index: 0, content_block: { type: "text", text: "" } }),
+				});
+				cb.onFrame({
 					event: "content_block_delta",
 					data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "partial" } }),
 				});
@@ -309,7 +366,11 @@ describe("streamConversation terminal semantics", () => {
 			{ onEvent },
 		);
 
-		expect(events).toEqual([{ type: "text_delta", text: "partial" }, { type: "aborted" }]);
+		expect(events).toEqual([
+			{ type: "message_start", model: KNOWN_MODEL },
+			{ type: "text_delta", text: "partial" },
+			{ type: "aborted" },
+		]);
 		expect(events).not.toContainEqual(expect.objectContaining({ type: "error" }));
 	});
 
@@ -420,6 +481,14 @@ describe("streamConversation consumer isolation", () => {
 		await streamConversation(
 			anthropicRequest(),
 			scriptedTransport((cb) => {
+				cb.onFrame({
+					event: "message_start",
+					data: JSON.stringify({ message: { model: KNOWN_MODEL } }),
+				});
+				cb.onFrame({
+					event: "content_block_start",
+					data: JSON.stringify({ index: 0, content_block: { type: "text", text: "" } }),
+				});
 				cb.onFrame({
 					event: "content_block_delta",
 					data: JSON.stringify({ index: 0, delta: { type: "text_delta", text: "hi" } }),

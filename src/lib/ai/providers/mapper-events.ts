@@ -1,14 +1,5 @@
-/**
- * Provider-neutral `StreamEvent` construction shared by the two mappers.
- *
- * Tool-call arguments stream as JSON fragments on both providers — Anthropic's
- * `input_json_delta` and OpenAI's `tool_calls[].function.arguments` — and the
- * protocol contract for finishing them is identical: parse the concatenation
- * exactly once, and emit `malformed_stream` for a fragment set that never
- * parses without aborting the turn. Keeping that logic here guarantees the two
- * mappers cannot drift into provider-specific failure shapes, which the
- * cross-provider equality test in `./openai.test.ts` depends on.
- */
+/** Shared authored errors and completed argument parsing. Provider callers mark
+ * corrupt executable output terminal; progress never authorizes execution. */
 
 import { type ProtocolError, redactProviderDetail } from "@/lib/ai/protocol/errors";
 import type { StreamEvent } from "@/lib/ai/protocol/events";
@@ -37,7 +28,7 @@ export function malformedStreamError(message: string, providerDetail?: string): 
  * Parse a finished tool call's accumulated fragments.
  *
  * Fragments are JSON-parsed exactly once, here. A fragment set that never
- * parses emits `malformed_stream` for that call and the turn continues; a call
+ * parses emits `malformed_stream` for that call and the caller decides terminality; a call
  * that streamed no fragments has the empty input `{}`, which is how both
  * providers represent a no-argument call.
  *

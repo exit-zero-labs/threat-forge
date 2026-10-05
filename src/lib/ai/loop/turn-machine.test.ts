@@ -341,3 +341,30 @@ describe("batch approval", () => {
 		expect(status("c4")).toBe("pending");
 	});
 });
+
+/** A provider terminal event must not authorize an incomplete answer or tool. */
+describe("incomplete provider completion", () => {
+	it.each(["max_tokens", "unknown"] as const)(
+		"never executes pending tools after %s",
+		(stopReason) => {
+			const d = started();
+			d.apply({ type: "message_start", model: "test" });
+			d.apply({ type: "text_delta", text: "Partial answer" });
+			d.apply({
+				type: "tool_call_complete",
+				id: "call_partial",
+				name: "add_thing",
+				input: { name: "Cache" },
+			});
+			const state = d.apply({ type: "message_stop", stopReason });
+			expect(state.outcome).toBe(stopReason === "max_tokens" ? "bounded" : "failed");
+			expect(state.phase).not.toBe("awaiting_approval");
+			expect(state.calls[0].status).toBe("denied");
+			expect(state.messages.flatMap((m) => m.content)).toContainEqual({
+				type: "text",
+				text: "Partial answer",
+			});
+			expect(assertToolPairing(state.messages)).toEqual([]);
+		},
+	);
+});

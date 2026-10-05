@@ -13,8 +13,13 @@ export default defineConfig({
 	test: {
 		globals: true,
 		environment: "jsdom",
-		setupFiles: ["./src/test-setup.ts"],
-		include: ["src/**/*.test.{ts,tsx}", "worker/**/*.test.ts", "scripts/**/*.test.mjs"],
+		setupFiles: ["./scripts/test-crypto-setup.mjs", "./src/test-setup.ts"],
+		include: [
+			"src/**/*.test.{ts,tsx}",
+			"worker/**/*.test.ts",
+			"scripts/**/*.test.mjs",
+			"tests/**/*.test.ts",
+		],
 		// Vitest otherwise takes every core but one. On a developer workstation that starves
 		// the editor and any parallel agent session; capping at half leaves the machine usable
 		// and costs little, since the suite is dominated by startup rather than by width.

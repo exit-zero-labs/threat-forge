@@ -838,3 +838,33 @@ describe("provider switching", () => {
 		expect(modelSelect().value).toBe(DEFAULT_OPENAI_MODEL);
 	});
 });
+
+describe("recognized saved model selections", () => {
+	it.each([
+		["anthropic", "claude-opus-4-8"],
+		["anthropic", "claude-sonnet-5"],
+		["openai", "gpt-5.6-sol"],
+		["openai", "gpt-5.6-terra"],
+		["openai", "gpt-5.6-luna"],
+		["openai", "gpt-6-sol"],
+	] as const)(
+		"preserves %s %s and changes it only on explicit selection",
+		async (provider, model) => {
+			useChatStore.setState({ provider });
+			const key = provider === "anthropic" ? "aiModelAnthropic" : "aiModelOpenai";
+			useSettingsStore.setState({ settings: { ...DEFAULT_USER_SETTINGS, [key]: model } });
+			await act(async () => {
+				render(<AiSettingsContent />);
+			});
+			expect(modelSelect().value).toBe(model);
+			expect(screen.getByRole("alert")).toHaveTextContent("Your selection is preserved");
+			expect(screen.getByRole("alert")).not.toHaveTextContent("unavailable");
+			expect(useSettingsStore.getState().settings[key]).toBe(model);
+			fireEvent.click(screen.getByRole("button", { name: /switch to .*recommended default/i }));
+			expect(useSettingsStore.getState().settings[key]).toBe(
+				provider === "anthropic" ? DEFAULT_ANTHROPIC_MODEL : DEFAULT_OPENAI_MODEL,
+			);
+			expect(screen.queryByRole("alert")).toBeNull();
+		},
+	);
+});

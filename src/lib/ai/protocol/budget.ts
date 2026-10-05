@@ -69,6 +69,9 @@ function blockChars(block: ContentBlock): number {
 /** Estimate the token cost of one message. */
 function estimateMessageTokens(message: ProtocolMessage): number {
 	let chars = 0;
+	// Native ciphertext/signatures consume wire bytes and context even though
+	// the UI only renders the neutral text/tool blocks.
+	if (message.continuation) chars += inputChars(message.continuation.output.payload);
 	for (const block of message.content) {
 		chars += blockChars(block);
 	}

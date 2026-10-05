@@ -41,6 +41,30 @@ const PLAYWRIGHT_CLI = path.join(REPO_ROOT, "node_modules", "@playwright", "test
  * @type {Record<string, Scenario>}
  */
 export const SCENARIOS = {
+	"provider-compatibility": {
+		description:
+			"Validate current-model requests and signed/encrypted tool approval, denial, Stop and Undo with synthetic providers.",
+		files: ["e2e/provider-compatibility.spec.ts"],
+		titles: [
+			"gpt-6-astra greeting advertises compatible native tools",
+			"gpt-6.1-sol greeting advertises compatible native tools",
+			"gpt-6-luna greeting advertises compatible native tools",
+			"claude-fable-5-1 greeting advertises compatible native tools",
+			"claude-opus-5-5 greeting advertises compatible native tools",
+			"claude-sonnet-5-5 greeting advertises compatible native tools",
+			"claude-haiku-4-5-20251001 greeting advertises compatible native tools",
+			"openai approval replays reasoning and undo restores the canvas",
+			"openai denial and stop never apply an unapproved mutation",
+			"anthropic approval replays reasoning and undo restores the canvas",
+			"anthropic denial and stop never apply an unapproved mutation",
+			"openai signed context stays with its chat and document",
+			"openai corrupt output shows a safe error without approval",
+			"openai saved previous model remains selected until explicitly changed",
+			"anthropic signed context stays with its chat and document",
+			"anthropic corrupt output shows a safe error without approval",
+			"anthropic saved previous model remains selected until explicitly changed",
+		],
+	},
 	"ai-chat-experience": {
 		description:
 			"Exercise long native conversations, session restoration, readable markdown and composer controls with fake keys and scripted responses.",

@@ -48,7 +48,7 @@ export const PROVIDER_ENDPOINTS: Readonly<Record<AiProvider, Readonly<ProviderEn
 			buildHeaders: buildAnthropicBrowserHeaders,
 		}),
 		openai: Object.freeze({
-			url: "https://api.openai.com/v1/chat/completions",
+			url: "https://api.openai.com/v1/responses",
 			label: "OpenAI",
 			buildHeaders: buildOpenAiBrowserHeaders,
 		}),

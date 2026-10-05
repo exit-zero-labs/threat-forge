@@ -36,13 +36,12 @@ persistence (`#63`); and user-configurable or self-hosted base URLs.
 rather than a string, so text, tool calls, and tool results can share one message
 without being encoded into prose:
 
-- A `ProtocolMessage` is `{ role: "user" | "assistant"; content: ContentBlock[] }`.
+- A `ProtocolMessage` contains a `role`, neutral `content` blocks and an optional in-memory `continuation` receipt. Its provider-owned payload is validated before replay and its binding records the requested model, exact wire-prefix digest and current runner turn identity. Receipts never enter `.thf` or flattened persisted chat history.
 - A `ContentBlock` is a `TextBlock`, a `ToolCallBlock`, or a `ToolResultBlock`.
 - `ToolCallBlock.input` is deliberately `unknown`. Reading it as a validated
   value is only possible through `ToolDefinition.parseInput` (see below).
 - The **system prompt is not a message**. Anthropic carries it as a top-level
-  field and OpenAI as a leading message, so keeping it out of `ProtocolMessage`
-  stops that divergence from leaking into every consumer.
+  field and OpenAI Responses as `instructions`, so keeping it out of `ProtocolMessage` stops that divergence from leaking into every consumer.
 
 `upgradeLegacyMessage` reads a pre-protocol `{ role, content: string }` session
 into block form, and `flattenText` collapses a message back to a display string
@@ -57,21 +56,15 @@ not a happy-path guard.
 the only vocabulary a consumer ever sees:
 
 `message_start`, `text_delta`, `tool_call_start`, `tool_call_input_delta`,
-`tool_call_complete`, `usage`, `message_stop` (carrying a `stopReason`), `error`,
-and `aborted`.
+`tool_call_complete`, `continuation`, `usage`, `message_stop` (carrying a `stopReason`), `error`, and `aborted`.
 
-Two logically identical responses from the two providers must produce an
-identical `StreamEvent` sequence. That equality is asserted directly in the
-provider tests and in the fixture corpus.
+Visible neutral events agree across providers. `continuation` retains provider-specific signed or encrypted output; provider unit and HTTP tests validate that payload separately from the cross-provider event corpus.
 
 Terminality rules that matter to a consumer:
 
 - **Cancellation is `aborted`, never `error`.** A user stop keeps whatever text
   arrived and must not render as a failure banner.
-- **A mapper-emitted `malformed_stream` `error` is a non-terminal notice** scoped
-  to the one undecodable frame, orphan fragment, or dropped tool call it reports;
-  the mapper keeps going. An `error` with any other code is terminal, because the
-  provider closes the stream after it.
+- **Corrupt executable output fails closed.** Provider mappers mark malformed frames, orphan arguments and invalid output as terminal errors. Legacy non-terminal notices without the `terminal` flag remain representable. Errors with other codes and thrown protocol exceptions are terminal.
 - **A truncated stream is a failure, not a short success.** If the provider closes
   the body without the mapper ever emitting a terminal event, the client emits a
   `malformed_stream` error rather than letting a cut-off answer look finished.
@@ -106,6 +99,8 @@ counted. The estimate is deliberately dependency-free and conservative; a reques
 that fits locally can still overflow at the provider, which surfaces as a
 `context_overflow` error from the stream rather than silent truncation.
 
+Native replay data counts toward the token estimate. The outgoing projection strips stale prior-turn reasoning when provider, model, system, tools or the preceding wire history changes. Same-provider OpenAI replay retains validated message phase and call metadata. An active tool turn cannot lose its required prefix or current messages to truncation; that request fails before HTTP. Full replay remains local rather than relying on a provider response ID.
+
 ## Byte framing and the shared mappers
 
 Byte-level SSE framing exists once per platform, deliberately mirrored rather than
@@ -126,12 +121,7 @@ frame→`StreamEvent` mapper pair.
 only modules that may mention a provider's wire shapes. Each builds its request
 body from the neutral `ProviderChatRequest` and maps its stream onto
 `StreamEvent`s. The divergence between Anthropic's `tool_result` blocks and
-OpenAI's `role: "tool"` messages is confined to these two files. Shared finishing
-logic lives in `src/lib/ai/providers/mapper-events.ts`: a tool call's streamed
-JSON fragments are concatenated and parsed exactly once, and a fragment set that
-never parses drops that one call with a `malformed_stream` notice without aborting
-the turn. Tool definitions are advertised without OpenAI `strict` mode, which is
-deferred to `#64`.
+OpenAI Responses `function_call_output` items is confined to these two files. OpenAI uses `/v1/responses`, `store:false`, locally replayed complete output including assistant phase and encrypted reasoning, and explicit `strict:false` tool schemas so optional arguments stay optional. Completed output is validated before tool calls are emitted. Anthropic retains thinking/signature and redacted blocks, assembles signature fragments, validates every block at `message_stop`, and refuses corrupt executable output before normal completion.
 
 ## The transport split, and why the key stays in Rust
 
@@ -230,7 +220,7 @@ callback so a throw from `onEvent` cannot tear down the stream on either platfor
 and it is where a `done` close with no terminal mapper event becomes a
 `malformed_stream` error.
 
-The chat store (`src/stores/chat-store.ts`) consumes those events: `text_delta`
+The chat store (`src/stores/chat-store.ts`) and native runner retain bound continuation receipts in memory. The chat store consumes visible events: `text_delta`
 appends to the last assistant message's text block, `tool_call_complete` appends a
 tool-call block, `usage` and `stopReason` are recorded on the message, and `error`
 maps to the existing error banner through the authored `message`.
@@ -261,7 +251,7 @@ replays the same frames through the desktop relay event shape (`replayTauriFrame
 so one corpus drives both transports.
 
 `src/lib/ai/protocol/contract.test.ts` runs the corpus against both providers and
-both transports and asserts the whole emitted event sequence for each case: a
+both transports and asserts the complete neutral visible event sequence for each case, excluding provider-owned continuation receipts: a
 complete text and tool-call response, byte-split partial streams, a truncated
 stream that must report `malformed_stream`, malformed events (invalid JSON, an
 unknown event type, unparseable tool arguments, an orphan tool-input fragment), an
@@ -270,6 +260,8 @@ in-stream rate limit with redacted detail, cancellation, an HTTP 429 with a
 event retries and then succeeds, a failure after the first `text_delta` is
 surfaced rather than retried, a non-retriable `4xx` is not retried, and the retry
 bound is respected.
+
+`tests/provider-http.test.ts` adds request-validating localhost HTTP with real fetch, byte framing and the tool runner for each current model. `e2e/provider-compatibility.spec.ts` verifies both providers through the browser UI with fake keys and intercepted routes. Rust loopback tests verify the reqwest request and SSE boundary. These prove local behavior; paid provider access and a native owner walkthrough remain separate. See [the verification runbook](../runbooks/provider-compatibility.md).
 
 ## Where each concern is verified
 

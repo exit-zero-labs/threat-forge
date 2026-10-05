@@ -194,6 +194,22 @@ export function reduceTurn(state: TurnState, input: TurnInput): TurnState {
 			return onMessageStart(state);
 		case "text_delta":
 			return onTextDelta(state, input.text);
+		case "continuation": {
+			if (state.phase !== "streaming") return state;
+			const last = state.messages[state.messages.length - 1];
+			if (!input.binding || last?.role !== "assistant")
+				return onError(state, {
+					code: "malformed_stream",
+					message: "The AI continuation could not be validated.",
+				});
+			return {
+				...state,
+				messages: [
+					...state.messages.slice(0, -1),
+					{ ...last, continuation: { output: input.output, binding: input.binding } },
+				],
+			};
+		}
 		case "tool_call_start":
 		case "tool_call_input_delta":
 			// Progress only: no call record is created and no JSON is parsed here.
@@ -393,6 +409,16 @@ function onToolCallComplete(
 function onMessageStop(state: TurnState, stopReason: string): TurnState {
 	if (state.phase !== "streaming") return state;
 
+	if (stopReason === "max_tokens")
+		return {
+			...settle(state, "bounded"),
+			notice: "The response reached its output limit and was stopped. Try a shorter request.",
+		};
+	if (stopReason === "unknown")
+		return onError(state, {
+			code: "malformed_stream",
+			message: "The AI response stopped without a supported completion reason. Try again.",
+		});
 	const iterationCalls = state.calls.filter((c) => c.iteration === state.iteration);
 	// A `tool_use` stop with zero completed calls settles as completed rather than
 	// looping: a provider quirk must not become an infinite turn.

@@ -68,6 +68,8 @@ turn's applied calls to `undone`; every other late input is dropped and recorded
 as a `post_settlement_event` violation, so a provider quirk or an injected late
 frame cannot revive it.
 
+Native output receipts accompany assistant messages in memory and bind to the frozen request context. Execution still requires a normal tool-use stop after the complete stream validates. A `max_tokens` stop settles `bounded`; an unknown stop reason settles `failed`. Pending calls are answered as not run, partial text remains visible, and neither outcome enters approval or executes a tool.
+
 ## Call statuses
 
 | Status | Scope | Meaning |

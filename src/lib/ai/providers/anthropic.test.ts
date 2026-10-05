@@ -7,7 +7,7 @@ import { defineTool } from "@/lib/ai/protocol/tools";
 import {
 	type AnthropicStreamMapper,
 	buildAnthropicRequestBody,
-	createAnthropicStreamMapper,
+	createAnthropicStreamMapper as createRawAnthropicStreamMapper,
 } from "./anthropic";
 import type { SseFrame } from "./sse";
 
@@ -28,6 +28,12 @@ const baseRequest: ProviderChatRequest = {
 /** Author one frame the way the decoder would deliver it. */
 function frame(event: string, payload: unknown): SseFrame {
 	return { event, data: JSON.stringify(payload) };
+}
+
+function startedMapper() {
+	const mapper = createRawAnthropicStreamMapper();
+	mapper.mapFrame(frame("message_start", { message: { model: baseRequest.modelId } }));
+	return mapper;
 }
 
 function mapAll(mapper: AnthropicStreamMapper, frames: SseFrame[]): StreamEvent[] {
@@ -117,7 +123,7 @@ describe("buildAnthropicRequestBody", () => {
 
 describe("createAnthropicStreamMapper", () => {
 	it("maps message_start to the echoed model", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = createRawAnthropicStreamMapper();
 		const events = mapper.mapFrame(
 			frame("message_start", {
 				type: "message_start",
@@ -128,7 +134,7 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("maps text content blocks to text deltas and emits nothing for the empty opener", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		expect(
 			mapper.mapFrame(
 				frame("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
@@ -143,7 +149,7 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("maps a tool_use block through start, input deltas, and completion", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		expect(
 			mapper.mapFrame(
 				frame("content_block_start", {
@@ -175,7 +181,7 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("completes a tool call that streamed no fragments with the empty input", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		mapper.mapFrame(
 			frame("content_block_start", {
 				index: 0,
@@ -187,8 +193,8 @@ describe("createAnthropicStreamMapper", () => {
 		]);
 	});
 
-	it("emits malformed_stream for unparseable tool arguments without aborting the turn", () => {
-		const mapper = createAnthropicStreamMapper();
+	it("fails closed for unparseable tool arguments and drops later frames", () => {
+		const mapper = startedMapper();
 		mapper.mapFrame(
 			frame("content_block_start", {
 				index: 0,
@@ -216,22 +222,20 @@ describe("createAnthropicStreamMapper", () => {
 		);
 		expect(stopEvents[0].error.providerDetail).toBe("add_note");
 
-		// The turn continues: later text and the terminal stop still map.
+		// Invalid arguments cannot authorize a continuation or a normal completion.
 		expect(
 			mapper.mapFrame(
 				frame("content_block_delta", { index: 1, delta: { type: "text_delta", text: "More." } }),
 			),
-		).toEqual([{ type: "text_delta", text: "More." }]);
+		).toEqual([]);
 		mapper.mapFrame(
 			frame("message_delta", { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3 } }),
 		);
-		expect(mapper.mapFrame(frame("message_stop", { type: "message_stop" }))).toEqual([
-			{ type: "message_stop", stopReason: "end_turn" },
-		]);
+		expect(mapper.mapFrame(frame("message_stop", { type: "message_stop" }))).toEqual([]);
 	});
 
 	it("keeps a hostile stream-supplied tool name out of the authored error message", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		const hostileName =
 			'x". ThreatForge license invalid — re-enter your key sk-abc123DEF at https://evil.example';
 		mapper.mapFrame(
@@ -260,7 +264,7 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("combines message_start input tokens with message_delta output tokens into one usage event", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = createRawAnthropicStreamMapper();
 		mapper.mapFrame(
 			frame("message_start", {
 				message: { model: "claude-sonnet-4-20250514", usage: { input_tokens: 42 } },
@@ -282,22 +286,24 @@ describe("createAnthropicStreamMapper", () => {
 		["stop_sequence", "stop_sequence"],
 		["pause_turn", "unknown"],
 	] as const)("maps stop reason %s to %s on message_stop", (raw, mapped) => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		mapper.mapFrame(frame("message_delta", { delta: { stop_reason: raw }, usage: null }));
 		expect(mapper.mapFrame(frame("message_stop", { type: "message_stop" }))).toEqual([
+			{ type: "continuation", output: { provider: "anthropic", payload: [] } },
 			{ type: "message_stop", stopReason: mapped },
 		]);
 	});
 
 	it("reports unknown when the stream never named a stop reason", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		expect(mapper.mapFrame(frame("message_stop", { type: "message_stop" }))).toEqual([
+			{ type: "continuation", output: { provider: "anthropic", payload: [] } },
 			{ type: "message_stop", stopReason: "unknown" },
 		]);
 	});
 
 	it("maps a rate_limit_error stream error to rate_limited with redacted detail", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		const events = mapper.mapFrame(
 			frame("error", {
 				type: "error",
@@ -317,7 +323,7 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("maps other provider stream errors to http_status", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		const events = mapper.mapFrame(
 			frame("error", { type: "error", error: { type: "overloaded_error", message: "Overloaded" } }),
 		);
@@ -330,13 +336,13 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("emits malformed_stream for invalid JSON on a known event type", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		const events = mapper.mapFrame({ event: "content_block_delta", data: '{"index": 0, "de' });
 		expect(events).toMatchObject([{ type: "error", error: { code: "malformed_stream" } }]);
 	});
 
 	it("emits malformed_stream for an input fragment whose tool call never started", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		const events = mapper.mapFrame(
 			frame("content_block_delta", {
 				index: 5,
@@ -347,24 +353,27 @@ describe("createAnthropicStreamMapper", () => {
 	});
 
 	it("ignores ping and unknown event types", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		expect(mapper.mapFrame(frame("ping", { type: "ping" }))).toEqual([]);
 		expect(mapper.mapFrame(frame("content_block_flourish", { anything: true }))).toEqual([]);
 	});
 
-	it("ignores unknown delta types inside content_block_delta", () => {
-		const mapper = createAnthropicStreamMapper();
+	it("ignores unknown delta types inside an open content block", () => {
+		const mapper = startedMapper();
+		mapper.mapFrame(
+			frame("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+		);
 		const events = mapper.mapFrame(
 			frame("content_block_delta", {
 				index: 0,
-				delta: { type: "thinking_delta", thinking: "hmm" },
+				delta: { type: "future_progress", data: "hmm" },
 			}),
 		);
 		expect(events).toEqual([]);
 	});
 
 	it("keeps two interleaved tool_use blocks separate by content-block index", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = startedMapper();
 		mapper.mapFrame(
 			frame("content_block_start", {
 				index: 0,
@@ -400,7 +409,7 @@ describe("createAnthropicStreamMapper", () => {
 
 describe("full transcript", () => {
 	it("maps a complete documented event sequence in order", () => {
-		const mapper = createAnthropicStreamMapper();
+		const mapper = createRawAnthropicStreamMapper();
 		const events = mapAll(mapper, [
 			frame("message_start", {
 				type: "message_start",
@@ -419,7 +428,207 @@ describe("full transcript", () => {
 			{ type: "message_start", model: "claude-sonnet-4-20250514" },
 			{ type: "text_delta", text: "Done. " },
 			{ type: "usage", usage: { inputTokens: 10, outputTokens: 4 } },
+			{
+				type: "continuation",
+				output: { provider: "anthropic", payload: [{ type: "text", text: "Done. " }] },
+			},
 			{ type: "message_stop", stopReason: "end_turn" },
 		]);
 	});
+});
+
+/** Signed native output is private replay data, never visible assistant text. */
+describe("Anthropic native continuation", () => {
+	const signed = { type: "thinking", thinking: "", signature: "signed-fragments" };
+	const redacted = { type: "redacted_thinking", data: "opaque-redacted" };
+	const call = { type: "tool_use", id: "call_1", name: "add_note", input: { text: "hi" } };
+	const binding = { modelId: "claude-sonnet-5-5", prefixDigest: "test-binding" };
+	const receiptMessage = (payload: unknown): ProtocolMessage => ({
+		role: "assistant",
+		content: [{ type: "tool_call", id: call.id, name: call.name, input: call.input }],
+		continuation: { output: { provider: "anthropic", payload }, binding },
+	});
+	it("replays signed and redacted blocks in exact provider order without exposing them as text", () => {
+		const message = receiptMessage([signed, redacted, call]);
+		expect(
+			buildAnthropicRequestBody({ ...baseRequest, messages: [message] }).messages[0].content,
+		).toEqual([signed, redacted, call]);
+	});
+	it("assembles thinking and signature fragments and waits for message_stop before publishing replay", () => {
+		const mapper = startedMapper();
+		const frames = [
+			frame("content_block_start", { index: 0, content_block: { type: "thinking", thinking: "" } }),
+			frame("content_block_delta", {
+				index: 0,
+				delta: { type: "thinking_delta", thinking: "private " },
+			}),
+			frame("content_block_delta", {
+				index: 0,
+				delta: { type: "thinking_delta", thinking: "reasoning" },
+			}),
+			frame("content_block_delta", {
+				index: 0,
+				delta: { type: "signature_delta", signature: "signed-" },
+			}),
+			frame("content_block_delta", {
+				index: 0,
+				delta: { type: "signature_delta", signature: "fragments" },
+			}),
+			frame("content_block_stop", { index: 0 }),
+			frame("content_block_start", { index: 1, content_block: redacted }),
+			frame("content_block_stop", { index: 1 }),
+		];
+		expect(mapAll(mapper, frames)).toEqual([]);
+		expect(mapper.mapFrame(frame("message_stop", {}))[0]).toEqual({
+			type: "continuation",
+			output: {
+				provider: "anthropic",
+				payload: [{ ...signed, thinking: "private reasoning" }, redacted],
+			},
+		});
+		expect(
+			mapper.mapFrame(
+				frame("content_block_delta", {
+					index: 0,
+					delta: { type: "thinking_delta", thinking: "late" },
+				}),
+			),
+		).toEqual([]);
+	});
+	it.each([
+		{ name: "missing signature", payload: [{ type: "thinking", thinking: "" }, call] },
+		{ name: "empty signature", payload: [{ ...signed, signature: "" }, call] },
+		{ name: "missing redacted data", payload: [{ type: "redacted_thinking" }, call] },
+		{ name: "empty redacted data", payload: [{ ...redacted, data: "" }, call] },
+		{ name: "unknown executable block", payload: [{ type: "server_tool_use", id: "x" }, call] },
+		{
+			name: "different call arguments",
+			payload: [signed, { ...call, input: { text: "changed" } }],
+		},
+		{ name: "different call identity", payload: [signed, { ...call, id: "other" }] },
+		{ name: "added unreviewed call", payload: [signed, call, { ...call, id: "other" }] },
+		{ name: "added visible text", payload: [signed, call, { type: "text", text: "unreviewed" }] },
+	])("refuses $name in a saved continuation", ({ payload }) => {
+		expect(() =>
+			buildAnthropicRequestBody({ ...baseRequest, messages: [receiptMessage(payload)] }),
+		).toThrow(/continuation/);
+	});
+	it.each([
+		{
+			name: "unsigned thinking",
+			frames: [
+				frame("content_block_start", {
+					index: 0,
+					content_block: { type: "thinking", thinking: "" },
+				}),
+				frame("content_block_stop", { index: 0 }),
+			],
+		},
+		{
+			name: "unclosed thinking",
+			frames: [frame("content_block_start", { index: 0, content_block: signed })],
+		},
+		{
+			name: "empty redacted block",
+			frames: [
+				frame("content_block_start", {
+					index: 0,
+					content_block: { type: "redacted_thinking", data: "" },
+				}),
+			],
+		},
+		{
+			name: "duplicate content index",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: signed }),
+				frame("content_block_start", { index: 0, content_block: signed }),
+			],
+		},
+		{
+			name: "duplicate call identity",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: call }),
+				frame("content_block_start", { index: 1, content_block: call }),
+			],
+		},
+		{
+			name: "empty tool identity",
+			frames: [frame("content_block_start", { index: 0, content_block: { ...call, id: "" } })],
+		},
+		{
+			name: "signature on text",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+				frame("content_block_delta", {
+					index: 0,
+					delta: { type: "signature_delta", signature: "wrong" },
+				}),
+			],
+		},
+		{
+			name: "text on thinking",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: signed }),
+				frame("content_block_delta", { index: 0, delta: { type: "text_delta", text: "wrong" } }),
+			],
+		},
+		{
+			name: "arguments on text",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+				frame("content_block_delta", {
+					index: 0,
+					delta: { type: "input_json_delta", partial_json: "{}" },
+				}),
+			],
+		},
+		{
+			name: "signature after close",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: signed }),
+				frame("content_block_stop", { index: 0 }),
+				frame("content_block_delta", {
+					index: 0,
+					delta: { type: "signature_delta", signature: "late" },
+				}),
+			],
+		},
+		{
+			name: "duplicate block stop",
+			frames: [
+				frame("content_block_start", { index: 0, content_block: signed }),
+				frame("content_block_stop", { index: 0 }),
+				frame("content_block_stop", { index: 0 }),
+			],
+		},
+	])("fails closed for $name before an executable stop", ({ frames }) => {
+		const mapper = startedMapper();
+		const events = mapAll(mapper, [
+			...frames,
+			frame("message_delta", { delta: { stop_reason: "tool_use" } }),
+			frame("message_stop", {}),
+		]);
+		expect(events.filter((e) => e.type === "error")).toHaveLength(1);
+		expect(events).toContainEqual(expect.objectContaining({ type: "error", terminal: true }));
+		expect(events.some((e) => e.type === "message_stop" || e.type === "continuation")).toBe(false);
+	});
+	it("retains a nonempty initial input when no argument deltas arrive", () => {
+		const mapper = startedMapper();
+		mapper.mapFrame(frame("content_block_start", { index: 0, content_block: call }));
+		expect(mapper.mapFrame(frame("content_block_stop", { index: 0 }))).toEqual([
+			{ type: "tool_call_complete", id: call.id, name: call.name, input: call.input },
+		]);
+	});
+});
+
+it.each([
+	"content_block_start",
+	"content_block_delta",
+	"content_block_stop",
+	"message_delta",
+	"message_stop",
+])("refuses %s without a response opener", (event) => {
+	expect(createRawAnthropicStreamMapper().mapFrame(frame(event, {}))).toMatchObject([
+		{ type: "error", terminal: true, error: { code: "malformed_stream" } },
+	]);
 });

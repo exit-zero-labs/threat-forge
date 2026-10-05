@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// A separate local port avoids reusing another project's development server.
+const webPort = Number(process.env.THREATFORGE_E2E_PORT ?? 3000);
+if (!Number.isInteger(webPort) || webPort < 1024 || webPort > 65535)
+	throw new Error("THREATFORGE_E2E_PORT must be a port from 1024 to 65535");
+
 // biome-ignore lint/style/noDefaultExport: Playwright requires default export
 export default defineConfig({
 	testDir: "e2e",
@@ -19,7 +24,7 @@ export default defineConfig({
 		["json", { outputFile: "test-results/results.json" }],
 	],
 	use: {
-		baseURL: "http://localhost:3000",
+		baseURL: `http://localhost:${webPort}`,
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
@@ -28,8 +33,8 @@ export default defineConfig({
 		contextOptions: { reducedMotion: "reduce" },
 	},
 	webServer: {
-		command: "npm run dev:web",
-		port: 3000,
+		command: `npm run dev:web -- --port ${webPort} --strictPort`,
+		port: webPort,
 		reuseExistingServer: !process.env.CI,
 	},
 	projects: [

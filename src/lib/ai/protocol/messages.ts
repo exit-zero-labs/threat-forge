@@ -48,9 +48,23 @@ export interface ToolResultBlock {
 
 export type ContentBlock = TextBlock | ToolCallBlock | ToolResultBlock;
 
+/** Validated only by the owning provider mapper; never rendered or persisted. */
+export interface ContinuationOutput {
+	provider: AiProvider;
+	payload: unknown;
+}
+
+/** Local provenance for immutable provider output; the digest binds its request prefix. */
+export interface ContinuationBinding {
+	modelId: string;
+	prefixDigest: string;
+	turnId?: string;
+}
+
 export interface ProtocolMessage {
 	role: ProtocolRole;
 	content: ContentBlock[];
+	continuation?: { output: ContinuationOutput; binding: ContinuationBinding };
 }
 
 /**

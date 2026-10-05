@@ -1,5 +1,4 @@
-/** Curated picker and request-preflight model metadata (issue #195). */
-
+/** Current picker choices and explicit saved-selection compatibility. */
 import { describe, expect, it } from "vitest";
 import {
 	AI_MODELS,
@@ -11,94 +10,68 @@ import {
 	resolveCapabilities,
 } from "./ai-models";
 
-describe("the curated catalog", () => {
-	it("has exactly the six current models, in order, with nothing retired", () => {
-		expect(AI_MODELS.map((m) => ({ id: m.id, provider: m.provider, label: m.label }))).toEqual([
-			{ id: "claude-opus-4-8", provider: "anthropic", label: "Claude Opus 4.8" },
-			{ id: "claude-sonnet-5", provider: "anthropic", label: "Claude Sonnet 5" },
-			{ id: "claude-haiku-4-5-20251001", provider: "anthropic", label: "Claude Haiku 4.5" },
-			{ id: "gpt-5.6-sol", provider: "openai", label: "GPT-5.6 Sol" },
-			{ id: "gpt-5.6-terra", provider: "openai", label: "GPT-5.6 Terra" },
-			{ id: "gpt-5.6-luna", provider: "openai", label: "GPT-5.6 Luna" },
+describe("provider model catalog", () => {
+	it("offers only current public family choices", () => {
+		expect(getModelsForProvider("anthropic").map((m) => [m.id, m.label])).toEqual([
+			["claude-fable-5-1", "Claude Fable 5.1"],
+			["claude-opus-5-5", "Claude Opus 5.5"],
+			["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+			["claude-haiku-4-5-20251001", "Claude Haiku 4.5"],
+		]);
+		expect(getModelsForProvider("openai").map((m) => [m.id, m.label])).toEqual([
+			["gpt-6-astra", "GPT-6 Astra"],
+			["gpt-6.1-sol", "GPT-6.1 Sol"],
+			["gpt-6-luna", "GPT-6 Luna"],
 		]);
 	});
-
-	it("orders Anthropic models most capable to fastest", () => {
-		expect(getModelsForProvider("anthropic").map((m) => m.id)).toEqual([
-			"claude-opus-4-8",
-			"claude-sonnet-5",
-			"claude-haiku-4-5-20251001",
-		]);
-	});
-
-	it("orders OpenAI models flagship to cost-sensitive", () => {
-		expect(getModelsForProvider("openai").map((m) => m.id)).toEqual([
-			"gpt-5.6-sol",
-			"gpt-5.6-terra",
-			"gpt-5.6-luna",
-		]);
-	});
-
-	it("pins each model's documented context window", () => {
-		const windows = Object.fromEntries(AI_MODELS.map((m) => [m.id, m.capabilities.maxInputTokens]));
-		expect(windows).toEqual({
-			"claude-opus-4-8": 1_000_000,
-			"claude-sonnet-5": 1_000_000,
-			"claude-haiku-4-5-20251001": 200_000,
-			"gpt-5.6-sol": 1_050_000,
-			"gpt-5.6-terra": 1_050_000,
-			"gpt-5.6-luna": 1_050_000,
-		});
-	});
-
-	it("pins every model as tool-capable, parallel-tool-capable, and streaming", () => {
-		for (const model of AI_MODELS) {
-			expect(model.capabilities).toMatchObject({
+	it("has unique provider IDs and documented context windows", () => {
+		expect(new Set(AI_MODELS.map((m) => m.id)).size).toBe(AI_MODELS.length);
+		for (const model of AI_MODELS)
+			expect(model.capabilities).toEqual({
 				toolCalling: true,
 				parallelToolCalls: true,
 				streaming: true,
+				maxInputTokens:
+					model.provider === "openai"
+						? 1_050_000
+						: model.id.includes("haiku")
+							? 200_000
+							: 1_000_000,
 			});
-		}
 	});
-
-	it("defaults new and reset settings to Sonnet 5 and GPT-5.6 Sol", () => {
-		expect(DEFAULT_ANTHROPIC_MODEL).toBe("claude-sonnet-5");
-		expect(DEFAULT_OPENAI_MODEL).toBe("gpt-5.6-sol");
+	it("defaults new/reset settings to the current balanced/workhorse models", () => {
+		expect(DEFAULT_ANTHROPIC_MODEL).toBe("claude-sonnet-5-5");
+		expect(DEFAULT_OPENAI_MODEL).toBe("gpt-6.1-sol");
 		expect(getDefaultModelId("anthropic")).toBe(DEFAULT_ANTHROPIC_MODEL);
 		expect(getDefaultModelId("openai")).toBe(DEFAULT_OPENAI_MODEL);
 	});
-
-	it("excludes every retired model this catalog replaced", () => {
-		const ids = new Set(AI_MODELS.map((m) => m.id));
-		for (const retired of [
-			"claude-opus-4-20250514",
-			"claude-sonnet-4-20250514",
-			"claude-haiku-3-5-20241022",
-			"gpt-4o",
-			"gpt-4o-mini",
-		]) {
-			expect(ids.has(retired)).toBe(false);
-		}
-	});
-
-	it("looks a current model up by id and resolves its capabilities as known", () => {
-		const model = getModelById("claude-sonnet-5");
-		expect(model?.provider).toBe("anthropic");
-
-		const resolution = resolveCapabilities("anthropic", "claude-sonnet-5");
-		expect(resolution).toEqual({ known: true, capabilities: model?.capabilities });
-	});
-
-	it("resolves a retired id as unknown rather than reusing a current model's capabilities", () => {
-		expect(getModelById("claude-sonnet-4-20250514")).toBeUndefined();
-		expect(resolveCapabilities("anthropic", "claude-sonnet-4-20250514")).toEqual({
-			known: false,
+	it.each([
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
+		"gpt-6-sol",
+		"claude-opus-4-8",
+		"claude-sonnet-5",
+	])("preserves known capabilities for saved %s without offering it as current", (id) => {
+		const model = getModelById(id);
+		expect(model?.legacy).toBe(true);
+		if (!model) throw new Error("expected legacy metadata");
+		expect(resolveCapabilities(model.provider, id)).toEqual({
+			known: true,
+			capabilities: model.capabilities,
 		});
+		expect(getModelsForProvider(model.provider).some((m) => m.id === id)).toBe(false);
 	});
-
-	it("resolves a model id under the wrong provider as unknown", () => {
-		// A GPT id submitted while the Anthropic provider is selected must not
-		// borrow OpenAI's capabilities.
-		expect(resolveCapabilities("anthropic", "gpt-5.6-sol")).toEqual({ known: false });
+	it.each(["gpt-4o", "gpt-4o-mini", "claude-sonnet-4-20250514", "claude-mythos-5-1"])(
+		"does not invent supported tools for uncatalogued %s",
+		(id) => {
+			expect(getModelById(id)).toBeUndefined();
+			expect(resolveCapabilities("anthropic", id)).toEqual({ known: false });
+			expect(resolveCapabilities("openai", id)).toEqual({ known: false });
+		},
+	);
+	it("never borrows capabilities from another provider", () => {
+		expect(resolveCapabilities("anthropic", DEFAULT_OPENAI_MODEL)).toEqual({ known: false });
+		expect(resolveCapabilities("openai", DEFAULT_ANTHROPIC_MODEL)).toEqual({ known: false });
 	});
 });

@@ -1,0 +1,10 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": { "types": ["node"], "lib": ["ES2022", "DOM", "DOM.Iterable"] },
+	"include": [
+		"scripts/provider-live.smoke.ts",
+		"tests/**/*.test.ts",
+		"vitest-provider-smoke.config.ts",
+		"src/vite-env.d.ts"
+	]
+}

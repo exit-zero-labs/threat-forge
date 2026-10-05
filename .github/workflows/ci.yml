@@ -64,6 +64,9 @@ jobs:
       - name: E2E TypeScript type check
         run: npm run check:e2e-types
 
+      - name: Provider verification TypeScript type check
+        run: npm run check:provider-smoke-types
+
       - name: Install Linux system dependencies
         run: |
           sudo apt-get update

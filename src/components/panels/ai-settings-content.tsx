@@ -255,6 +255,7 @@ export function AiSettingsContent() {
 	const selectedModel = models.find((m) => m.id === selectedModelId);
 	// Keep a persisted retired/unknown id visible until the user deliberately replaces it.
 	const isLegacyModel = selectedModelId !== "" && selectedModel === undefined;
+	const knownSavedModel = getModelById(selectedModelId)?.provider === provider;
 	const defaultModelId = getDefaultModelId(provider);
 	const defaultModelLabel = getModelById(defaultModelId)?.label ?? defaultModelId;
 	const providerResidue = residue[provider];
@@ -471,7 +472,7 @@ export function AiSettingsContent() {
 					className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
 				>
 					{isLegacyModel && (
-						<option value={selectedModelId}>{selectedModelId} (legacy, unavailable)</option>
+						<option value={selectedModelId}>{selectedModelId} (legacy selection)</option>
 					)}
 					{models.map((m) => (
 						<option key={m.id} value={m.id}>
@@ -490,8 +491,9 @@ export function AiSettingsContent() {
 						<AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
 						<div className="space-y-1">
 							<p>
-								"{selectedModelId}" is no longer offered for this provider. Tool use stays disabled
-								for it; pick a current model above to restore tool use.
+								{knownSavedModel
+									? `"${selectedModelId}" is a previous model selection. Your selection is preserved; availability depends on your provider.`
+									: `"${selectedModelId}" is no longer offered in this catalog. Tool use stays disabled for unrecognized models; pick a current model above to restore tool use.`}
 							</p>
 							<button
 								type="button"

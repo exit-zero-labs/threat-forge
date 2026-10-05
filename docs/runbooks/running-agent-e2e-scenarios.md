@@ -41,6 +41,8 @@ This runs `scripts/run-agent-scenario.mjs`, which:
 `bash scripts/ci-local.sh --e2e` continue to work exactly as before; this command is a documented,
 narrowed convenience over the same underlying invocation; it is not a new test runner.
 
+If another project uses port 3000, set `THREATFORGE_E2E_PORT=3048` on the named command to start ThreatForge on a separate port. Use `CI=1` to require a new server rather than reusing one; the scenario runner already limits browser workers to one.
+
 Each scenario run clears the prior `test-results/` and `playwright-report/` directories before
 launching so stale evidence can never masquerade as the current result. Copy any evidence you need
 to retain before starting another scenario.
@@ -55,6 +57,7 @@ the command actually runs without both being caught by
 
 | Scenario | Outcome prompt (what to try) | Spec file(s) |
 |---|---|---|
+| `provider-compatibility` | Validate all seven current model greetings and both providers' chained signed/encrypted tool continuation, approval, denial, Stop, Undo, chat/document isolation, safe errors and saved selections using fake keys and request-validating routes. | `e2e/provider-compatibility.spec.ts` |
 | `ai-chat-experience` | Exercise a hundred native exchanges, switch and restore follow-up context, and inspect long markdown visible stop controls, drafts, reading position, errors, and light/dark narrow panels using fake keys and canned SSE. | `e2e/ai-chat-experience.spec.ts`, `e2e/ai-chat-interactions.spec.ts`, `e2e/chat-scroll-containment.spec.ts` |
 | `document-creation` | Create a new, empty document from the empty-state button, and again from the toolbar button; confirm the canvas, palette, and right panel are all usable afterward. | `e2e/new-model.spec.ts` |
 | `multi-tab-restore` | Open several documents, edit one, reload the page, and confirm every tab returns in its persisted order with the correct tab active and content intact — not reset. | `e2e/browser-restore.spec.ts` |

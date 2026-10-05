@@ -162,7 +162,10 @@ function appendAssistantBlock(messages: ChatMessage[], block: ContentBlock): Cha
 /** Record turn-level metadata (usage, stop reason) on the last assistant turn. */
 function recordOnAssistant(
 	messages: ChatMessage[],
-	patch: Pick<ChatMessage, "usage"> | Pick<ChatMessage, "stopReason">,
+	patch:
+		| Pick<ChatMessage, "usage">
+		| Pick<ChatMessage, "stopReason">
+		| Pick<ChatMessage, "continuation">,
 ): ChatMessage[] {
 	const next = [...messages];
 	const lastIndex = next.length - 1;
@@ -522,6 +525,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			if (abortController.signal.aborted) return;
 
 			switch (event.type) {
+				case "continuation": {
+					const binding = event.binding;
+					if (binding)
+						set((state) => ({
+							messages: recordOnAssistant(state.messages, {
+								continuation: { output: event.output, binding },
+							}),
+						}));
+					return;
+				}
 				case "text_delta":
 					set((state) => ({ messages: appendAssistantText(state.messages, event.text) }));
 					return;

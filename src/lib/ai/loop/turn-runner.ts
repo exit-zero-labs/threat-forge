@@ -101,6 +101,7 @@ export function createTurnRunner(deps: TurnRunnerDeps): TurnRunner {
 	let controller: AbortController | null = null;
 	let ledger = createTurnUndoLedger();
 	let driving = false;
+	let turnId = "";
 
 	function setState(next: TurnState): void {
 		state = next;
@@ -126,6 +127,8 @@ export function createTurnRunner(deps: TurnRunnerDeps): TurnRunner {
 			messages: state.messages,
 			tools: cfg.toolSet.list(),
 			maxOutputTokens: cfg.maxOutputTokens,
+			turnId,
+			turnStartIndex: cfg.baseMessages.length,
 		};
 	}
 
@@ -238,6 +241,7 @@ export function createTurnRunner(deps: TurnRunnerDeps): TurnRunner {
 		submit(cfg) {
 			if (state.phase !== "idle" && state.phase !== "settled") return Promise.resolve();
 			config = cfg;
+			turnId = crypto.randomUUID();
 			ledger = createTurnUndoLedger();
 			controller = new AbortController();
 			dispatch({
