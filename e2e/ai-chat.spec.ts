@@ -23,8 +23,10 @@ test.describe("AI Chat", () => {
 		// Settings dialog should be visible with AI section active
 		const settingsDialog = page.getByTestId("settings-dialog");
 		await expect(settingsDialog).toBeVisible();
-		// The AI tab content should be showing (provider selector, API key fields)
-		await expect(settingsDialog).toContainText("Provider");
-		await expect(settingsDialog).toContainText("API Key");
+		await expect(settingsDialog.getByRole("combobox", { name: "API key provider" })).toHaveValue(
+			"anthropic",
+		);
+		await expect(settingsDialog.getByLabel("Anthropic API key")).toBeVisible();
+		await expect(settingsDialog.getByRole("combobox", { name: "Model" })).toHaveCount(0);
 	});
 });

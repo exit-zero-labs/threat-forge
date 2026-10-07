@@ -32,8 +32,8 @@ export function ChatModelSelector({ disabled }: { disabled: boolean }) {
 	}
 
 	return (
-		<div className="mb-3 shrink-0 space-y-1">
-			<label htmlFor="chat-model" className="block text-xs text-muted-foreground">
+		<div className="min-w-0 flex-1 space-y-1">
+			<label htmlFor="chat-model" className="sr-only">
 				Model
 			</label>
 			<select
@@ -41,7 +41,7 @@ export function ChatModelSelector({ disabled }: { disabled: boolean }) {
 				value={`${provider}:${selectedId}`}
 				disabled={disabled}
 				onChange={(event) => selectModel(event.target.value)}
-				className="w-full min-w-0 rounded-md border border-border bg-background px-2 py-1.5 text-xs focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
+				className="w-full min-w-0 rounded-md border border-transparent bg-background px-1 py-1.5 text-xs text-muted-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
 			>
 				{PROVIDERS.map((name) => {
 					const models = getModelsForProvider(name);
@@ -60,13 +60,13 @@ export function ChatModelSelector({ disabled }: { disabled: boolean }) {
 				})}
 			</select>
 			{selectedModel && (
-				<p className="text-xs text-muted-foreground">{selectedModel.description}</p>
+				<p className="text-[10px] text-muted-foreground">{selectedModel.description}</p>
 			)}
 			{!selectedModel && (
 				<div role="alert" className="break-words text-xs text-amber-700 dark:text-amber-400">
 					<p>
 						"{selectedId}" is no longer offered for this provider. Tool use stays disabled for it;
-						pick a current model above to restore tool use.
+						pick a current model to restore tool use.
 					</p>
 					<button
 						type="button"

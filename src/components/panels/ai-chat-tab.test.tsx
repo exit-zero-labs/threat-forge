@@ -114,6 +114,22 @@ beforeEach(() => {
 });
 
 describe("AiChatTab session binding", () => {
+	it("keeps the grouped model picker with the message and send controls", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const composer = screen.getByRole("group", { name: "Message composer" });
+		expect(
+			within(composer).getByRole("textbox", { name: "Message AI assistant" }),
+		).toBeInTheDocument();
+		expect(within(composer).getByRole("combobox", { name: "Model" })).toBeEnabled();
+		expect(within(composer).getByRole("button", { name: "Send message" })).toBeDisabled();
+	});
+
 	it("lets a user select an OpenAI model from chat even without a saved key", async () => {
 		useDocumentRegistry
 			.getState()
@@ -130,6 +146,33 @@ describe("AiChatTab session binding", () => {
 		expect(useChatStore.getState().provider).toBe("openai");
 		expect(useSettingsStore.getState().settings.aiModelOpenai).toBe(DEFAULT_OPENAI_MODEL);
 		expect(screen.getByText("No API key configured")).toBeInTheDocument();
+	});
+
+	it("keeps model-picker focus when key availability changes", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const picker = screen.getByRole("combobox", { name: "Model" });
+		picker.focus();
+		await act(async () => {
+			useChatStore.setState({ hasApiKey: false });
+		});
+		expect(screen.getByRole("combobox", { name: "Model" })).toBe(picker);
+		expect(picker).toHaveFocus();
+		expect(screen.queryByRole("textbox", { name: "Message AI assistant" })).not.toBeInTheDocument();
+		const shortcut = new KeyboardEvent("keydown", { key: "l", ctrlKey: true, cancelable: true });
+		window.dispatchEvent(shortcut);
+		expect(shortcut.defaultPrevented).toBe(false);
+		await act(async () => {
+			useChatStore.setState({ hasApiKey: true });
+		});
+		expect(screen.getByRole("combobox", { name: "Model" })).toBe(picker);
+		expect(picker).toHaveFocus();
+		expect(screen.getByRole("textbox", { name: "Message AI assistant" })).toBeEnabled();
 	});
 
 	it("keeps IME confirmation and Shift+Enter in the composer without submitting", async () => {
@@ -632,6 +675,7 @@ describe("AiChatTab key storage faults", () => {
 		// The heading is the settings panel's status text verbatim, so the two surfaces state
 		// one fact in one sentence, and whatever the keychain authored is what the user reads.
 		expect(screen.getByTestId("key-storage-fault")).toBeInTheDocument();
+		expect(screen.getByRole("combobox", { name: "Model" })).toBeEnabled();
 		expect(screen.getByText("Key storage could not be read")).toBeInTheDocument();
 		expect(screen.getByText(VAULT_DAMAGED)).toBeInTheDocument();
 		expect(screen.queryByText("No API key configured")).toBeNull();

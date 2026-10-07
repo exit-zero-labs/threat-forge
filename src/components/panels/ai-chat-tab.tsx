@@ -55,8 +55,6 @@ export function AiChatTab() {
 	const filePath = useModelStore((s) => s.filePath);
 	const activeDocumentId = useDocumentRegistry((s) => s.activeDocumentId);
 	const hasApiKey = useChatStore((s) => s.hasApiKey);
-	const isStreaming = useChatStore((s) => s.isStreaming);
-	const turnPhase = useAiTurnStore((s) => s.turn?.phase);
 	const keyFault = useChatStore((s) => s.keyFault);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
@@ -98,8 +96,6 @@ export function AiChatTab() {
 					<Settings className="h-3.5 w-3.5" />
 				</button>
 			</div>
-			<ChatModelSelector disabled={isStreaming || isTurnLive(turnPhase)} />
-
 			{/* The fault outranks the absence: it is the stronger and truer claim about the same
 			    storage, mirroring the documented precedence in the settings panel's
 			    `statusToneOf`. Reporting "no API key configured" over a vault nobody could read
@@ -111,6 +107,7 @@ export function AiChatTab() {
 			) : (
 				<ChatView />
 			)}
+			<ChatInput canSend={hasApiKey && !keyFault} />
 		</div>
 	);
 }
@@ -223,9 +220,6 @@ function ChatView() {
 					</button>
 				</div>
 			)}
-
-			{/* Input */}
-			<ChatInput />
 		</div>
 	);
 }
@@ -701,7 +695,7 @@ function ThreatSuggestionCard({
 	);
 }
 
-function ChatInput() {
+function ChatInput({ canSend }: { canSend: boolean }) {
 	const submitTurn = useAiTurnStore((s) => s.submitTurn);
 	const turnPhase = useAiTurnStore((s) => s.turn?.phase);
 	const chatIsStreaming = useChatStore((s) => s.isStreaming);
@@ -712,21 +706,22 @@ function ChatInput() {
 		(s) => s.sessions.find((session) => session.id === s.activeSessionId)?.draft ?? "",
 	);
 	const setInput = useChatStore((s) => s.setDraft);
-	const provider = useChatStore((s) => s.provider);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: resize after the controlled textarea value changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: resize when the controlled draft changes or the field becomes available
 	useLayoutEffect(() => {
 		const el = inputRef.current;
 		if (!el) return;
 		el.style.height = "0px";
 		el.style.height = `${Math.min(160, Math.max(44, el.scrollHeight))}px`;
-	}, [input]);
+	}, [input, canSend]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: focus the composer on chat selection
 	useLayoutEffect(() => {
+		// Key checks can mount the message field after a keyboard model change; keep selection focus.
+		if (document.activeElement instanceof HTMLSelectElement) return;
 		inputRef.current?.focus();
-	}, [activeSessionId]);
+	}, [activeSessionId, canSend]);
 
 	// Busy while a tool-loop turn is live or the legacy text stream is running.
 	const isBusy = isTurnLive(turnPhase) || chatIsStreaming;
@@ -735,7 +730,7 @@ function ChatInput() {
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
 			const mod = e.metaKey || e.ctrlKey;
-			if (mod && e.key.toLowerCase() === "l") {
+			if (mod && e.key.toLowerCase() === "l" && inputRef.current) {
 				e.preventDefault();
 				inputRef.current?.focus();
 			}
@@ -752,7 +747,7 @@ function ChatInput() {
 
 	function handleSubmit() {
 		const trimmed = input.trim();
-		if (!trimmed || isBusy || !model) return;
+		if (!trimmed || !canSend || isBusy || !model) return;
 
 		setInput("");
 		void submitTurn(trimmed, model);
@@ -766,25 +761,24 @@ function ChatInput() {
 	}
 
 	return (
-		<div className="shrink-0 rounded-xl border border-border bg-background px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-ring">
-			<textarea
-				ref={inputRef}
-				value={input}
-				onChange={(e) => setInput(e.target.value)}
-				onKeyDown={handleKeyDown}
-				placeholder="Ask about threats..."
-				aria-label="Message AI assistant"
-				rows={2}
-				className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent text-[13px] leading-relaxed placeholder:text-muted-foreground focus:outline-none"
-			/>
-			<div className="mt-2 flex items-center justify-between gap-2">
-				<span className="truncate text-[11px] text-muted-foreground">
-					{turnPhase === "awaiting_approval"
-						? "Review suggested changes"
-						: isBusy
-							? "Generating…"
-							: `${provider === "anthropic" ? "Anthropic" : "OpenAI"} · Enter to send`}
-				</span>
+		<fieldset
+			aria-label="Message composer"
+			className="mt-3 min-w-0 shrink-0 rounded-xl border border-border bg-background px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-ring"
+		>
+			{canSend && (
+				<textarea
+					ref={inputRef}
+					value={input}
+					onChange={(e) => setInput(e.target.value)}
+					onKeyDown={handleKeyDown}
+					placeholder="Ask about threats..."
+					aria-label="Message AI assistant"
+					rows={2}
+					className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent text-[13px] leading-relaxed placeholder:text-muted-foreground focus:outline-none"
+				/>
+			)}
+			<div className="mt-2 flex items-start justify-between gap-2">
+				<ChatModelSelector disabled={isBusy} />
 				{isBusy ? (
 					<button
 						type="button"
@@ -795,7 +789,7 @@ function ChatInput() {
 					>
 						<Square className="size-3 fill-current" />
 					</button>
-				) : (
+				) : canSend ? (
 					<button
 						type="button"
 						onClick={handleSubmit}
@@ -811,8 +805,17 @@ function ChatInput() {
 					>
 						<ArrowUp className="size-4" />
 					</button>
-				)}
+				) : null}
 			</div>
-		</div>
+			{(canSend || isBusy) && (
+				<p className="mt-1 text-[10px] text-muted-foreground">
+					{turnPhase === "awaiting_approval"
+						? "Review suggested changes"
+						: isBusy
+							? "Generating…"
+							: "Enter to send"}
+				</p>
+			)}
+		</fieldset>
 	);
 }

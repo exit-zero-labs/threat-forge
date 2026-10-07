@@ -57,6 +57,10 @@ test("chat model selection survives reload and credential management without rer
 	).toEqual(["OpenAI", "Anthropic"]);
 	await picker.selectOption("openai:gpt-5.6-luna");
 	await expect(panel).toContainText("No API key configured");
+	await testInfo.attach("keyless-model-footer", {
+		body: await page.screenshot({ animations: "disabled" }),
+		contentType: "image/png",
+	});
 	await panel.getByRole("button", { name: "Configure API Key", exact: true }).click();
 	const settings = page.getByTestId("settings-dialog");
 	await expect(settings.getByRole("combobox", { name: "Model" })).toHaveCount(0);
@@ -69,7 +73,7 @@ test("chat model selection survives reload and credential management without rer
 	await settings.getByRole("button", { name: "Save", exact: true }).click();
 	await expect(settings).toContainText("API key encrypted and saved in this browser.");
 	await testInfo.attach("credential-only-ai-settings", {
-		body: await page.screenshot(),
+		body: await page.screenshot({ animations: "disabled" }),
 		contentType: "image/png",
 	});
 	await settings.getByRole("combobox", { name: "API key provider" }).press("Escape");
@@ -79,6 +83,19 @@ test("chat model selection survives reload and credential management without rer
 	await page.getByTestId("tab-ai").click();
 	await expect(picker).toHaveValue("openai:gpt-5.6-luna");
 	const input = panel.getByRole("textbox", { name: "Message AI assistant" });
+	const composer = panel.getByRole("group", { name: "Message composer" });
+	await expect(composer.getByRole("combobox", { name: "Model" })).toHaveCount(1);
+	const inputBounds = await input.boundingBox();
+	const pickerBounds = await picker.boundingBox();
+	const sendBounds = await composer.getByRole("button", { name: "Send message" }).boundingBox();
+	expect(inputBounds).not.toBeNull();
+	expect(pickerBounds).not.toBeNull();
+	expect(sendBounds).not.toBeNull();
+	if (inputBounds && pickerBounds && sendBounds) {
+		expect(pickerBounds.y).toBeGreaterThanOrEqual(inputBounds.y + inputBounds.height);
+		expect(pickerBounds.x + pickerBounds.width).toBeLessThanOrEqual(sendBounds.x);
+		expect(Math.abs(pickerBounds.y - sendBounds.y)).toBeLessThanOrEqual(1);
+	}
 	await input.fill("Review this architecture.");
 	await panel.getByRole("button", { name: "Send message" }).click();
 	await expect(picker).toBeDisabled();
@@ -89,7 +106,7 @@ test("chat model selection survives reload and credential management without rer
 		{ provider: "openai", model: "gpt-5.6-luna", key: `Bearer ${OPENAI_KEY}` },
 	]);
 	await testInfo.attach("chat-model-selector-light", {
-		body: await page.screenshot(),
+		body: await page.screenshot({ animations: "disabled" }),
 		contentType: "image/png",
 	});
 	await picker.focus();
@@ -97,6 +114,7 @@ test("chat model selection survives reload and credential management without rer
 	await picker.press("End");
 	await expect(picker).toHaveValue("anthropic:claude-haiku-4-5-20251001");
 	await expect(input).toBeVisible();
+	await expect(picker).toBeFocused();
 	await input.fill("Review with Claude.");
 	await panel.getByRole("button", { name: "Send message" }).click();
 	await expect(panel.getByTestId("chat-messages")).toContainText("Anthropic review ready.");
@@ -116,7 +134,7 @@ test("chat model selection survives reload and credential management without rer
 	if (bounds && panelBounds)
 		expect(bounds.x + bounds.width).toBeLessThanOrEqual(panelBounds.x + panelBounds.width);
 	await testInfo.attach("chat-model-selector", {
-		body: await page.screenshot(),
+		body: await page.screenshot({ animations: "disabled" }),
 		contentType: "image/png",
 	});
 });
@@ -160,22 +178,29 @@ test("legacy model selection stays reachable in a narrow zoomed panel", async ({
 		await picker.locator("..").evaluate((element) => element.scrollWidth <= element.clientWidth),
 	).toBe(true);
 	await testInfo.attach("legacy-model-selector-css-zoom", {
-		body: await page.screenshot(),
+		body: await page.screenshot({ animations: "disabled" }),
 		contentType: "image/png",
 	});
 	const replace = panel.getByRole("button", { name: /recommended default/ });
 	await panel.hover();
 	await page.mouse.wheel(0, 2000);
 	await expect(replace).toBeInViewport({ ratio: 1 });
-	await expect(
-		panel.getByRole("button", { name: "Configure API Key", exact: true }),
-	).toBeInViewport({
-		ratio: 1,
-	});
 	await testInfo.attach("legacy-controls-css-zoom", {
-		body: await page.screenshot(),
+		body: await page.screenshot({ animations: "disabled" }),
 		contentType: "image/png",
 	});
+	await panel.hover();
+	await page.mouse.wheel(0, -2000);
+	await expect(
+		panel.getByRole("button", { name: "Configure API Key", exact: true }),
+	).toBeInViewport({ ratio: 1 });
+	await testInfo.attach("keyless-configure-css-zoom", {
+		body: await page.screenshot({ animations: "disabled" }),
+		contentType: "image/png",
+	});
+	await panel.hover();
+	await page.mouse.wheel(0, 2000);
+	await expect(replace).toBeInViewport({ ratio: 1 });
 	await replace.click();
 	await expect(picker).toHaveValue("anthropic:claude-sonnet-5");
 	await expect(panel.getByRole("alert")).toHaveCount(0);
