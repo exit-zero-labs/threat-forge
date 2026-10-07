@@ -7,12 +7,10 @@ import {
 	type LegacyResidue,
 } from "@/lib/adapters/keychain-adapter";
 import { keychainErrorText, loadKeychainAdapter } from "@/lib/adapters/load-keychain-adapter";
-import { getDefaultModelId, getModelById, getModelsForProvider } from "@/lib/ai-models";
 import { isTauri } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { type AiProvider, useChatStore } from "@/stores/chat-store";
 import { useKeyResidueStore } from "@/stores/key-residue-store";
-import { useSettingsStore } from "@/stores/settings-store";
 
 /**
  * The providers this panel offers, and the company each key belongs to.
@@ -217,11 +215,8 @@ function ClearTextKeyNotice({
 
 /** AI settings form content — used inside the settings dialog. */
 export function AiSettingsContent() {
-	const provider = useChatStore((s) => s.provider);
-	const setProvider = useChatStore((s) => s.setProvider);
+	const [provider, setProvider] = useState<AiProvider>(() => useChatStore.getState().provider);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
-	const settings = useSettingsStore((s) => s.settings);
-	const updateSetting = useSettingsStore((s) => s.updateSetting);
 	// Residue lives in a store rather than in this component because the panel unmounts with
 	// the settings dialog, and a warning that dies with the dialog is the bug (#233).
 	const residue = useKeyResidueStore((s) => s.residue);
@@ -249,14 +244,6 @@ export function AiSettingsContent() {
 		text: string;
 	} | null>(null);
 
-	const models = getModelsForProvider(provider);
-	const selectedModelId =
-		provider === "anthropic" ? settings.aiModelAnthropic : settings.aiModelOpenai;
-	const selectedModel = models.find((m) => m.id === selectedModelId);
-	// Keep a persisted retired/unknown id visible until the user deliberately replaces it.
-	const isLegacyModel = selectedModelId !== "" && selectedModel === undefined;
-	const defaultModelId = getDefaultModelId(provider);
-	const defaultModelLabel = getModelById(defaultModelId)?.label ?? defaultModelId;
 	const providerResidue = residue[provider];
 	const statusTone = statusToneOf(keyStatus[provider], providerResidue);
 
@@ -323,7 +310,7 @@ export function AiSettingsContent() {
 	}
 
 	async function handleSave() {
-		if (!apiKey.trim()) return;
+		if (!apiKey.trim() || saving) return;
 
 		setSaving(true);
 		setMessage(null);
@@ -341,7 +328,7 @@ export function AiSettingsContent() {
 				? "API key saved securely."
 				: "API key encrypted and saved in this browser.";
 			setMessage({ type: "success", text: successText });
-			await checkApiKey(provider);
+			if (provider === useChatStore.getState().provider) await checkApiKey(provider);
 		} catch (err) {
 			setMessage({ type: "error", text: keychainErrorText(err) });
 		} finally {
@@ -365,7 +352,7 @@ export function AiSettingsContent() {
 		// The chat transport tracks the *selected* provider's key, so a removal for another
 		// provider — reachable from that provider's residue notice — leaves it untouched.
 		async function syncTransport() {
-			if (target === provider) await checkApiKey(provider);
+			if (target === useChatStore.getState().provider) await checkApiKey(target);
 		}
 
 		try {
@@ -416,7 +403,7 @@ export function AiSettingsContent() {
 			// This answer is newer than any mount check still in flight, so it outranks it.
 			mutated.current.add(target);
 			setKeyStatus((prev) => ({ ...prev, [target]: present }));
-			if (target === provider) await checkApiKey(provider);
+			if (target === useChatStore.getState().provider) await checkApiKey(target);
 		} catch (err) {
 			setKeyStatus((prev) => ({ ...prev, [target]: "unknown" }));
 			setMessage({ type: "error", text: keychainErrorText(err) });
@@ -434,23 +421,25 @@ export function AiSettingsContent() {
 		}
 	}
 
-	function handleModelChange(modelId: string) {
-		if (provider === "anthropic") {
-			updateSetting("aiModelAnthropic", modelId);
-		} else {
-			updateSetting("aiModelOpenai", modelId);
-		}
-	}
-
 	return (
 		<div className="space-y-4">
 			{/* Provider selector */}
 			<div>
-				<span className="mb-1 block text-[10px] font-medium text-muted-foreground">Provider</span>
+				<span className="mb-1 block text-[10px] font-medium text-muted-foreground">
+					API key provider
+				</span>
 				<select
-					aria-label="Provider"
+					aria-label="API key provider"
 					value={provider}
-					onChange={(e) => setProvider(e.target.value as AiProvider)}
+					disabled={saving}
+					onChange={(e) => {
+						const target = e.target.value;
+						if (target !== "openai" && target !== "anthropic") return;
+						setProvider(target);
+						setApiKey("");
+						setShowKey(false);
+						setMessage(null);
+					}}
 					className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
 				>
 					{PROVIDERS.map((p) => (
@@ -461,49 +450,10 @@ export function AiSettingsContent() {
 				</select>
 			</div>
 
-			{/* Model selector */}
-			<div>
-				<span className="mb-1 block text-[10px] font-medium text-muted-foreground">Model</span>
-				<select
-					aria-label="Model"
-					value={selectedModelId}
-					onChange={(e) => handleModelChange(e.target.value)}
-					className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
-				>
-					{isLegacyModel && (
-						<option value={selectedModelId}>{selectedModelId} (legacy, unavailable)</option>
-					)}
-					{models.map((m) => (
-						<option key={m.id} value={m.id}>
-							{m.label}
-						</option>
-					))}
-				</select>
-				{selectedModel?.description && (
-					<p className="mt-0.5 text-[10px] text-muted-foreground/70">{selectedModel.description}</p>
-				)}
-				{isLegacyModel && (
-					<div
-						role="alert"
-						className="mt-1.5 flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-600 dark:text-amber-400"
-					>
-						<AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />
-						<div className="space-y-1">
-							<p>
-								"{selectedModelId}" is no longer offered for this provider. Tool use stays disabled
-								for it; pick a current model above to restore tool use.
-							</p>
-							<button
-								type="button"
-								onClick={() => handleModelChange(defaultModelId)}
-								className="font-medium underline underline-offset-2 hover:no-underline"
-							>
-								Switch to {defaultModelLabel} (recommended default)
-							</button>
-						</div>
-					</div>
-				)}
-			</div>
+			<p className="text-xs text-muted-foreground">
+				Add a key for either provider. Choose the model in chat; changing this form does not change
+				your chat model.
+			</p>
 
 			{/* Key status */}
 			<div className="space-y-1.5">
@@ -542,6 +492,7 @@ export function AiSettingsContent() {
 					<div className="relative flex-1">
 						<input
 							type={showKey ? "text" : "password"}
+							aria-label={`${provider === "openai" ? "OpenAI" : "Anthropic"} API key`}
 							value={apiKey}
 							onChange={(e) => setApiKey(e.target.value)}
 							placeholder={provider === "anthropic" ? "sk-ant-..." : "sk-..."}
@@ -612,8 +563,8 @@ export function AiSettingsContent() {
 			{/* Security note */}
 			<p className="text-[10px] text-muted-foreground/70">
 				{isTauri()
-					? "API keys are encrypted at rest and stored locally. They are never sent anywhere except the selected AI provider."
-					: "API keys are encrypted before being stored in this browser, using a key the browser will not export. Anything running on this page can still use the key. The desktop app keeps the key outside the browser entirely. Keys are only sent to the selected AI provider."}
+					? "API keys are encrypted at rest and stored locally. Each key is only sent to its own provider."
+					: "API keys are encrypted before being stored in this browser, using a key the browser will not export. Anything running on this page can still use the key. The desktop app keeps the key outside the browser entirely. Each key is only sent to its own provider."}
 			</p>
 		</div>
 	);

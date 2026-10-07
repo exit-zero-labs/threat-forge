@@ -1,4 +1,5 @@
-import { create } from "zustand";
+import { create, type StateCreator } from "zustand";
+import { persist } from "zustand/middleware";
 import { getChatTransport } from "@/lib/adapters/get-chat-transport";
 import { keychainErrorText, loadKeychainAdapter } from "@/lib/adapters/load-keychain-adapter";
 import { capMessageHistory } from "@/lib/ai/protocol/budget";
@@ -238,7 +239,10 @@ interface ChatState {
 	clearError: () => void;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+// A late check must not replace the status of a newer selection or key operation.
+let keyCheckVersion = 0;
+
+const createChatState: StateCreator<ChatState> = (set, get) => ({
 	documentId: null,
 	sessions: [],
 	activeSessionId: null,
@@ -492,7 +496,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 		const { provider, messages, isStreaming, activeSessionId, sessionKey, documentId } = get();
 		if (isStreaming || !activeSessionId || !sessionKey) return;
 
-		const userMessage: ChatMessage = { role: "user", content: [{ type: "text", text: content }] };
+		const userMessage: ChatMessage = {
+			role: "user",
+			content: [{ type: "text", text: content }],
+		};
 		// History sent to the provider: everything through the new user turn. The
 		// empty assistant turn below is the local placeholder the stream fills in.
 		const conversation: ChatMessage[] = [...messages, userMessage];
@@ -536,7 +543,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 					}));
 					return;
 				case "usage":
-					set((state) => ({ messages: recordOnAssistant(state.messages, { usage: event.usage }) }));
+					set((state) => ({
+						messages: recordOnAssistant(state.messages, { usage: event.usage }),
+					}));
 					return;
 				case "message_stop":
 					set((state) => ({
@@ -625,17 +634,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	setProvider: (provider) => {
-		set({ provider });
+		if (provider !== "anthropic" && provider !== "openai") return;
+		if (provider === get().provider) return;
+		set({ provider, hasApiKey: false, keyFault: null, error: null });
 		// Check API key status for the new provider
-		get().checkApiKey(provider);
+		void get().checkApiKey(provider);
 	},
 
 	checkApiKey: async (providerOverride) => {
 		const provider = providerOverride ?? get().provider;
+		const version = provider === get().provider ? ++keyCheckVersion : undefined;
+		const isCurrent = () => version === keyCheckVersion && provider === get().provider;
 		try {
 			const adapter = await loadKeychainAdapter();
 			const hasKey = await adapter.hasKey(provider);
-			set({ hasApiKey: hasKey, keyFault: null });
+			if (isCurrent()) set({ hasApiKey: hasKey, keyFault: null });
 		} catch (err) {
 			// `hasApiKey: false` because no request can be signed, which is true. But a rejection
 			// is not the claim "there is no key" — the record may be sitting in a vault this
@@ -644,7 +657,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 			// What keeps an internal string out of this field is upstream: the browser vault
 			// remaps everything that is not a `KeyVaultError` before it leaves `withVault`, and
 			// the desktop adapter relays a sentence authored in Rust.
-			set({ hasApiKey: false, keyFault: keychainErrorText(err) });
+			if (isCurrent()) set({ hasApiKey: false, keyFault: keychainErrorText(err) });
 		}
 		// `hasKey` is also what migrates a pre-#133 clear-text key into the vault and erases the
 		// slot, so a slot that was there when the session started may be gone now. Re-read it
@@ -654,4 +667,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
 	},
 
 	clearError: () => set({ error: null }),
-}));
+});
+
+export const useChatStore = create<ChatState>()(
+	persist(createChatState, {
+		name: "threatforge-ai-provider",
+		// Transcripts, key status and faults have their own lifetimes; only the choice persists.
+		partialize: (state) => ({ provider: state.provider }),
+		merge: (saved, current) => {
+			const provider =
+				typeof saved === "object" && saved !== null && "provider" in saved
+					? saved.provider
+					: undefined;
+			return {
+				...current,
+				provider: provider === "anthropic" || provider === "openai" ? provider : current.provider,
+			};
+		},
+	}),
+);

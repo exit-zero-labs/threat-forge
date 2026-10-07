@@ -34,6 +34,7 @@ import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
+import { ChatModelSelector } from "./chat-model-selector";
 import { ChatSessionPicker } from "./chat-session-picker";
 import { ChatViewport } from "./chat-viewport";
 import { MarkdownContent } from "./markdown-content";
@@ -54,6 +55,8 @@ export function AiChatTab() {
 	const filePath = useModelStore((s) => s.filePath);
 	const activeDocumentId = useDocumentRegistry((s) => s.activeDocumentId);
 	const hasApiKey = useChatStore((s) => s.hasApiKey);
+	const isStreaming = useChatStore((s) => s.isStreaming);
+	const turnPhase = useAiTurnStore((s) => s.turn?.phase);
 	const keyFault = useChatStore((s) => s.keyFault);
 	const checkApiKey = useChatStore((s) => s.checkApiKey);
 	const loadSessionsForFile = useChatStore((s) => s.loadSessionsForFile);
@@ -95,6 +98,7 @@ export function AiChatTab() {
 					<Settings className="h-3.5 w-3.5" />
 				</button>
 			</div>
+			<ChatModelSelector disabled={isStreaming || isTurnLive(turnPhase)} />
 
 			{/* The fault outranks the absence: it is the stronger and truer claim about the same
 			    storage, mirroring the documented precedence in the settings panel's
@@ -238,14 +242,16 @@ function MessageList({
 	const visibleMessages = messages.filter(hasVisibleText);
 	if (messages.length === 0) {
 		return (
-			<div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-				<div className="mb-2 rounded-2xl border border-border bg-secondary/40 p-3">
-					<Sparkles className="size-6 text-muted-foreground" />
+			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+				<div className="my-auto flex shrink-0 flex-col items-center gap-2 py-8 text-center">
+					<div className="mb-2 rounded-2xl border border-border bg-secondary/40 p-3">
+						<Sparkles className="size-6 text-muted-foreground" />
+					</div>
+					<p className="text-sm font-medium">Explore your threat model</p>
+					<p className="max-w-64 px-2 text-xs leading-relaxed text-muted-foreground">
+						Ask about your architecture, find threats, or work through a mitigation.
+					</p>
 				</div>
-				<p className="text-sm font-medium">Explore your threat model</p>
-				<p className="max-w-64 px-2 text-xs leading-relaxed text-muted-foreground">
-					Ask about your architecture, find threats, or work through a mitigation.
-				</p>
 			</div>
 		);
 	}

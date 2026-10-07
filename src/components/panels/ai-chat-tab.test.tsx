@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
-import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
+import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/ai-models";
 import { useAiTurnStore } from "@/stores/ai-turn-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
@@ -114,6 +114,24 @@ beforeEach(() => {
 });
 
 describe("AiChatTab session binding", () => {
+	it("lets a user select an OpenAI model from chat even without a saved key", async () => {
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const picker = screen.getByRole("combobox", { name: "Model" });
+		expect(within(picker).getByRole("group", { name: "OpenAI" })).toBeInTheDocument();
+		expect(within(picker).getByRole("group", { name: "Anthropic" })).toBeInTheDocument();
+		await act(async () => {
+			fireEvent.change(picker, { target: { value: `openai:${DEFAULT_OPENAI_MODEL}` } });
+		});
+		expect(useChatStore.getState().provider).toBe("openai");
+		expect(useSettingsStore.getState().settings.aiModelOpenai).toBe(DEFAULT_OPENAI_MODEL);
+		expect(screen.getByText("No API key configured")).toBeInTheDocument();
+	});
+
 	it("keeps IME confirmation and Shift+Enter in the composer without submitting", async () => {
 		keychain.hasKey = true;
 		useDocumentRegistry
@@ -164,6 +182,7 @@ describe("AiChatTab session binding", () => {
 			await flush();
 		});
 		expect(screen.getByRole("button", { name: "Stop response" })).toBeInTheDocument();
+		expect(screen.getByRole("combobox", { name: "Model" })).toBeDisabled();
 		fireEvent.change(input, { target: { value: "Next question draft" } });
 		fireEvent.keyDown(input, { key: "Enter" });
 		expect(input).toHaveValue("Next question draft");
@@ -172,6 +191,7 @@ describe("AiChatTab session binding", () => {
 			fireEvent.keyDown(input, { key: "Escape" });
 		});
 		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
+		expect(screen.getByRole("combobox", { name: "Model" })).toBeEnabled();
 		expect(input).toHaveValue("Next question draft");
 	});
 	it("re-binds chat sessions on a switch between two unsaved documents", async () => {

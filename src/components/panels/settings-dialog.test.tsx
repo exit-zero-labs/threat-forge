@@ -47,7 +47,8 @@ describe("SettingsDialog", () => {
 		useSettingsStore.setState({ settingsDialogInitialTab: "ai" });
 		render(<SettingsDialog />);
 
-		expect(screen.getByText("Provider")).toBeInTheDocument();
+		expect(screen.getByRole("combobox", { name: "API key provider" })).toBeInTheDocument();
+		expect(screen.queryByRole("combobox", { name: "Model" })).not.toBeInTheDocument();
 	});
 
 	it("toggles autosave setting via switch", () => {

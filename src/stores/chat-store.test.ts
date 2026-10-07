@@ -43,11 +43,13 @@ let hasKeyMigrates = false;
 let hasKeyRejection: Error | null = null;
 /** What `hasKey` answers when it does not reject. */
 let hasKeyAnswer = false;
+let keyStatusProbe: ((provider: string) => Promise<boolean>) | null = null;
 vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
 	getKeychainAdapter: async () => ({
 		setKey: async () => undefined,
 		hasKey: async (provider: string) => {
 			keychainCalls.push(`hasKey:${provider}`);
+			if (keyStatusProbe) return keyStatusProbe(provider);
 			if (hasKeyRejection) throw hasKeyRejection;
 			if (hasKeyMigrates) slot[provider] = null;
 			return hasKeyAnswer;
@@ -91,6 +93,7 @@ function seedSession(): void {
 		error: null,
 		hasApiKey: false,
 		keyFault: null,
+		provider: "anthropic",
 	});
 }
 
@@ -109,12 +112,72 @@ beforeEach(() => {
 	hasKeyMigrates = false;
 	hasKeyRejection = null;
 	hasKeyAnswer = false;
+	keyStatusProbe = null;
 	useKeyResidueStore.setState({ residue: { anthropic: null, openai: null } });
 	seedSession();
 });
 
 afterEach(() => {
 	localStorage.clear();
+});
+
+describe("provider selection and key status", () => {
+	it("restores only the selected provider on reload, without restoring key status or transcripts", async () => {
+		useChatStore.getState().setProvider("openai");
+		const saved = localStorage.getItem("threatforge-ai-provider");
+		expect(saved).not.toBeNull();
+		expect(JSON.parse(saved ?? "null").state).toEqual({ provider: "openai" });
+		useChatStore.setState({ provider: "anthropic", hasApiKey: false });
+		localStorage.setItem("threatforge-ai-provider", saved ?? "");
+		await useChatStore.persist.rehydrate();
+		expect(useChatStore.getState().provider).toBe("openai");
+		expect(useChatStore.getState().hasApiKey).toBe(false);
+		expect(useChatStore.getState().activeSessionId).toBe("s1");
+	});
+
+	it.each(["constructor", "unknown", null, 42])(
+		"ignores an invalid saved provider %s and untrusted key status",
+		async (provider) => {
+			localStorage.setItem(
+				"threatforge-ai-provider",
+				JSON.stringify({ state: { provider, hasApiKey: true }, version: 0 }),
+			);
+			await useChatStore.persist.rehydrate();
+			expect(useChatStore.getState().provider).toBe("anthropic");
+			expect(useChatStore.getState().hasApiKey).toBe(false);
+		},
+	);
+
+	it("ignores an old provider's key result after switching to a keyed provider", async () => {
+		let release = (_value: boolean) => {};
+		const oldAnswer = new Promise<boolean>((resolve) => {
+			release = resolve;
+		});
+		keyStatusProbe = async (provider) => (provider === "anthropic" ? oldAnswer : true);
+		const oldCheck = useChatStore.getState().checkApiKey();
+		useChatStore.getState().setProvider("openai");
+		await vi.waitFor(() => expect(useChatStore.getState().hasApiKey).toBe(true));
+		release(false);
+		await oldCheck;
+		expect(useChatStore.getState().hasApiKey).toBe(true);
+		expect(useChatStore.getState().keyFault).toBeNull();
+	});
+
+	it("ignores a stale fault after a newer same-provider check succeeds", async () => {
+		let rejectOld = (_error: Error) => {};
+		const oldAnswer = new Promise<boolean>((_resolve, reject) => {
+			rejectOld = reject;
+		});
+		let probes = 0;
+		keyStatusProbe = async () => (++probes === 1 ? oldAnswer : true);
+		const oldCheck = useChatStore.getState().checkApiKey();
+		await vi.waitFor(() => expect(probes).toBe(1));
+		await useChatStore.getState().checkApiKey();
+		rejectOld(new Error("Key storage could not be read"));
+		await oldCheck;
+		expect(useChatStore.getState().hasApiKey).toBe(true);
+		expect(useChatStore.getState().keyFault).toBeNull();
+	});
 });
 
 describe("chat store event consumption", () => {

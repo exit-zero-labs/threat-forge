@@ -41,6 +41,15 @@ const PLAYWRIGHT_CLI = path.join(REPO_ROOT, "node_modules", "@playwright", "test
  * @type {Record<string, Scenario>}
  */
 export const SCENARIOS = {
+	"chat-model-selection": {
+		description:
+			"Select grouped chat models, save fake provider keys, reload, and verify requests keep the selected provider and model.",
+		files: ["e2e/chat-model-selection.spec.ts"],
+		titles: [
+			"chat model selection survives reload and credential management without rerouting",
+			"legacy model selection stays reachable in a narrow zoomed panel",
+		],
+	},
 	"ai-chat-experience": {
 		description:
 			"Exercise long native conversations, session restoration, readable markdown and composer controls with fake keys and scripted responses.",
