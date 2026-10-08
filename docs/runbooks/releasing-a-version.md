@@ -19,14 +19,11 @@ and the waiver has to say what users experience because of it.
 | Control | Current state | Tracking |
 |---------|---------------|----------|
 | Protected production deployment | Configured; one owner approval required, self-approval disabled, `v*` tags only | [#52](https://github.com/exit-zero-labs/threat-forge/issues/52) |
-| Windows Azure Artifact Signing | Wired but disabled; the signing path has never produced a signed artifact. Gated behind the `WINDOWS_SIGNING` repository variable | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
-| macOS Developer ID and notarization | Apple credentials and end-to-end verification remain | [#51](https://github.com/exit-zero-labs/threat-forge/issues/51) |
+| Windows Azure Artifact Signing | Protected [rehearsal 37157124605](https://github.com/exit-zero-labs/threat-forge/actions/runs/37157124605) passed native installer/payload/uninstaller checks and downloaded hashes. Workflow merge, rollout activation and clean-machine owner validation remain; WINDOWS_SIGNING is unset | [#50](https://github.com/exit-zero-labs/threat-forge/issues/50) |
+| macOS Developer ID and notarization | Both architectures passed protected [rehearsal 37157124605](https://github.com/exit-zero-labs/threat-forge/actions/runs/37157124605) and downloaded app/DMG trust checks. Workflow merge and clean-machine owner validation remain | [#51](https://github.com/exit-zero-labs/threat-forge/issues/51) |
 | Tauri updater signing | Public key, private signing key, manifest, and update verification remain | [#49](https://github.com/exit-zero-labs/threat-forge/issues/49) |
 
-The `Production` environment gates all platform build jobs after validation. The current Azure
-values are repository-scoped, so other workflows could reference them without this environment
-approval. Move provider credentials into `Production` and replace the Azure client secret with
-OIDC before enabling signed releases.
+The `Production` environment gates Windows/macOS signing and draft publication after validation. Linux receives no Apple or Azure credentials. Windows alone has OIDC token permission and authenticates from protected environment variables; the workflow has no client-secret fallback. Legacy repository secrets remain until verified replacement and authorized retirement. Reserved `v<app-version>-signing.<number>` tag pushes and manual dispatch retain Actions artifacts without creating a release; only ordinary successful release-tag pushes can create a draft after every platform's downloaded hashes are verified. Manual dispatch also requires this workflow on the default branch.
 
 ### Recorded waivers
 
@@ -156,19 +153,10 @@ Monitor the workflow at: `Actions > Release > vX.Y.Z`.
 ### 8. Verify the Release
 
 1. Check GitHub Releases page for the draft release
-2. Confirm the draft carries an artifact for every matrix target. A missing artifact means that
-   platform's build or signing step failed; `fail-fast: false` lets the others finish around it.
-   For Windows specifically, signing only runs when the `WINDOWS_SIGNING` repository variable is
-   `true`; while it is unset the installer is unsigned and a missing installer means the build
-   itself failed.
+2. Confirm the draft carries all expected containers: Linux deb/rpm/AppImage, Windows NSIS/MSI, and both macOS DMGs/app archives. Signing or verification failure prevents draft creation; an unset WINDOWS_SIGNING also blocks ordinary push-triggered publication. A protected rehearsal signs Windows regardless of this rollout switch, uploads Actions artifacts and creates no release. Use a separately approved reserved `v<app-version>-signing.<number>` tag for pre-merge proof. Download those artifacts for first activation; never enable the switch merely because a build step exited successfully.
 3. Download binaries for each platform and smoke test:
-   - On Windows, verify the installer signature and publisher identity when `WINDOWS_SIGNING` is
-     enabled. While it is unset, instead confirm the documented SmartScreen path on `/support`
-     matches what the installer actually does.
-   - On macOS, confirm the documented first-run recovery actually works on a machine that has
-     not run the app before: the quarantine flag is set, and the `xattr -dr` command on
-     `/support` clears it. Unsigned builds are covered by a recorded waiver, so this replaces
-     the notarization check rather than being skipped alongside it.
+   - On Windows, verify both installer signatures, intended publisher, timestamps, installed main/helper and actual NSIS uninstaller. Observe clean-machine SmartScreen/UAC presentation; a valid signature does not guarantee immediate reputation.
+   - On macOS, verify both architecture downloads, app/DMG notarization tickets and Gatekeeper acceptance. Launch with quarantine active on clean compatible Macs without an override. The historical v0.3.0 waiver does not authorize new unsigned builds.
    - App launches without errors
    - Can create, save, and reopen a `.thf` file
    - Import a `.tm7` file (File > Import) — elements, flows, boundaries, and threats appear on canvas
@@ -183,7 +171,7 @@ Monitor the workflow at: `Actions > Release > vX.Y.Z`.
 
 ### 9. Post-Release
 
-- Verify auto-updater manifest was generated by the release workflow (when code signing is enabled)
+- Once #49 enables updater publication, verify its manifest and separately signed updater bundles. Platform signing alone does not enable the updater.
 - Announce on relevant channels
 - Close related GitHub milestones/issues
 
