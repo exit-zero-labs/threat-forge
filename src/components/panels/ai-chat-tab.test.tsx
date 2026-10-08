@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamConversationHandlers } from "@/lib/ai/protocol/client";
 import { flattenText } from "@/lib/ai/protocol/messages";
-import { DEFAULT_ANTHROPIC_MODEL } from "@/lib/ai-models";
+import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/ai-models";
 import { useAiTurnStore } from "@/stores/ai-turn-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useDocumentRegistry } from "@/stores/document-registry";
@@ -114,6 +114,69 @@ beforeEach(() => {
 });
 
 describe("AiChatTab session binding", () => {
+	it("keeps the grouped model picker with the message and send controls", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const composer = screen.getByRole("group", { name: "Message composer" });
+		expect(
+			within(composer).getByRole("textbox", { name: "Message AI assistant" }),
+		).toBeInTheDocument();
+		expect(within(composer).getByRole("button", { name: "Model" })).toBeEnabled();
+		expect(within(composer).getByRole("button", { name: "Send message" })).toBeDisabled();
+	});
+
+	it("lets a user select an OpenAI model from chat even without a saved key", async () => {
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const picker = screen.getByRole("button", { name: "Model" });
+		fireEvent.click(picker);
+		const menu = screen.getByRole("menu", { name: "Model" });
+		expect(within(menu).getByRole("group", { name: "OpenAI" })).toBeInTheDocument();
+		expect(within(menu).getByRole("group", { name: "Anthropic" })).toBeInTheDocument();
+		await act(async () => {
+			fireEvent.click(within(menu).getByRole("menuitemradio", { name: "GPT-5.6 Sol" }));
+		});
+		expect(useChatStore.getState().provider).toBe("openai");
+		expect(useSettingsStore.getState().settings.aiModelOpenai).toBe(DEFAULT_OPENAI_MODEL);
+		expect(screen.getByText("No API key configured")).toBeInTheDocument();
+	});
+
+	it("keeps model-picker focus when key availability changes", async () => {
+		keychain.hasKey = true;
+		useDocumentRegistry
+			.getState()
+			.createDocument({ model: makeModel("A"), filePath: null, pendingLayout: null });
+		await act(async () => {
+			render(<AiChatTab />);
+		});
+		const picker = screen.getByRole("button", { name: "Model" });
+		picker.focus();
+		await act(async () => {
+			useChatStore.setState({ hasApiKey: false });
+		});
+		expect(screen.getByRole("button", { name: "Model" })).toBe(picker);
+		expect(picker).toHaveFocus();
+		expect(screen.queryByRole("textbox", { name: "Message AI assistant" })).not.toBeInTheDocument();
+		const shortcut = new KeyboardEvent("keydown", { key: "l", ctrlKey: true, cancelable: true });
+		window.dispatchEvent(shortcut);
+		expect(shortcut.defaultPrevented).toBe(false);
+		await act(async () => {
+			useChatStore.setState({ hasApiKey: true });
+		});
+		expect(screen.getByRole("button", { name: "Model" })).toBe(picker);
+		expect(picker).toHaveFocus();
+		expect(screen.getByRole("textbox", { name: "Message AI assistant" })).toBeEnabled();
+	});
+
 	it("keeps IME confirmation and Shift+Enter in the composer without submitting", async () => {
 		keychain.hasKey = true;
 		useDocumentRegistry
@@ -164,6 +227,7 @@ describe("AiChatTab session binding", () => {
 			await flush();
 		});
 		expect(screen.getByRole("button", { name: "Stop response" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Model" })).toBeDisabled();
 		fireEvent.change(input, { target: { value: "Next question draft" } });
 		fireEvent.keyDown(input, { key: "Enter" });
 		expect(input).toHaveValue("Next question draft");
@@ -172,6 +236,7 @@ describe("AiChatTab session binding", () => {
 			fireEvent.keyDown(input, { key: "Escape" });
 		});
 		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
+		expect(screen.getByRole("button", { name: "Model" })).toBeEnabled();
 		expect(input).toHaveValue("Next question draft");
 	});
 	it("re-binds chat sessions on a switch between two unsaved documents", async () => {
@@ -612,6 +677,7 @@ describe("AiChatTab key storage faults", () => {
 		// The heading is the settings panel's status text verbatim, so the two surfaces state
 		// one fact in one sentence, and whatever the keychain authored is what the user reads.
 		expect(screen.getByTestId("key-storage-fault")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Model" })).toBeEnabled();
 		expect(screen.getByText("Key storage could not be read")).toBeInTheDocument();
 		expect(screen.getByText(VAULT_DAMAGED)).toBeInTheDocument();
 		expect(screen.queryByText("No API key configured")).toBeNull();

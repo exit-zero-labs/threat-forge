@@ -8,7 +8,6 @@ import {
 	Loader2,
 	Play,
 	Settings,
-	Sparkles,
 	Square,
 	Undo2,
 	X,
@@ -34,6 +33,7 @@ import { useHistoryStore } from "@/stores/history-store";
 import { useModelStore } from "@/stores/model-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import type { Threat } from "@/types/threat-model";
+import { ChatModelSelector } from "./chat-model-selector";
 import { ChatSessionPicker } from "./chat-session-picker";
 import { ChatViewport } from "./chat-viewport";
 import { MarkdownContent } from "./markdown-content";
@@ -79,23 +79,20 @@ export function AiChatTab() {
 	const openAiSettings = () => openSettingsDialogAtTab("ai");
 
 	return (
-		<div className="flex h-full min-h-0 min-w-0 flex-col">
+		<div data-ai-chat className="flex h-full min-h-0 min-w-0 flex-col">
 			{/* Header with settings */}
-			<div className="mb-3 flex shrink-0 items-center justify-between">
-				<div className="flex items-center gap-1.5">
-					<Sparkles className="h-3.5 w-3.5 text-primary" />
-					<span className="text-sm font-semibold">AI Assistant</span>
-				</div>
+			<div className="mb-1 flex h-11 shrink-0 items-center justify-between">
+				<h2 className="text-xs font-medium">AI Assistant</h2>
 				<button
 					type="button"
 					onClick={openAiSettings}
-					className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+					className="flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
+					aria-label="AI Settings"
 					title="AI Settings"
 				>
 					<Settings className="h-3.5 w-3.5" />
 				</button>
 			</div>
-
 			{/* The fault outranks the absence: it is the stronger and truer claim about the same
 			    storage, mirroring the documented precedence in the settings panel's
 			    `statusToneOf`. Reporting "no API key configured" over a vault nobody could read
@@ -107,6 +104,7 @@ export function AiChatTab() {
 			) : (
 				<ChatView />
 			)}
+			<ChatInput canSend={hasApiKey && !keyFault} />
 		</div>
 	);
 }
@@ -138,46 +136,46 @@ export function AiChatTab() {
  */
 function KeyStorageFault({ message, onConfigure }: { message: string; onConfigure: () => void }) {
 	return (
-		<div
-			role="alert"
-			data-testid="key-storage-fault"
-			className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center"
-		>
-			<AlertTriangle className="h-10 w-10 text-amber-600 dark:text-amber-400" />
-			<div>
-				<p className="text-xs font-medium text-amber-600 dark:text-amber-400">
-					{KEY_STORAGE_UNREADABLE}
-				</p>
-				<p className="mt-1 text-[10px] text-muted-foreground/70">{message}</p>
+		<div role="alert" data-testid="key-storage-fault" className="flex flex-1 flex-col">
+			<div className="my-auto flex shrink-0 flex-col items-center gap-3 px-2 py-4 text-center">
+				<AlertTriangle className="size-6 shrink-0 text-amber-600 dark:text-amber-400" />
+				<div>
+					<p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+						{KEY_STORAGE_UNREADABLE}
+					</p>
+					<p className="mt-1 text-xs leading-relaxed text-muted-foreground">{message}</p>
+				</div>
+				<button
+					type="button"
+					onClick={onConfigure}
+					className="min-h-11 shrink-0 rounded-md border border-border px-3 text-xs font-medium hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
+				>
+					Open AI settings
+				</button>
 			</div>
-			<button
-				type="button"
-				onClick={onConfigure}
-				className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-			>
-				Open AI settings
-			</button>
 		</div>
 	);
 }
 
 function EmptyState({ onConfigure }: { onConfigure: () => void }) {
 	return (
-		<div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-			<Bot className="h-10 w-10 text-muted-foreground/30" />
-			<div>
-				<p className="text-xs font-medium text-muted-foreground">No API key configured</p>
-				<p className="mt-1 text-[10px] text-muted-foreground/70">
-					Add your Anthropic or OpenAI API key to get AI-powered threat analysis.
-				</p>
+		<div className="flex flex-1 flex-col">
+			<div className="my-auto flex shrink-0 flex-col items-center gap-3 px-2 py-4 text-center">
+				<Bot className="size-6 shrink-0 text-muted-foreground" />
+				<div>
+					<p className="text-xs font-medium text-muted-foreground">No API key configured</p>
+					<p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+						Add your Anthropic or OpenAI API key to get AI-powered threat analysis.
+					</p>
+				</div>
+				<button
+					type="button"
+					onClick={onConfigure}
+					className="min-h-11 shrink-0 rounded-md border border-border px-3 text-xs font-medium hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
+				>
+					Configure API Key
+				</button>
 			</div>
-			<button
-				type="button"
-				onClick={onConfigure}
-				className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-			>
-				Configure API Key
-			</button>
 		</div>
 	);
 }
@@ -193,7 +191,7 @@ function ChatView() {
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden">
 			{/* Session bar */}
 			<ChatSessionPicker />
 
@@ -219,9 +217,6 @@ function ChatView() {
 					</button>
 				</div>
 			)}
-
-			{/* Input */}
-			<ChatInput />
 		</div>
 	);
 }
@@ -238,14 +233,13 @@ function MessageList({
 	const visibleMessages = messages.filter(hasVisibleText);
 	if (messages.length === 0) {
 		return (
-			<div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-				<div className="mb-2 rounded-2xl border border-border bg-secondary/40 p-3">
-					<Sparkles className="size-6 text-muted-foreground" />
+			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+				<div className="my-auto flex shrink-0 flex-col items-center gap-2 py-8 text-center">
+					<p className="text-xs font-medium">Explore your threat model</p>
+					<p className="max-w-64 px-2 text-xs leading-relaxed text-muted-foreground">
+						Ask about your architecture, find threats, or work through a mitigation.
+					</p>
 				</div>
-				<p className="text-sm font-medium">Explore your threat model</p>
-				<p className="max-w-64 px-2 text-xs leading-relaxed text-muted-foreground">
-					Ask about your architecture, find threats, or work through a mitigation.
-				</p>
 			</div>
 		);
 	}
@@ -264,7 +258,7 @@ function MessageList({
 			))}
 			{isStreaming && (
 				<div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-					<Loader2 className="size-3.5 animate-spin" /> Thinking…
+					<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> Thinking…
 				</div>
 			)}
 		</ChatViewport>
@@ -351,7 +345,7 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 
 			{isStreaming && (
 				<div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-					<Loader2 className="size-3.5 animate-spin" /> Thinking…
+					<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> Thinking…
 				</div>
 			)}
 
@@ -506,7 +500,9 @@ function AssistantContent({
 	return (
 		<div className="flex flex-col gap-2">
 			{displayContent && <MarkdownContent content={displayContent} />}
-			{isStreaming && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+			{isStreaming && (
+				<Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none text-muted-foreground" />
+			)}
 
 			{actions.length > 0 && <ActionPreview actions={actions} />}
 
@@ -695,7 +691,7 @@ function ThreatSuggestionCard({
 	);
 }
 
-function ChatInput() {
+function ChatInput({ canSend }: { canSend: boolean }) {
 	const submitTurn = useAiTurnStore((s) => s.submitTurn);
 	const turnPhase = useAiTurnStore((s) => s.turn?.phase);
 	const chatIsStreaming = useChatStore((s) => s.isStreaming);
@@ -706,21 +702,22 @@ function ChatInput() {
 		(s) => s.sessions.find((session) => session.id === s.activeSessionId)?.draft ?? "",
 	);
 	const setInput = useChatStore((s) => s.setDraft);
-	const provider = useChatStore((s) => s.provider);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: resize after the controlled textarea value changes
+	// biome-ignore lint/correctness/useExhaustiveDependencies: resize when the controlled draft changes or the field becomes available
 	useLayoutEffect(() => {
 		const el = inputRef.current;
 		if (!el) return;
 		el.style.height = "0px";
 		el.style.height = `${Math.min(160, Math.max(44, el.scrollHeight))}px`;
-	}, [input]);
+	}, [input, canSend]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: focus the composer on chat selection
 	useLayoutEffect(() => {
+		// Key checks can mount the message field after a keyboard model change; keep selection focus.
+		if (document.activeElement?.closest("[data-chat-model-picker]")) return;
 		inputRef.current?.focus();
-	}, [activeSessionId]);
+	}, [activeSessionId, canSend]);
 
 	// Busy while a tool-loop turn is live or the legacy text stream is running.
 	const isBusy = isTurnLive(turnPhase) || chatIsStreaming;
@@ -729,7 +726,7 @@ function ChatInput() {
 	useEffect(() => {
 		function handleKeyDown(e: KeyboardEvent) {
 			const mod = e.metaKey || e.ctrlKey;
-			if (mod && e.key.toLowerCase() === "l") {
+			if (mod && e.key.toLowerCase() === "l" && inputRef.current) {
 				e.preventDefault();
 				inputRef.current?.focus();
 			}
@@ -746,7 +743,7 @@ function ChatInput() {
 
 	function handleSubmit() {
 		const trimmed = input.trim();
-		if (!trimmed || isBusy || !model) return;
+		if (!trimmed || !canSend || isBusy || !model) return;
 
 		setInput("");
 		void submitTurn(trimmed, model);
@@ -760,53 +757,61 @@ function ChatInput() {
 	}
 
 	return (
-		<div className="shrink-0 rounded-xl border border-border bg-background px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-ring">
-			<textarea
-				ref={inputRef}
-				value={input}
-				onChange={(e) => setInput(e.target.value)}
-				onKeyDown={handleKeyDown}
-				placeholder="Ask about threats..."
-				aria-label="Message AI assistant"
-				rows={2}
-				className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent text-[13px] leading-relaxed placeholder:text-muted-foreground focus:outline-none"
-			/>
-			<div className="mt-2 flex items-center justify-between gap-2">
-				<span className="truncate text-[11px] text-muted-foreground">
-					{turnPhase === "awaiting_approval"
-						? "Review suggested changes"
-						: isBusy
-							? "Generating…"
-							: `${provider === "anthropic" ? "Anthropic" : "OpenAI"} · Enter to send`}
-				</span>
+		<fieldset
+			aria-label="Message composer"
+			className="mt-3 min-w-0 shrink-0 rounded-lg border border-border bg-background p-2 has-[textarea:focus-visible]:outline-1 has-[textarea:focus-visible]:outline-foreground"
+		>
+			{canSend && (
+				<textarea
+					ref={inputRef}
+					value={input}
+					onChange={(e) => setInput(e.target.value)}
+					onKeyDown={handleKeyDown}
+					placeholder="Ask about threats..."
+					aria-label="Message AI assistant"
+					rows={2}
+					className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent px-2 py-1 text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none"
+				/>
+			)}
+			<div className="relative flex items-start justify-between gap-1">
+				<ChatModelSelector disabled={isBusy} />
 				{isBusy ? (
 					<button
 						type="button"
 						onClick={stopGenerating}
-						className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring"
+						className="flex size-11 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
 						title="Stop generating (Esc)"
 						aria-label="Stop response"
 					>
 						<Square className="size-3 fill-current" />
 					</button>
-				) : (
+				) : canSend ? (
 					<button
 						type="button"
 						onClick={handleSubmit}
 						disabled={!input.trim()}
 						className={cn(
-							"flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+							"flex size-11 shrink-0 items-center justify-center rounded-md focus-visible:outline-1 focus-visible:outline-foreground",
 							input.trim()
-								? "bg-primary text-primary-foreground hover:bg-primary/90"
-								: "cursor-not-allowed bg-muted text-muted-foreground",
+								? "text-foreground hover:bg-accent active:bg-accent"
+								: "cursor-default text-muted-foreground opacity-50",
 						)}
 						title="Send (Enter)"
 						aria-label="Send message"
 					>
-						<ArrowUp className="size-4" />
+						<ArrowUp className="size-4" aria-hidden="true" />
 					</button>
-				)}
+				) : null}
 			</div>
-		</div>
+			{(canSend || isBusy) && (
+				<p role="status" className="sr-only">
+					{turnPhase === "awaiting_approval"
+						? "Review suggested changes"
+						: isBusy
+							? "Generating…"
+							: "Enter to send"}
+				</p>
+			)}
+		</fieldset>
 	);
 }

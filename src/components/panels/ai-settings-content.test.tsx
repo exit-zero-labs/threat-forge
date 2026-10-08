@@ -1,4 +1,4 @@
-/** AI settings model picker and persisted legacy-selection behavior. */
+/** Provider credentials, key faults, and legacy residue in AI settings. */
 
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,6 @@ import {
 	LEGACY_RETAINED,
 	type LegacyResidue,
 } from "@/lib/adapters/keychain-adapter";
-import { DEFAULT_ANTHROPIC_MODEL, DEFAULT_OPENAI_MODEL } from "@/lib/ai-models";
 import { useChatStore } from "@/stores/chat-store";
 import { useKeyResidueStore } from "@/stores/key-residue-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -25,12 +24,8 @@ vi.mock("@/lib/adapters/get-keychain-adapter", () => ({
 	getKeychainAdapter: () => getAdapter(),
 }));
 
-function modelSelect(): HTMLSelectElement {
-	return screen.getByRole<HTMLSelectElement>("combobox", { name: "Model" });
-}
-
 function providerSelect(): HTMLSelectElement {
-	return screen.getByRole<HTMLSelectElement>("combobox", { name: "Provider" });
+	return screen.getByRole<HTMLSelectElement>("combobox", { name: "API key provider" });
 }
 
 beforeEach(() => {
@@ -771,70 +766,19 @@ describe("the browser security notice", () => {
 	});
 });
 
-describe("a current catalog model", () => {
-	it("renders selected, with its description, and no legacy warning", async () => {
+describe("credential provider switching", () => {
+	it("keeps chat routing and model selection unchanged when managing another provider key", async () => {
 		await act(async () => {
 			render(<AiSettingsContent />);
 		});
-
-		expect(modelSelect().value).toBe(DEFAULT_ANTHROPIC_MODEL);
-		expect(screen.getByText("Balanced speed and capability")).toBeInTheDocument();
-		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-	});
-});
-
-describe("a persisted legacy model id", () => {
-	beforeEach(() => {
-		useSettingsStore.setState((state) => ({
-			settings: { ...state.settings, aiModelAnthropic: "claude-sonnet-4-20250514" },
-		}));
-	});
-
-	it("shows the legacy id as the selected, visibly labeled option without rewriting settings", async () => {
-		await act(async () => {
-			render(<AiSettingsContent />);
+		const models = { ...useSettingsStore.getState().settings };
+		fireEvent.change(screen.getByPlaceholderText("sk-ant-..."), {
+			target: { value: "sk-ant-unsaved" },
 		});
-
-		expect(modelSelect().value).toBe("claude-sonnet-4-20250514");
-		expect(screen.getByText(/claude-sonnet-4-20250514.*legacy/i)).toBeInTheDocument();
-		expect(screen.getByRole("alert")).toHaveTextContent(
-			/"claude-sonnet-4-20250514" is no longer offered/,
-		);
-		expect(useSettingsStore.getState().settings.aiModelAnthropic).toBe("claude-sonnet-4-20250514");
-	});
-
-	it("switches to the recommended default only when the user clicks the deliberate control", async () => {
-		await act(async () => {
-			render(<AiSettingsContent />);
-		});
-
-		fireEvent.click(screen.getByRole("button", { name: /switch to .*recommended default/i }));
-
-		expect(useSettingsStore.getState().settings.aiModelAnthropic).toBe(DEFAULT_ANTHROPIC_MODEL);
-		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-	});
-
-	it("switches deliberately by picking any current model from the dropdown", async () => {
-		await act(async () => {
-			render(<AiSettingsContent />);
-		});
-
-		fireEvent.change(modelSelect(), { target: { value: "claude-haiku-4-5-20251001" } });
-
-		expect(useSettingsStore.getState().settings.aiModelAnthropic).toBe("claude-haiku-4-5-20251001");
-		expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-	});
-});
-
-describe("provider switching", () => {
-	it("shows the OpenAI catalog and default after switching providers", async () => {
-		await act(async () => {
-			render(<AiSettingsContent />);
-		});
-
 		fireEvent.change(providerSelect(), { target: { value: "openai" } });
-
-		expect(useChatStore.getState().provider).toBe("openai");
-		expect(modelSelect().value).toBe(DEFAULT_OPENAI_MODEL);
+		expect(useChatStore.getState().provider).toBe("anthropic");
+		expect(useSettingsStore.getState().settings).toEqual(models);
+		expect(screen.getByPlaceholderText("sk-...")).toHaveValue("");
+		expect(screen.queryByRole("combobox", { name: "Model" })).not.toBeInTheDocument();
 	});
 });

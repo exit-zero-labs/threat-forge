@@ -38,6 +38,15 @@ function readIfPresent(relativePath) {
 	return existsSync(fullPath) ? readFileSync(fullPath) : null;
 }
 
+/** Assert byte-for-byte retention without deep-walking reports containing encoded screenshots. */
+function expectFileUnchanged(relativePath, before) {
+	const after = readIfPresent(relativePath);
+	expect(
+		after === null || before === null ? after === before : after.equals(before),
+		relativePath,
+	).toBe(true);
+}
+
 describe("SCENARIOS catalog stays honest against real spec files", () => {
 	for (const [name, scenario] of Object.entries(SCENARIOS)) {
 		it(`${name}: every referenced spec file exists`, () => {
@@ -231,8 +240,8 @@ describe("each scenario resolves through the real Playwright CLI", () => {
 			expect(result.stdout).toMatch(
 				new RegExp(`Total: ${scenario.titles.length} tests? in ${scenario.files.length} files?`),
 			);
-			expect(readIfPresent("test-results/results.json")).toEqual(retainedBefore.json);
-			expect(readIfPresent("playwright-report/index.html")).toEqual(retainedBefore.html);
+			expectFileUnchanged("test-results/results.json", retainedBefore.json);
+			expectFileUnchanged("playwright-report/index.html", retainedBefore.html);
 		});
 	}
 });

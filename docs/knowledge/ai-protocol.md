@@ -30,6 +30,12 @@ Out of scope here, and owned elsewhere: the tool-execution loop, approval modes,
 and undo (`#62`); native graph tool definitions (`#64`); IndexedDB conversation
 persistence (`#63`); and user-configurable or self-hosted base URLs.
 
+## Selecting a model
+
+The chat model dropdown groups the curated choices under OpenAI and Anthropic. Selecting a model changes the provider for subsequent turns and remembers that provider across reloads in `threatforge-ai-provider`; the existing per-provider model preferences remain in `threatforge-settings`. Only the provider choice is persisted by the chat store, never key status, storage faults, or in-flight state. Retired saved model IDs stay visible until the user replaces them. The dropdown remains available when a key is missing or unreadable, and is disabled while a turn is active.
+
+AI settings manages provider credentials independently. Changing its API key provider, saving a key, or removing a key does not select a chat model. Both browser and desktop requests use the chat selection and the key belonging to that provider through the existing transports.
+
 ## The message model
 
 `src/lib/ai/protocol/messages.ts` defines a turn as a list of content blocks
