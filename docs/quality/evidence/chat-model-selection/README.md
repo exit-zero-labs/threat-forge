@@ -2,20 +2,30 @@
 
 These Chromium screenshots use fixed fake provider keys and intercepted streaming responses. No real credential, provider response, or production conversation appears in the images.
 
-`before-chat.png` was captured from an isolated worktree at `53ffc0b647ca8a625537cced9e977785092cbaf2` using `npm run test:e2e:agent -- ai-chat-experience --headless`. The chat panel has no model selector. The original model and provider controls lived in AI settings, and the selected provider was not persisted.
+`before-chat.png` was captured from an isolated worktree at `53ffc0b647ca8a625537cced9e977785092cbaf2` using `npm run test:e2e:agent -- ai-chat-experience --headless`. It has no chat model picker; the original model/provider controls lived in AI settings and the provider was not persisted.
 
-The after images come from `npm run test:e2e:agent -- chat-model-selection --headless` on the implementation for #358:
+The after images come from the three maintained checks in `npm run test:e2e:agent -- chat-model-selection --headless`, following the owner's minimal-composer revision on PR #359. The composer has one footer row with a compact model button and Send/Stop. Model descriptions remain accessible in the opened menu and available as native hover help; routine guidance occupies no visible footer row.
 
 | Image | State |
 |---|---|
-| `after-chat-light.png` | OpenAI selected in the composer footer beside Send after saving both fake provider keys, reloading, and completing an intercepted request; 1280 × 720 viewport. |
-| `after-chat-dark.png` | OpenAI restored after a keyboard switch to Anthropic and an intercepted Anthropic turn; 800 × 700 viewport. |
-| `after-settings.png` | Anthropic credential management while OpenAI remains selected in chat. Model controls are absent from settings. |
-| `after-keyless-footer.png` | OpenAI remains selectable in a bottom footer without a saved key; the message input is omitted until a key is available. |
-| `after-legacy-css-zoom.png` | Focused picker and wrapped legacy warning in a 260px panel with reduced motion and 200% CSS zoom. This is CSS zoom, not native browser zoom. |
-| `after-legacy-controls-css-zoom.png` | Ordinary downward wheel scrolling brings the recommended-default control fully into the viewport at the same CSS zoom. |
-| `after-keyless-configure-css-zoom.png` | Upward wheel scrolling brings Configure API Key fully into view while the long legacy selection is still saved. |
+| `after-chat-light.png` | OpenAI selected after configuring both fake provider keys, reload, and an intercepted request; 1280 × 720. |
+| `after-chat-dark.png` | OpenAI restored after keyboard selection and an intercepted Anthropic turn; 800 × 700. |
+| `after-menu-light.png` | Grouped model menu with selected OpenAI check mark and keyboard focus; panel crop. |
+| `after-menu-dark.png` | The same grouped choices in dark mode; panel crop. |
+| `after-composer-hover.png` | Pointer hover on the compact trigger in the empty conversation. |
+| `after-composer-active.png` | Pressed pointer state on the same trigger, before opening. |
+| `after-composer-focus.png` | Keyboard focus on the model trigger with its own thin indicator. |
+| `after-composer-busy.png` | Pending intercepted request: model selection disabled and Stop available at the same position/size as Send. |
+| `after-settings.png` | Anthropic credential management while chat retains OpenAI; no settings model controls. |
+| `after-keyless-footer.png` | Bottom model picker without a saved key; message field omitted. |
+| `after-storage-fault.png` | The real adapter's sanitized unavailable-vault guidance after blocking only the vault IndexedDB boundary; 800 × 520, panel crop. |
+| `after-legacy-css-zoom.png` | Focused long saved legacy choice and tool-use warning after downward wheel scrolling; 260px panel, reduced motion, 200% CSS zoom. |
+| `after-legacy-controls-css-zoom.png` | Downward wheel scrolling reaches the recommended-default control. |
+| `after-keyless-configure-css-zoom.png` | Upward wheel scrolling reaches Configure API Key while the legacy choice remains saved. |
+| `after-menu-css-zoom.png` | End-key navigation reaches the final model fully inside the scrolled popup at the same CSS zoom; panel crop. |
 
-The two maintained browser checks assert grouped options, composer placement below the message field and beside Send, credential management without rerouting, provider/model persistence after reload, the exact outgoing endpoint/model/fake key, keyboard selection and focus, locking during a pending request, and deliberate legacy-model replacement. At CSS zoom, user wheel input must bring replacement and key-configuration controls fully into view in their respective scrolled states while the legacy selection remains saved; automatic click scrolling does not satisfy those assertions. The separate nine-check chat-experience scenario verifies composer containment and conversation interactions; the four-check native-ai-tools scenario verifies approval, denial, cancellation, and undo in the browser. Its name does not establish native desktop UI verification.
+The maintained browser checks assert grouped choices/selected state, exact intercepted endpoint/model/fake-key routing, reload and credential independence, keyboard/pointer selection, Escape/Tab/Ctrl+L and focus ownership, busy locking, stable hover/active/focus and Send/Stop geometry, zero composer/trigger color-transition duration, deliberate legacy replacement, and popup/control reachability through user scrolling. Light/dark opened-menu and storage-fault states receive scoped axe scans for serious/critical violations. These checks supplement visual inspection; they do not establish universal accessibility or desktop behavior.
 
-Screenshots support visual review and do not establish live provider compatibility. Optional live testing authenticated successfully with OpenAI, but a production request-builder smoke call failed with HTTP 400 for `reasoning_effort`. The separate protocol work is tracked in #348/#350. Desktop UI/restart and owner intent validation remain unperformed.
+The separate chat-experience scenario covers long conversations, sessions, drafts, errors, narrow markdown, reading position, and the existing short-viewport composer containment assertions. The native-ai-tools scenario exercises approval, denial, cancellation, and undo in the browser; its name does not establish native desktop UI verification. Screenshot capture disables animations; the application itself honors reduced motion for loading indicators.
+
+CSS zoom is not native browser zoom. The before image is 1280 × 800, and after images use the stated viewports or panel crops; they are interaction-state evidence, not pixel-matched baselines. Screenshots and intercepted responses do not prove live provider compatibility. Live OpenAI testing previously authenticated successfully but the production request-builder call returned HTTP 400 for `reasoning_effort`, tracked separately in #348/#350. Desktop UI/restart and owner intent validation remain unperformed.

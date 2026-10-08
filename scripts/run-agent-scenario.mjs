@@ -48,6 +48,7 @@ export const SCENARIOS = {
 		titles: [
 			"chat model selection survives reload and credential management without rerouting",
 			"legacy model selection stays reachable in a narrow zoomed panel",
+			"model menu stays usable when encrypted storage is unavailable",
 		],
 	},
 	"ai-chat-experience": {

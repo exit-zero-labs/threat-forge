@@ -8,7 +8,6 @@ import {
 	Loader2,
 	Play,
 	Settings,
-	Sparkles,
 	Square,
 	Undo2,
 	X,
@@ -80,17 +79,15 @@ export function AiChatTab() {
 	const openAiSettings = () => openSettingsDialogAtTab("ai");
 
 	return (
-		<div className="flex h-full min-h-0 min-w-0 flex-col">
+		<div data-ai-chat className="flex h-full min-h-0 min-w-0 flex-col">
 			{/* Header with settings */}
-			<div className="mb-3 flex shrink-0 items-center justify-between">
-				<div className="flex items-center gap-1.5">
-					<Sparkles className="h-3.5 w-3.5 text-primary" />
-					<span className="text-sm font-semibold">AI Assistant</span>
-				</div>
+			<div className="mb-1 flex h-11 shrink-0 items-center justify-between">
+				<h2 className="text-xs font-medium">AI Assistant</h2>
 				<button
 					type="button"
 					onClick={openAiSettings}
-					className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+					className="flex size-11 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
+					aria-label="AI Settings"
 					title="AI Settings"
 				>
 					<Settings className="h-3.5 w-3.5" />
@@ -139,46 +136,46 @@ export function AiChatTab() {
  */
 function KeyStorageFault({ message, onConfigure }: { message: string; onConfigure: () => void }) {
 	return (
-		<div
-			role="alert"
-			data-testid="key-storage-fault"
-			className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center"
-		>
-			<AlertTriangle className="h-10 w-10 text-amber-600 dark:text-amber-400" />
-			<div>
-				<p className="text-xs font-medium text-amber-600 dark:text-amber-400">
-					{KEY_STORAGE_UNREADABLE}
-				</p>
-				<p className="mt-1 text-[10px] text-muted-foreground/70">{message}</p>
+		<div role="alert" data-testid="key-storage-fault" className="flex flex-1 flex-col">
+			<div className="my-auto flex shrink-0 flex-col items-center gap-3 px-2 py-4 text-center">
+				<AlertTriangle className="size-6 shrink-0 text-amber-600 dark:text-amber-400" />
+				<div>
+					<p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+						{KEY_STORAGE_UNREADABLE}
+					</p>
+					<p className="mt-1 text-xs leading-relaxed text-muted-foreground">{message}</p>
+				</div>
+				<button
+					type="button"
+					onClick={onConfigure}
+					className="min-h-11 shrink-0 rounded-md border border-border px-3 text-xs font-medium hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
+				>
+					Open AI settings
+				</button>
 			</div>
-			<button
-				type="button"
-				onClick={onConfigure}
-				className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-			>
-				Open AI settings
-			</button>
 		</div>
 	);
 }
 
 function EmptyState({ onConfigure }: { onConfigure: () => void }) {
 	return (
-		<div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-			<Bot className="h-10 w-10 text-muted-foreground/30" />
-			<div>
-				<p className="text-xs font-medium text-muted-foreground">No API key configured</p>
-				<p className="mt-1 text-[10px] text-muted-foreground/70">
-					Add your Anthropic or OpenAI API key to get AI-powered threat analysis.
-				</p>
+		<div className="flex flex-1 flex-col">
+			<div className="my-auto flex shrink-0 flex-col items-center gap-3 px-2 py-4 text-center">
+				<Bot className="size-6 shrink-0 text-muted-foreground" />
+				<div>
+					<p className="text-xs font-medium text-muted-foreground">No API key configured</p>
+					<p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+						Add your Anthropic or OpenAI API key to get AI-powered threat analysis.
+					</p>
+				</div>
+				<button
+					type="button"
+					onClick={onConfigure}
+					className="min-h-11 shrink-0 rounded-md border border-border px-3 text-xs font-medium hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
+				>
+					Configure API Key
+				</button>
 			</div>
-			<button
-				type="button"
-				onClick={onConfigure}
-				className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-			>
-				Configure API Key
-			</button>
 		</div>
 	);
 }
@@ -194,7 +191,7 @@ function ChatView() {
 	const activeSessionId = useChatStore((s) => s.activeSessionId);
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden">
 			{/* Session bar */}
 			<ChatSessionPicker />
 
@@ -238,10 +235,7 @@ function MessageList({
 		return (
 			<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 				<div className="my-auto flex shrink-0 flex-col items-center gap-2 py-8 text-center">
-					<div className="mb-2 rounded-2xl border border-border bg-secondary/40 p-3">
-						<Sparkles className="size-6 text-muted-foreground" />
-					</div>
-					<p className="text-sm font-medium">Explore your threat model</p>
+					<p className="text-xs font-medium">Explore your threat model</p>
 					<p className="max-w-64 px-2 text-xs leading-relaxed text-muted-foreground">
 						Ask about your architecture, find threats, or work through a mitigation.
 					</p>
@@ -264,7 +258,7 @@ function MessageList({
 			))}
 			{isStreaming && (
 				<div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-					<Loader2 className="size-3.5 animate-spin" /> Thinking…
+					<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> Thinking…
 				</div>
 			)}
 		</ChatViewport>
@@ -351,7 +345,7 @@ function TurnConversation({ turn }: { turn: TurnState }) {
 
 			{isStreaming && (
 				<div role="status" className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-					<Loader2 className="size-3.5 animate-spin" /> Thinking…
+					<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> Thinking…
 				</div>
 			)}
 
@@ -506,7 +500,9 @@ function AssistantContent({
 	return (
 		<div className="flex flex-col gap-2">
 			{displayContent && <MarkdownContent content={displayContent} />}
-			{isStreaming && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+			{isStreaming && (
+				<Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none text-muted-foreground" />
+			)}
 
 			{actions.length > 0 && <ActionPreview actions={actions} />}
 
@@ -719,7 +715,7 @@ function ChatInput({ canSend }: { canSend: boolean }) {
 	// biome-ignore lint/correctness/useExhaustiveDependencies: focus the composer on chat selection
 	useLayoutEffect(() => {
 		// Key checks can mount the message field after a keyboard model change; keep selection focus.
-		if (document.activeElement instanceof HTMLSelectElement) return;
+		if (document.activeElement?.closest("[data-chat-model-picker]")) return;
 		inputRef.current?.focus();
 	}, [activeSessionId, canSend]);
 
@@ -763,7 +759,7 @@ function ChatInput({ canSend }: { canSend: boolean }) {
 	return (
 		<fieldset
 			aria-label="Message composer"
-			className="mt-3 min-w-0 shrink-0 rounded-xl border border-border bg-background px-3 pt-2.5 pb-2 shadow-sm transition-colors focus-within:border-ring"
+			className="mt-3 min-w-0 shrink-0 rounded-lg border border-border bg-background p-2 has-[textarea:focus-visible]:outline-1 has-[textarea:focus-visible]:outline-foreground"
 		>
 			{canSend && (
 				<textarea
@@ -774,16 +770,16 @@ function ChatInput({ canSend }: { canSend: boolean }) {
 					placeholder="Ask about threats..."
 					aria-label="Message AI assistant"
 					rows={2}
-					className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent text-[13px] leading-relaxed placeholder:text-muted-foreground focus:outline-none"
+					className="block max-h-40 w-full resize-none overflow-y-auto bg-transparent px-2 py-1 text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none"
 				/>
 			)}
-			<div className="mt-2 flex items-start justify-between gap-2">
+			<div className="relative flex items-start justify-between gap-1">
 				<ChatModelSelector disabled={isBusy} />
 				{isBusy ? (
 					<button
 						type="button"
 						onClick={stopGenerating}
-						className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring"
+						className="flex size-11 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
 						title="Stop generating (Esc)"
 						aria-label="Stop response"
 					>
@@ -795,20 +791,20 @@ function ChatInput({ canSend }: { canSend: boolean }) {
 						onClick={handleSubmit}
 						disabled={!input.trim()}
 						className={cn(
-							"flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+							"flex size-11 shrink-0 items-center justify-center rounded-md focus-visible:outline-1 focus-visible:outline-foreground",
 							input.trim()
-								? "bg-primary text-primary-foreground hover:bg-primary/90"
-								: "cursor-not-allowed bg-muted text-muted-foreground",
+								? "text-foreground hover:bg-accent active:bg-accent"
+								: "cursor-default text-muted-foreground opacity-50",
 						)}
 						title="Send (Enter)"
 						aria-label="Send message"
 					>
-						<ArrowUp className="size-4" />
+						<ArrowUp className="size-4" aria-hidden="true" />
 					</button>
 				) : null}
 			</div>
 			{(canSend || isBusy) && (
-				<p className="mt-1 text-[10px] text-muted-foreground">
+				<p role="status" className="sr-only">
 					{turnPhase === "awaiting_approval"
 						? "Review suggested changes"
 						: isBusy

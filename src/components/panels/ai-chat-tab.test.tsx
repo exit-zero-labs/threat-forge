@@ -126,7 +126,7 @@ describe("AiChatTab session binding", () => {
 		expect(
 			within(composer).getByRole("textbox", { name: "Message AI assistant" }),
 		).toBeInTheDocument();
-		expect(within(composer).getByRole("combobox", { name: "Model" })).toBeEnabled();
+		expect(within(composer).getByRole("button", { name: "Model" })).toBeEnabled();
 		expect(within(composer).getByRole("button", { name: "Send message" })).toBeDisabled();
 	});
 
@@ -137,11 +137,13 @@ describe("AiChatTab session binding", () => {
 		await act(async () => {
 			render(<AiChatTab />);
 		});
-		const picker = screen.getByRole("combobox", { name: "Model" });
-		expect(within(picker).getByRole("group", { name: "OpenAI" })).toBeInTheDocument();
-		expect(within(picker).getByRole("group", { name: "Anthropic" })).toBeInTheDocument();
+		const picker = screen.getByRole("button", { name: "Model" });
+		fireEvent.click(picker);
+		const menu = screen.getByRole("menu", { name: "Model" });
+		expect(within(menu).getByRole("group", { name: "OpenAI" })).toBeInTheDocument();
+		expect(within(menu).getByRole("group", { name: "Anthropic" })).toBeInTheDocument();
 		await act(async () => {
-			fireEvent.change(picker, { target: { value: `openai:${DEFAULT_OPENAI_MODEL}` } });
+			fireEvent.click(within(menu).getByRole("menuitemradio", { name: "GPT-5.6 Sol" }));
 		});
 		expect(useChatStore.getState().provider).toBe("openai");
 		expect(useSettingsStore.getState().settings.aiModelOpenai).toBe(DEFAULT_OPENAI_MODEL);
@@ -156,12 +158,12 @@ describe("AiChatTab session binding", () => {
 		await act(async () => {
 			render(<AiChatTab />);
 		});
-		const picker = screen.getByRole("combobox", { name: "Model" });
+		const picker = screen.getByRole("button", { name: "Model" });
 		picker.focus();
 		await act(async () => {
 			useChatStore.setState({ hasApiKey: false });
 		});
-		expect(screen.getByRole("combobox", { name: "Model" })).toBe(picker);
+		expect(screen.getByRole("button", { name: "Model" })).toBe(picker);
 		expect(picker).toHaveFocus();
 		expect(screen.queryByRole("textbox", { name: "Message AI assistant" })).not.toBeInTheDocument();
 		const shortcut = new KeyboardEvent("keydown", { key: "l", ctrlKey: true, cancelable: true });
@@ -170,7 +172,7 @@ describe("AiChatTab session binding", () => {
 		await act(async () => {
 			useChatStore.setState({ hasApiKey: true });
 		});
-		expect(screen.getByRole("combobox", { name: "Model" })).toBe(picker);
+		expect(screen.getByRole("button", { name: "Model" })).toBe(picker);
 		expect(picker).toHaveFocus();
 		expect(screen.getByRole("textbox", { name: "Message AI assistant" })).toBeEnabled();
 	});
@@ -225,7 +227,7 @@ describe("AiChatTab session binding", () => {
 			await flush();
 		});
 		expect(screen.getByRole("button", { name: "Stop response" })).toBeInTheDocument();
-		expect(screen.getByRole("combobox", { name: "Model" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Model" })).toBeDisabled();
 		fireEvent.change(input, { target: { value: "Next question draft" } });
 		fireEvent.keyDown(input, { key: "Enter" });
 		expect(input).toHaveValue("Next question draft");
@@ -234,7 +236,7 @@ describe("AiChatTab session binding", () => {
 			fireEvent.keyDown(input, { key: "Escape" });
 		});
 		expect(useAiTurnStore.getState().turn?.outcome).toBe("cancelled");
-		expect(screen.getByRole("combobox", { name: "Model" })).toBeEnabled();
+		expect(screen.getByRole("button", { name: "Model" })).toBeEnabled();
 		expect(input).toHaveValue("Next question draft");
 	});
 	it("re-binds chat sessions on a switch between two unsaved documents", async () => {
@@ -675,7 +677,7 @@ describe("AiChatTab key storage faults", () => {
 		// The heading is the settings panel's status text verbatim, so the two surfaces state
 		// one fact in one sentence, and whatever the keychain authored is what the user reads.
 		expect(screen.getByTestId("key-storage-fault")).toBeInTheDocument();
-		expect(screen.getByRole("combobox", { name: "Model" })).toBeEnabled();
+		expect(screen.getByRole("button", { name: "Model" })).toBeEnabled();
 		expect(screen.getByText("Key storage could not be read")).toBeInTheDocument();
 		expect(screen.getByText(VAULT_DAMAGED)).toBeInTheDocument();
 		expect(screen.queryByText("No API key configured")).toBeNull();

@@ -71,7 +71,7 @@ export function ChatSessionPicker() {
 					setDeleting(null);
 					setOpen(!open);
 				}}
-				className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+				className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-xs hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground h-11"
 			>
 				<MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
 				<span className="min-w-0 flex-1 truncate text-left">{active?.title ?? "New Chat"}</span>
@@ -85,7 +85,7 @@ export function ChatSessionPicker() {
 				}}
 				title="New chat session"
 				aria-label="New chat"
-				className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+				className="flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-accent active:bg-accent focus-visible:outline-1 focus-visible:outline-foreground"
 			>
 				<Plus className="size-4" />
 			</button>
